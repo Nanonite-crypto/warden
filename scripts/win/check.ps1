@@ -435,6 +435,10 @@ if ($Rules) {
             $fp = Get-Content -LiteralPath $fpReport -Raw -Encoding UTF8 | ConvertFrom-Json
             $flagged = $fp.flagged_malicious + $fp.flagged_suspicious
             $notes.false_positives = "$flagged of $($fp.files_scanned) files flagged"
+            # Findings that did not count: the file kept its clean verdict.
+            if ($fp.recorded_files -gt 0) {
+                $notes.false_positives += ", $($fp.recorded_files) more with findings on record that did not count"
+            }
         } catch { }
     } else {
         $steps.false_positives = 'failed'

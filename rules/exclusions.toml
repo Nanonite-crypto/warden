@@ -25,27 +25,12 @@
 #
 # An entry without evidence is refused, and so is a field that is not in this
 # list, so a misspelt field cannot be skipped unnoticed.
-
-[[rule]]
-name = "MALPEDIA_Win_Triback_Loader_Auto"
-reason = """\
-Generated automatically from samples of one malware family. It asks for seven \
-of its ten code sequences, and that many are also in clean libraries from two \
-unrelated projects: the Vulkan loader and the liblouis braille library."""
-source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
-note = "Each of the two files was the only file flagged in its Windows system folder."
-
-[[rule.evidence]]
-file = 'C:\Windows\System32\vulkan-1.dll'
-sha256 = "591d4c316a0a39f96792979ce5ebb1bb380f0015c30707ba7ac611b35ae01cfc"
-seen = 2026-11-18
-machine = "GitHub-hosted Windows runner (Windows Server 2025)"
-
-[[rule.evidence]]
-file = 'C:\WINDOWS\System32\liblouis.dll'
-sha256 = "5f294b822e0311edb896e4783417fbf5eab69c48b2fee7347ab305a06c967db1"
-seen = 2026-11-18
-machine = "Windows 11 desktop"
+#
+# Four rules that a tool had generated from malware samples were on this list
+# until phase 4, for matching library code in clean files. They are back in
+# the bundle: the match of a generated rule now counts only together with a
+# sign from another layer, and those files have none. docs/RULES.md lists the
+# four rules and the files, under "Generated rules".
 
 [[rule]]
 name = "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
@@ -79,66 +64,8 @@ machine = "GitHub-hosted Windows runner (Windows Server 2025)"
 
 # The entries from here on come from one run: the installed programs of a
 # Windows 11 desktop, C:\Program Files and C:\Program Files (x86), 310,849
-# files, on 2026-11-18. Eight rules flagged 13 of them.
-
-[[rule]]
-name = "MALPEDIA_Win_Bqtlock_Auto"
-reason = """\
-Generated automatically from samples of one malware family. It asks for seven \
-of its ten code sequences, and that many are also in the GNU C++ runtime \
-library that ships with Git for Windows."""
-source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
-note = """\
-Flagged two copies of the same file. The second is in \
-C:\\Program Files\\Git\\mingw64\\libexec\\git-core."""
-
-[[rule.evidence]]
-file = 'C:\Program Files\Git\mingw64\bin\libstdc++-6.dll'
-sha256 = "ac49a81529393ab27268a1b534340462daaa8386a718cf20890865c0caeece66"
-seen = 2026-11-18
-machine = "Windows 11 desktop"
-
-[[rule]]
-name = "MALPEDIA_Win_Mystic_Stealer_Auto"
-reason = """\
-Generated automatically from samples of one malware family. At least three of \
-its ten code sequences are zlib's compression code: they use the fields of \
-zlib's compression state at the offsets zlib gives them. Other programs that \
-contain zlib can have the same code, and two files of the Java runtime match \
-at least seven of the ten sequences."""
-source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
-
-[[rule.evidence]]
-file = 'C:\Program Files (x86)\Java\jre1.8.0_471\bin\zip.dll'
-sha256 = "710414d3610e133ddfce48a13a47efc8d31daf7799de48f22e5136a9e826de86"
-seen = 2026-11-18
-machine = "Windows 11 desktop"
-
-[[rule.evidence]]
-file = 'C:\Program Files (x86)\Java\jre1.8.0_471\bin\unpack200.exe'
-sha256 = "6612b9dac6ad3ebb3c2fee1db2758acdd9b2aec73a79dee1d16918a13d64fba3"
-seen = 2026-11-18
-machine = "Windows 11 desktop"
-
-[[rule]]
-name = "MALPEDIA_Win_Yokai_Auto"
-reason = """\
-Generated automatically from samples of one malware family. It asks for seven \
-of its ten code sequences, and that many are also in the debug build of \
-Microsoft's C runtime library, which ships with the Windows SDK."""
-source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
-
-[[rule.evidence]]
-file = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\ucrt\ucrtbased.dll'
-sha256 = "c15f97935e113729974d55f4c881efc85fd5a0baadc2d81895a93e10d6e738fb"
-seen = 2026-11-18
-machine = "Windows 11 desktop"
-
-[[rule.evidence]]
-file = 'C:\Program Files (x86)\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.26100.0\Redist\Debug\x86\ucrtbased.dll'
-sha256 = "efbf2f43811e15785116880e45b955d3b7bfd5585107d9fded2c0e5a2a45feec"
-seen = 2026-11-18
-machine = "Windows 11 desktop"
+# files, on 2026-11-18. Eight rules flagged 13 of them. Three of the eight
+# were generated rules, see above; these are the other five.
 
 [[rule]]
 name = "DITEKSHEN_INDICATOR_TOOL_UAC_NSISUAC"
