@@ -81,6 +81,18 @@ name, so you can see what you are running. For the pinned release:
 | Reported as malicious (score 80 and above) | 205 |
 | Reported as suspicious (score 60 to 79) | 4,933 |
 
+### Rule files and your antivirus
+
+A rule file is full of the byte patterns of malware; that is what it is
+for. Some antivirus products take such a file for the real thing. If the
+downloaded package or a bundle disappears on your machine, or cannot be
+read, this is the likely reason, and the Windows fetch script says so.
+
+The remedy is the one described for the EICAR test folder in
+[TESTING.md](TESTING.md#eicar-and-your-antivirus): exclude the one folder
+that holds the rules (`rules\vendor`, and wherever you keep the bundle),
+knowingly, and nothing more.
+
 ## From a match to a verdict
 
 Detectors report, a policy decides: that rule of the engine holds here too.

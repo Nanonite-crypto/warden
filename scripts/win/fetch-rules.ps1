@@ -59,7 +59,22 @@ try {
     exit 1
 }
 
-$actual = Get-Digest $part
+# A rule package is full of the byte patterns of malware, which is its
+# purpose. Some antivirus products take such a file for the real thing and
+# remove or lock it the moment it is written.
+$antivirusHint = 'An antivirus may have removed or locked it: rule files contain the patterns they look for. See docs\RULES.md.'
+if (-not (Test-Path -LiteralPath $part)) {
+    Write-Host 'The download finished, but the file is gone.' -ForegroundColor Red
+    Write-Host $antivirusHint
+    exit 1
+}
+try {
+    $actual = Get-Digest $part
+} catch {
+    Write-Host "The downloaded file cannot be read: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host $antivirusHint
+    exit 1
+}
 if ($actual -ne $pin['sha256']) {
     Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
     Write-Host 'The download does not match the pinned checksum.' -ForegroundColor Red
