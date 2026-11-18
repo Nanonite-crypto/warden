@@ -1,0 +1,9 @@
+# The YARA Forge release that Warden's rule bundle is built from in CI and
+# by the fetch scripts. The package is not part of this repository: its rules
+# belong to their authors and carry their own licences. See docs/RULES.md.
+#
+# To move to a newer release, change the tag, download the package once,
+# and put its SHA-256 here.
+tag = 20261018
+package = yara-forge-rules-core.zip
+sha256 = d5b5f0006a0c58684459c3967b6aaae94f1e128597ed23ea5d4e8f16965a74ba

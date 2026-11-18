@@ -1,0 +1,79 @@
+name: False positives
+
+# Scans files that are known to be clean with the rule bundle and records
+# what gets flagged anyway: Windows system files, and the software that is
+# installed on a hosted runner.
+#
+# This reads many gigabytes from a slow disk, so it does not run on every
+# change. Start it by hand, or push a branch named fp-run/<anything>.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["fp-run/**"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep in step with rust-toolchain.toml.
+  RUST_TOOLCHAIN: "1.97.0"
+
+jobs:
+  windows:
+    name: Windows system files and common software
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install the pinned toolchain
+        shell: bash
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+      # Builds the release binary, checks EICAR detection, builds the rule
+      # bundle from the pinned YARA Forge package, and scans all of System32
+      # with it. Results go to target\check\fp.json.
+      - name: Windows system files (System32)
+        shell: cmd
+        run: call scripts\win\check.cmd -SkipTests -SkipBench -RequireEicar -Rules
+        env:
+          WARDEN_NO_PAUSE: "1"
+      # Whatever of this list is installed on the runner. Exit code 1 means
+      # that something was flagged, which is a result, not a failure.
+      - name: Common software
+        shell: pwsh
+        run: |
+          $wanted = @(
+            'C:\Program Files\7-Zip',
+            'C:\Program Files\Git',
+            'C:\Program Files\Google\Chrome',
+            'C:\Program Files\Mozilla Firefox',
+            'C:\Program Files\PowerShell',
+            'C:\Program Files\dotnet',
+            'C:\Program Files\nodejs'
+          )
+          $present = @($wanted | Where-Object { Test-Path -LiteralPath $_ })
+          Write-Host "Scanning: $($present -join ', ')"
+          & target\release\warden.exe false-positives @present `
+            --rules target\check\rules.wrb `
+            --label 'GitHub-hosted Windows runner, common software' `
+            --no-progress `
+            --output target\check\fp-software.json
+          if ($LASTEXITCODE -gt 1) { exit $LASTEXITCODE }
+          exit 0
+      - name: Show the results
+        if: always()
+        shell: bash
+        run: |
+          for file in summary.json system.json fp.json fp-software.json; do
+            echo "::group::$file"
+            cat "target/check/$file" 2>/dev/null || echo "(not written)"
+            echo
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: false-positives-windows
+          path: target/check/
+          if-no-files-found: warn
