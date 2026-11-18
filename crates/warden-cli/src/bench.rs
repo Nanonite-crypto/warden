@@ -44,6 +44,9 @@ pub struct BenchArgs {
 
 #[derive(Debug, Clone, Serialize)]
 struct Run {
+    /// True for the first run of the whole benchmark. It reads whatever the
+    /// operating system had not cached yet, so it is kept out of the median.
+    first: bool,
     duration_ms: f64,
     files_scanned: u64,
     bytes_scanned: u64,
@@ -54,8 +57,9 @@ struct Run {
 }
 
 impl Run {
-    fn from_report(report: &ScanReport) -> Self {
+    fn from_report(report: &ScanReport, first: bool) -> Self {
         Self {
+            first,
             duration_ms: report.duration.as_secs_f64() * 1000.0,
             files_scanned: report.stats.files_scanned,
             bytes_scanned: report.stats.bytes_scanned,
@@ -71,8 +75,10 @@ impl Run {
 struct Configuration {
     threads: usize,
     runs: Vec<Run>,
-    median_files_per_second: f64,
-    median_megabytes_per_second: f64,
+    /// Median over the repeat runs, which the file cache can serve. Absent
+    /// when the only run was the first of the benchmark.
+    repeat_median_files_per_second: Option<f64>,
+    repeat_median_megabytes_per_second: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,6 +111,12 @@ fn median(mut values: Vec<f64>) -> f64 {
     } else {
         f64::midpoint(values[middle - 1], values[middle])
     }
+}
+
+/// Median of one figure over the repeat runs, or `None` when there are none.
+fn repeat_median(runs: &[Run], figure: impl Fn(&Run) -> f64) -> Option<f64> {
+    let repeats: Vec<f64> = runs.iter().filter(|run| !run.first).map(figure).collect();
+    (!repeats.is_empty()).then(|| median(repeats))
 }
 
 fn cpu_name() -> Option<String> {
@@ -149,6 +161,7 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
 
     let mut detectors = Vec::new();
     let mut configurations = Vec::new();
+    let mut first = true;
     for threads in thread_counts {
         let scanner = build_scanner(args.sigdb.as_ref(), threads, Vec::new())?;
         let mut runs = Vec::new();
@@ -169,20 +182,21 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
             if detectors.is_empty() {
                 detectors.clone_from(&report.detectors);
             }
-            runs.push(Run::from_report(&report));
+            runs.push(Run::from_report(&report, first));
+            first = false;
         }
         configurations.push(Configuration {
             threads: used_threads,
-            median_files_per_second: median(runs.iter().map(|run| run.files_per_second).collect()),
-            median_megabytes_per_second: median(
-                runs.iter().map(|run| run.megabytes_per_second).collect(),
-            ),
+            repeat_median_files_per_second: repeat_median(&runs, |run| run.files_per_second),
+            repeat_median_megabytes_per_second: repeat_median(&runs, |run| {
+                run.megabytes_per_second
+            }),
             runs,
         });
     }
 
     let report = BenchReport {
-        schema: 1,
+        schema: 2,
         label: args.label.clone(),
         path: std::path::absolute(&args.path)
             .unwrap_or_else(|_| args.path.clone())
@@ -236,11 +250,16 @@ fn text(report: &BenchReport) -> String {
     );
     for configuration in &report.configurations {
         for (index, run) in configuration.runs.iter().enumerate() {
+            let label = if run.first {
+                "first".to_owned()
+            } else {
+                (index + 1).to_string()
+            };
             let _ = writeln!(
                 out,
                 "{:>7}  {:>6}  {:>10}  {:>10}  {:>9}  {:>9}  {:>8.1}",
                 configuration.threads,
-                index + 1,
+                label,
                 human_duration(std::time::Duration::from_secs_f64(run.duration_ms / 1000.0)),
                 group_digits(run.files_scanned),
                 human_bytes(run.bytes_scanned),
@@ -248,30 +267,55 @@ fn text(report: &BenchReport) -> String {
                 run.megabytes_per_second,
             );
         }
-        let _ = writeln!(
-            out,
-            "{:>7}  {:>6}  {:>10}  {:>10}  {:>9}  {:>9}  {:>8.1}",
-            configuration.threads,
-            "median",
-            "",
-            "",
-            "",
-            group_digits(configuration.median_files_per_second.round() as u64),
-            configuration.median_megabytes_per_second,
-        );
+        if let (Some(files), Some(megabytes)) = (
+            configuration.repeat_median_files_per_second,
+            configuration.repeat_median_megabytes_per_second,
+        ) {
+            let _ = writeln!(
+                out,
+                "{:>7}  {:>6}  {:>10}  {:>10}  {:>9}  {:>9}  {:>8.1}",
+                configuration.threads,
+                "median",
+                "",
+                "",
+                "",
+                group_digits(files.round() as u64),
+                megabytes,
+            );
+        }
     }
     let _ = writeln!(out);
-    let _ = writeln!(
-        out,
-        "The first run may include files that were not yet in the operating system's \
-         file cache. Later runs are warm."
-    );
+    let has_median = report
+        .configurations
+        .iter()
+        .any(|configuration| configuration.repeat_median_files_per_second.is_some());
+    let note = if has_median {
+        "The first run reads whatever the operating system had not cached yet, so the \
+         median covers only the runs after it."
+    } else {
+        "A single run reads whatever the operating system had not cached yet. \
+         Use --runs 3 for a median over repeat runs."
+    };
+    let _ = writeln!(out, "{note}");
     out
 }
 
 #[cfg(test)]
 mod tests {
-    use super::median;
+    use super::{Run, median, repeat_median};
+
+    fn run(first: bool, files_per_second: f64) -> Run {
+        Run {
+            first,
+            duration_ms: 1.0,
+            files_scanned: 1,
+            bytes_scanned: 1,
+            files_skipped: 0,
+            detections: 0,
+            files_per_second,
+            megabytes_per_second: files_per_second / 10.0,
+        }
+    }
 
     #[test]
     fn median_of_odd_and_even_counts() {
@@ -279,5 +323,30 @@ mod tests {
         assert_eq!(median(vec![5.0]), 5.0);
         assert_eq!(median(vec![3.0, 1.0, 2.0]), 2.0);
         assert_eq!(median(vec![4.0, 1.0, 3.0, 2.0]), 2.5);
+    }
+
+    #[test]
+    fn the_first_run_is_kept_out_of_the_median() {
+        let cold_then_warm = [run(true, 10.0), run(false, 100.0), run(false, 120.0)];
+        assert_eq!(
+            repeat_median(&cold_then_warm, |run| run.files_per_second),
+            Some(110.0)
+        );
+        assert_eq!(
+            repeat_median(&cold_then_warm, |run| run.megabytes_per_second),
+            Some(11.0)
+        );
+
+        let all_repeats = [run(false, 90.0), run(false, 100.0), run(false, 120.0)];
+        assert_eq!(
+            repeat_median(&all_repeats, |run| run.files_per_second),
+            Some(100.0)
+        );
+
+        let only_the_first = [run(true, 10.0)];
+        assert_eq!(
+            repeat_median(&only_the_first, |run| run.files_per_second),
+            None
+        );
     }
 }

@@ -401,7 +401,7 @@ fn bench_reports_every_run_as_json_and_text() {
             .arg(&results_file),
     );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(json["schema"], 1);
+    assert_eq!(json["schema"], 2);
     assert_eq!(json["label"], "unit test");
     assert!(json["system"]["logical_cpus"].as_u64().unwrap() >= 1);
     let configurations = json["configurations"].as_array().unwrap();
@@ -412,21 +412,40 @@ fn bench_reports_every_run_as_json_and_text() {
         let runs = configuration["runs"].as_array().unwrap();
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0]["files_scanned"], 3);
-        assert!(configuration["median_files_per_second"].as_f64().unwrap() > 0.0);
+        assert!(
+            configuration["repeat_median_files_per_second"]
+                .as_f64()
+                .unwrap()
+                > 0.0
+        );
     }
+    // Only the very first run of the benchmark is marked as the first read.
+    assert_eq!(configurations[0]["runs"][0]["first"], true);
+    assert_eq!(configurations[0]["runs"][1]["first"], false);
+    assert_eq!(configurations[1]["runs"][0]["first"], false);
     assert!(results_file.exists());
 
     warden()
         .arg("bench")
         .arg(&fixture.tree)
-        .args(["--runs", "1"])
+        .args(["--runs", "3"])
         .assert()
         .success()
         .stdout(
             predicate::str::contains("benchmark")
+                .and(predicate::str::contains("first"))
                 .and(predicate::str::contains("median"))
                 .and(predicate::str::contains("Files/s")),
         );
+    // A single run is the first read, so there is nothing to take a median of.
+    let single = stdout_of(
+        warden()
+            .arg("bench")
+            .arg(&fixture.tree)
+            .args(["--runs", "1", "--json"]),
+    );
+    let single: serde_json::Value = serde_json::from_str(&single).unwrap();
+    assert!(single["configurations"][0]["repeat_median_files_per_second"].is_null());
     warden()
         .arg("bench")
         .arg(&fixture.tree)
