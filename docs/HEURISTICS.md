@@ -360,17 +360,23 @@ writable and executable, and one in 1,000 has code with high entropy; among
 the dataset's benign files it is one in 4, one in 53 and one in 55.
 
 A full scan of the same folders with all three layers, the files inside
-archives included, flagged none of 109,500 files
-([BENCHMARKS.md](BENCHMARKS.md#with-the-heuristic-layer)). That is one
-machine, and a tidy one. A desktop in daily use, with games, installers and
-small packed utilities, is the harder test and has not been run with this
-layer yet.
+archives included, flagged none of 109,500 files. Neither did a scan of
+`C:\Windows\System32` on a Windows 11 desktop in daily use: none of 27,645
+([BENCHMARKS.md](BENCHMARKS.md#with-the-heuristic-layer)).
+
+All of that is system folders and a tidy server image. The harder test is
+the rest of a desktop that people use: games, installers and small packed
+utilities. That has not been scanned with this layer yet.
 
 ### What it costs
 
 On a folder of executables the layer adds three quarters to the time of a
 scan that only matches hashes, and under one percent to a scan with the
-YARA rules ([BENCHMARKS.md](BENCHMARKS.md#what-the-heuristic-layer-costs)).
+YARA rules. That was measured on a CI runner with two threads
+([BENCHMARKS.md](BENCHMARKS.md#what-the-heuristic-layer-costs)). On a
+desktop with sixteen threads the layer could not be seen in the time of
+three passes over System32 without the rules; with the rules there is one
+run on each side, which does not settle it.
 
 ## What this layer cannot do
 

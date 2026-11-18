@@ -233,16 +233,18 @@ the labelled feature records of the EMBER2024 dataset. See
 produced. In short, as of phase 3:
 
 - **Speed.** A 16-thread desktop with Microsoft Defender running scans its
-  System32 folder (27,644 files, 10 GB) from the file cache in 8 seconds
-  with the default layers of phase 2, and in 19 seconds with 5,138 YARA
-  rules. On two cores of a cloud container, a 7 GB Linux tree of small
-  files runs at 800 MB/s with hash matching alone and at 52 MB/s with those
-  rules. The heuristic layer adds under one percent to a scan with rules.
-- **False positives** with all three layers, on a GitHub-hosted Windows
-  runner: none of 109,500 files in System32 and in the installed software
-  was flagged. Getting there took one correction: two public rules flagged
-  22 clean files in the first runs and are now on the
-  [exclusion list](rules/exclusions.toml), each with its evidence.
+  System32 folder (27,645 files, 10 GB) from the file cache in 8 seconds
+  with the default layers, heuristics included, and in 23 seconds with
+  5,136 YARA rules as well. On two cores of a cloud container, a 7 GB Linux
+  tree of small files runs at 800 MB/s with hash matching alone and at
+  52 MB/s with the 5,138 rules of the full rule package.
+- **False positives** with all three layers: none of 109,500 files in
+  System32 and the installed software of a GitHub-hosted Windows runner was
+  flagged, and none of 27,645 files in System32 of a Windows 11 desktop.
+  Getting there took one correction: two public rules flagged 22 clean
+  files in the first runs and are now on the
+  [exclusion list](rules/exclusions.toml), each with its evidence. The
+  installed programs of a desktop in daily use have not been scanned yet.
 - **The heuristic score on EMBER2024**, on the twelve weeks it was not
   fitted to: it flags 24.6 % of the malicious Windows executables and
   0.0056 % of the benign ones (15 of 269,813). Among programs it is 29.6 %;

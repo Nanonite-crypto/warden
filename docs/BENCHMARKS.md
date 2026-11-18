@@ -383,6 +383,43 @@ Raw results:
 [rules](benchmarks/2026-11-18-github-windows-runner-heuristics-cost-rules.json),
 [all three](benchmarks/2026-11-18-github-windows-runner-heuristics-cost-rules-heuristics.json).
 
+### Windows desktop
+
+The machine described under phases 1 and 2: AMD Ryzen 7 5800X, 16 threads,
+32 GB RAM, Windows 11 Home, Microsoft Defender real-time protection on. Run
+with administrator rights, on commit `f276730`, some hours after the
+phase 2 runs.
+
+**Scan throughput** over `C:\Windows\System32`, with
+`scripts\win\check.cmd -Rules -SkipTests`. The three benchmark passes read
+27,642 files, 10.12 GB, and could not read 37; the pass with rules read
+27,645 files, 10.28 GB, and could not read 34.
+
+| Layers | Pass | Time | Files/s | MB/s |
+|---|---|---|---|---|
+| Default: hash, the built-in rule, heuristics, archives | 1 | 36.59 s | 756 | 276.6 |
+| | 2 | 7.61 s | 3,635 | 1,330.7 |
+| | 3 | 7.71 s | 3,583 | 1,311.8 |
+| Hash, archives, 5,136 rules, heuristics | One, after those | 22.78 s | 1,214 | 451.4 |
+
+- With the default layers the heuristic layer cannot be seen in the times
+  on this machine: the passes from the file cache took 7.6 and 7.7 s with
+  it, and 7.6 and 8.1 s without it in phase 2.
+- The pass with all rules took 22.78 s. The same pass took 19.35 s in
+  phase 2, without the heuristic layer. That is one run each, hours apart,
+  on a machine in use, so how much of the 3.4 s belongs to the layer is not
+  known. The comparison on the runner above is the only controlled one so
+  far, and it is a different kind of machine: two threads, and a rule scan
+  that is many times slower. A controlled comparison on this desktop is
+  still to do.
+- No file was flagged, see
+  [False positives](#with-the-heuristic-layer).
+
+Raw results:
+[benchmark](benchmarks/2026-11-18-windows-desktop-phase3-system32.json),
+[the run with rules](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
+[machine](benchmarks/2026-11-18-windows-desktop-phase3-machine.json).
+
 ## False positives
 
 Three rounds of runs. The first used every rule of the rule package and
@@ -480,8 +517,12 @@ How far the two rounds can be compared:
   machine. The first had an AMD processor and the second an Intel one, and
   the second run scanned 12 files fewer, 18 MB less. It did not record
   whether `vulkan-1.dll` was among the files it scanned.
-- **The desktop has not been scanned again yet**, so `liblouis.dll` has
-  only the first result.
+- **The desktop was scanned again in the third round**, with the exclusion
+  list and the heuristic layer together: none of 27,645 files was flagged,
+  where `liblouis.dll` had been in the first round. The run does not record
+  which files it read. That `liblouis.dll` was among them is an assumption,
+  if a safe one: the file is part of Windows, and the folder held one file
+  more than in the first round, not one fewer.
 - **`/usr` was not scanned again.** It had no flagged file with every rule,
   and a bundle with fewer rules cannot flag more.
 
@@ -505,30 +546,37 @@ Raw results:
 The runs on the GitHub-hosted runner were repeated once more with all three
 layers: the built-in signature, the 5,136 rules that the exclusion list
 leaves, and the heuristics with 13 scored indicators and a threshold of 32.
+The system folder of the desktop was scanned again the same way.
 
 | Files expected to be clean | Files | Data | Files inside archives | Flagged by any layer |
 |---|---|---|---|---|
 | `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,793 | 4.78 GB | 193 | 0 |
 | Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 0 |
+| `C:\Windows\System32` on a Windows 11 desktop | 27,645 | 10.28 GB | 194 | 0 |
 
-Of those 109,500 files, about 54,000 are Windows executables, which is
-what the heuristic layer judges; it also judges the executables among the
-files inside archives. None reached the threshold.
+None of 137,145 files was flagged. Of the runner's 109,500 files, about
+54,000 are Windows executables, which is what the heuristic layer judges;
+it also judges the executables among the files inside archives. How many
+of the desktop's files are executables was not counted.
 
-That is one machine, and a tidy one: a server image with developer tools,
-where two thirds of the files belong to .NET. It has no games, no installers
-in a downloads folder and none of the small utilities that are packed to
-save space, which is where a layer like this one is most likely to be
-wrong. A desktop that people use is the better test, and has not been run
-with this layer yet.
+What these runs do not cover is the rest of a machine that people use. The
+runner is a tidy server image with developer tools, where two thirds of the
+files belong to .NET, and on the desktop only the system folder was
+scanned. Games, installers in a downloads folder and the small utilities
+that are packed to save space were in none of the runs, and that is where a
+layer like this one is most likely to be wrong.
 
-In System32, 38 files could not be read and 2 were checked in part; in the
-software folders 7 were checked in part, as in the rounds before. The
-runner: AMD EPYC 7763, 2 logical processors, 8 GB RAM, Windows Server 2025,
-Microsoft Defender real-time protection off. The runs took 5 min 28 s and
-12 min 31 s, reading every file for the first time from the disk.
+In System32 on the runner, 38 files could not be read and 2 were checked in
+part; in its software folders 7 were checked in part, as in the rounds
+before. The runner: AMD EPYC 7763, 2 logical processors, 8 GB RAM, Windows
+Server 2025, Microsoft Defender real-time protection off. Its runs took
+5 min 28 s and 12 min 31 s, reading every file for the first time from the
+disk. On the desktop, 34 files could not be read and 6 were checked in
+part, also as before; the machine is described
+[above](#windows-desktop-2), and its run took 23 s from the file cache.
 
 Raw results:
 [System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-heuristics.json),
 [software](benchmarks/2026-11-18-github-windows-runner-software-false-positives-with-heuristics.json),
-[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-heuristics-machine.json).
+[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-heuristics-machine.json),
+[System32 on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json).
