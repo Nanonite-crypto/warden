@@ -138,36 +138,46 @@ are attached to each workflow run.
 
 AMD Ryzen 7 5800X (8 cores, 16 threads), 32 GB RAM, Kingston SNVS1000G NVMe
 SSD, Windows 11 Home (10.0.26300), Microsoft Defender real-time protection
-on. The scan ran without administrator rights.
+on.
 
-**Scan throughput** over `C:\Windows\System32`: 25,521 files, 9.35 GB, with
-315 files skipped because they could not be read.
-`warden bench C:\Windows\System32 --runs 3`, run by the Windows check
-script
+**Scan throughput** over `C:\Windows\System32` on 16 threads. The Windows
+check script was run twice, three minutes apart.
+`warden bench C:\Windows\System32 --runs 3`
 
-| Threads | Run | Time | Files/s | MB/s | Cache |
-|---|---|---|---|---|---|
-| 16 | 1 | 50.28 s | 508 | 186.1 | First read |
-| 16 | 2 | 9.06 s | 2,818 | 1,033.0 | Warm |
-| 16 | 3 | 11.71 s | 2,180 | 799.1 | Warm |
+| Started from | Files | Data | Could not be read | Pass | Time | Files/s | MB/s |
+|---|---|---|---|---|---|---|---|
+| File Explorer | 25,521 | 9.35 GB | 315 | 1, first read | 50.28 s | 508 | 186.1 |
+| | | | | 2 | 9.06 s | 2,818 | 1,033.0 |
+| | | | | 3 | 11.71 s | 2,180 | 799.1 |
+| A terminal | 27,641 | 10.12 GB | 37 | 1 | 15.47 s | 1,787 | 653.9 |
+| | | | | 2 | 8.37 s | 3,302 | 1,208.5 |
+| | | | | 3 | 8.28 s | 3,337 | 1,221.4 |
 
-Median of the warm runs: 2,499 files/s and 916 MB/s.
+- The second run read 2,120 more files and failed on 37 instead of 315.
+  That is the difference administrator rights make in System32, so the
+  terminal was almost certainly an elevated one. The check script did not
+  record this at the time; it does now.
+- The first pass of the second run was not a first read: most of the
+  folder was still in the file cache from the run before.
+- From the cache, this machine scans System32 at 0.8 to 1.2 GB/s.
 
-Sixteen threads on this desktop are no faster in warm runs than the two
-threads of the CI runner above. Defender inspects every file that Warden
-opens here and did not on the runner, and the scanner may not scale to 16
-threads the way it does to two. The two effects have not been separated
-yet: that takes a run with `--threads 1,2,4,8,16` on this machine.
+Sixteen threads on this desktop are barely faster in warm passes than the
+two threads of the CI runner above (1,057 MB/s). Defender inspects every
+file that Warden opens here and did not on the runner, and the scanner may
+not scale to 16 threads the way it does to two. The two effects have not
+been separated yet: that takes a run with `--threads 1,2,4,8,16` on this
+machine.
 
 Raw results:
-[2026-11-18-windows-desktop-system32.json](benchmarks/2026-11-18-windows-desktop-system32.json),
-machine:
-[2026-11-18-windows-desktop-machine.json](benchmarks/2026-11-18-windows-desktop-machine.json).
+[first run](benchmarks/2026-11-18-windows-desktop-system32.json),
+[second run](benchmarks/2026-11-18-windows-desktop-system32-administrator.json),
+[machine](benchmarks/2026-11-18-windows-desktop-machine.json).
 
-On this machine the check could not verify EICAR detection: Defender
-removed the test file before Warden read it, which is what it should do.
-[TESTING.md](TESTING.md#eicar-and-your-antivirus) describes the one folder
-exclusion that lets the check run in full.
+Both runs used the phase 1 build. In the first, Defender removed the EICAR
+test file before Warden read it, which is what it should do, and the check
+ended as incomplete. For the second, the test folder had been excluded
+from Defender as [TESTING.md](TESTING.md#eicar-and-your-antivirus)
+describes, and the check passed in full.
 
 ## Results: phase 2
 

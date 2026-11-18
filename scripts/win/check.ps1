@@ -138,6 +138,13 @@ function Get-SystemInfo {
         $info.benchmark_disk = "$($disk.FriendlyName) ($($physical.MediaType), $($disk.BusType))"
     } catch { }
     try {
+        # With administrator rights more of a system folder can be read, so
+        # two benchmark runs only compare if this is the same for both.
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+        $info.administrator_rights = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch { }
+    try {
         $info.defender_realtime_protection = [bool](Get-MpComputerStatus).RealTimeProtectionEnabled
     } catch { }
     try {
