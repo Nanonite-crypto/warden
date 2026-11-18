@@ -15,7 +15,9 @@
 //! 2. [`indicators::evaluate`] asks a fixed list of yes-or-no questions
 //!    about those facts. Each question is an [`Indicator`] with a weight.
 //! 3. [`assess`] adds up the weights of the indicators that apply and
-//!    compares the sum with [`SUSPICIOUS_FROM`].
+//!    compares the sum with two scores: from [`SUSPICIOUS_FROM`] a file is
+//!    suspicious, and from the lower [`SECOND_SIGN_FROM`] its structure
+//!    backs up a finding of another layer that is too weak to count alone.
 //!
 //! The result is an [`Assessment`] that lists every indicator behind the
 //! score, which is what `warden inspect` prints. [`PeDetector`] wraps the
@@ -28,7 +30,7 @@
 //! it describes, so the same indicator code runs over a file on disk and
 //! over the dataset. The weights are fitted to how the indicators are
 //! spread over the malicious and the benign files there, all of them
-//! together, and the threshold is set on the benign ones.
+//! together, and both scores are set on the benign ones.
 //! `docs/HEURISTICS.md` has the method and the numbers.
 //!
 //! # What this layer cannot do
@@ -61,8 +63,10 @@ pub mod fixture;
 pub mod indicators;
 mod reader;
 
-pub use assess::{Assessment, SUSPICIOUS_FROM, assess, assess_with, score_of};
-pub use detector::{FINDING_NAME, PeDetector, finding_for};
+pub use assess::{
+    Assessment, SECOND_SIGN_FROM, SUSPICIOUS_FROM, Thresholds, assess, assess_with, score_of,
+};
+pub use detector::{FINDING_NAME, PeDetector, SECOND_SIGN_NAME, finding_for};
 pub use facts::{
     Anomaly, Directory, Format, ImportedLibrary, Overlay, PeFacts, Section, image_flags,
     section_flags,

@@ -16,6 +16,9 @@ use warden_engine::{
 const MAX_LINE_CHARS: usize = 2000;
 /// How many detection names are shown in the heading of one detection.
 const NAMES_SHOWN: usize = 4;
+/// How many files with findings on record are printed in full. The JSON
+/// report holds them all.
+const RECORDED_SHOWN: usize = 20;
 
 /// Makes text that comes from the scanned system safe to print: file names
 /// can hold control characters that would rewrite the terminal.
@@ -122,6 +125,13 @@ pub fn rule_summary(detectors: &[DetectorInfo]) -> Option<String> {
     if let Some(created) = count(yara, "bundle_created_unix_secs") {
         let _ = write!(line, " (bundle built {})", human_timestamp(created));
     }
+    if let Some(generated) = count(yara, "rules_generated").filter(|generated| *generated > 0) {
+        let _ = write!(
+            line,
+            "; a tool generated {} of them, and a match of one counts only with a second sign",
+            group_digits(generated)
+        );
+    }
     Some(line)
 }
 
@@ -132,12 +142,16 @@ pub fn heuristic_summary(detectors: &[DetectorInfo]) -> Option<String> {
         .iter()
         .find(|detector| detector.id == "heuristic")?;
     let scored = count(heuristic, "indicators_scored").unwrap_or(0);
-    Some(format!(
+    let mut line = format!(
         "{} scored {} of a Windows executable's structure, suspicious from a score of {}",
         group_digits(scored),
         plural(scored, "indicator", "indicators"),
         group_digits(count(heuristic, "suspicious_from").unwrap_or(0)),
-    ))
+    );
+    if let Some(bar) = count(heuristic, "second_sign_from") {
+        let _ = write!(line, ", a second sign from {}", group_digits(bar));
+    }
+    Some(line)
 }
 
 pub fn signature_summary(detectors: &[DetectorInfo]) -> String {
@@ -194,6 +208,40 @@ fn member_line(member: &Member) -> String {
         group_digits(member.size),
         member.sha256
     )
+}
+
+/// The findings about one file, a line per reason.
+fn findings_text(out: &mut String, findings: &[Finding], omitted: u64) {
+    // Findings about the same archive member follow one another, so the
+    // member is named once, above them.
+    let mut current: Option<&Member> = None;
+    for finding in findings {
+        let member = finding.member.as_ref();
+        if member != current {
+            if let Some(member) = member {
+                let _ = writeln!(out, "    {}", member_line(member));
+            }
+            current = member;
+        }
+        let indent = if member.is_some() { "      " } else { "    " };
+        let category = category_label(finding.category);
+        for reason in &finding.reasons {
+            let _ = writeln!(
+                out,
+                "{indent}{} [{category}]: {}",
+                finding.detector,
+                shown(reason)
+            );
+        }
+    }
+    if omitted > 0 {
+        let _ = writeln!(
+            out,
+            "    ... and {} more {}",
+            group_digits(omitted),
+            plural(omitted, "finding", "findings")
+        );
+    }
 }
 
 /// Renders a scan report as plain text.
@@ -302,36 +350,43 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
                 detection.sha256,
                 group_digits(detection.size)
             );
-            // Findings about the same archive member follow one another,
-            // so the member is named once, above them.
-            let mut current: Option<&Member> = None;
-            for finding in &detection.findings {
-                let member = finding.member.as_ref();
-                if member != current {
-                    if let Some(member) = member {
-                        let _ = writeln!(out, "    {}", member_line(member));
-                    }
-                    current = member;
-                }
-                let indent = if member.is_some() { "      " } else { "    " };
-                let category = category_label(finding.category);
-                for reason in &finding.reasons {
-                    let _ = writeln!(
-                        out,
-                        "{indent}{} [{category}]: {}",
-                        finding.detector,
-                        shown(reason)
-                    );
-                }
-            }
-            if detection.findings_omitted > 0 {
-                let _ = writeln!(
-                    out,
-                    "    ... and {} more {}",
-                    group_digits(detection.findings_omitted),
-                    plural(detection.findings_omitted, "finding", "findings")
-                );
-            }
+            findings_text(&mut out, &detection.findings, detection.findings_omitted);
+        }
+    }
+
+    if stats.files_recorded > 0 {
+        let _ = writeln!(out);
+        let _ = writeln!(
+            out,
+            "{} {} on record that did not count. The verdict of {} is clean.",
+            group_digits(stats.files_recorded),
+            plural(
+                stats.files_recorded,
+                "file has findings",
+                "files have findings"
+            ),
+            plural(stats.files_recorded, "that file", "those files"),
+        );
+        for recorded in report.recorded.iter().take(RECORDED_SHOWN) {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "  ON RECORD   {}", detection_names(&recorded.findings));
+            let _ = writeln!(out, "    {}", shown_path(&recorded.path));
+            let _ = writeln!(
+                out,
+                "    sha256 {} ({} bytes)",
+                recorded.sha256,
+                group_digits(recorded.size)
+            );
+            findings_text(&mut out, &recorded.findings, recorded.findings_omitted);
+        }
+        let unlisted = stats.files_recorded - report.recorded.len().min(RECORDED_SHOWN) as u64;
+        if unlisted > 0 {
+            let _ = writeln!(out);
+            let _ = writeln!(
+                out,
+                "  ... and {} more. The JSON report lists them.",
+                group_digits(unlisted)
+            );
         }
     }
 

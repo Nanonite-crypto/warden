@@ -18,7 +18,7 @@ use crate::finding::Verdict;
 use crate::observer::{Progress, ScanObserver};
 use crate::options::ScanOptions;
 use crate::paths::{self, ExcludeSet};
-use crate::report::{Detection, PartialScan, ScanReport, ScanStats, SkipReason, Skipped};
+use crate::report::{Detection, PartialScan, Recorded, ScanReport, ScanStats, SkipReason, Skipped};
 use crate::session::{FileResult, ScanSession};
 use crate::verdict::VerdictPolicy;
 use crate::{ENGINE_VERSION, REPORT_SCHEMA};
@@ -417,6 +417,8 @@ fn walk(
 struct Tally {
     stats: ScanStats,
     detections: Vec<Detection>,
+    recorded: Vec<Recorded>,
+    recorded_truncated: bool,
     skipped: Vec<Skipped>,
     skipped_truncated: bool,
     partially_scanned: Vec<PartialScan>,
@@ -438,6 +440,8 @@ impl Tally {
         Self {
             stats: ScanStats::default(),
             detections: Vec::new(),
+            recorded: Vec::new(),
+            recorded_truncated: false,
             skipped: Vec::new(),
             skipped_truncated: false,
             partially_scanned: Vec::new(),
@@ -486,6 +490,21 @@ impl Tally {
                     };
                     observer.on_detection(&detection);
                     self.detections.push(detection);
+                } else if !result.findings.is_empty() {
+                    self.stats.files_recorded += 1;
+                    let recorded = Recorded {
+                        path,
+                        size: result.size,
+                        sha256: warden_sigdb::hex::encode(&result.sha256),
+                        findings: result.findings,
+                        findings_omitted: result.findings_omitted,
+                    };
+                    observer.on_recorded(&recorded);
+                    if self.recorded.len() < self.max_recorded {
+                        self.recorded.push(recorded);
+                    } else {
+                        self.recorded_truncated = true;
+                    }
                 }
             }
             Outcome::Skipped(skipped) => {
@@ -522,6 +541,8 @@ impl Tally {
         // the same tree produce the same report.
         self.detections
             .sort_by(|left, right| left.path.cmp(&right.path));
+        self.recorded
+            .sort_by(|left, right| left.path.cmp(&right.path));
         self.skipped
             .sort_by(|left, right| left.path.cmp(&right.path));
         self.partially_scanned
@@ -546,6 +567,8 @@ impl Tally {
             detectors: context.detectors,
             stats: self.stats,
             detections: self.detections,
+            recorded: self.recorded,
+            recorded_truncated: self.recorded_truncated,
             skipped: self.skipped,
             skipped_truncated: self.skipped_truncated,
             partially_scanned: self.partially_scanned,

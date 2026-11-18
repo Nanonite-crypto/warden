@@ -784,7 +784,7 @@ fn the_report_serialises_to_the_documented_json_shape() {
     let report = scan(&scanner, dir.path());
     let json = serde_json::to_value(&report).unwrap();
 
-    assert_eq!(json["schema"], 2);
+    assert_eq!(json["schema"], 3);
     assert_eq!(json["engine_version"], env!("CARGO_PKG_VERSION"));
     assert!(json["started_at"].as_str().unwrap().contains('T'));
     assert!(json["finished_at"].is_string());
@@ -820,11 +820,16 @@ fn the_report_serialises_to_the_documented_json_shape() {
     assert_eq!(detection["findings"][0]["confidence"], "definitive");
     assert!(detection["findings"][0]["reasons"][0].is_string());
 
+    assert_eq!(json["stats"]["files_recorded"], 0);
+    assert_eq!(json["recorded"], serde_json::json!([]));
+    assert_eq!(json["recorded_truncated"], false);
     assert_eq!(json["skipped"], serde_json::json!([]));
     assert_eq!(json["skipped_truncated"], false);
     assert_eq!(json["partially_scanned"], serde_json::json!([]));
     assert_eq!(json["partially_scanned_truncated"], false);
-    // A finding about the scanned file itself names no archive member.
+    // A finding about the scanned file itself names no archive member, and
+    // one that counts by itself does not say so.
     assert!(detection["findings"][0].get("member").is_none());
+    assert!(detection["findings"][0].get("counts").is_none());
     assert!(detection.get("findings_omitted").is_none());
 }

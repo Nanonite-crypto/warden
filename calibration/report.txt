@@ -149,8 +149,12 @@ The fit
 The threshold
   The lowest score that at most one in 5,000 of the benign training files of every kind reaches: 32.
 
+The bar for a second sign
+  A score below the threshold flags nothing. From the bar on it backs up a finding of another layer that does not count alone.
+  The lowest score that at most one in 20 of the benign training files of every kind reaches: 14.
+
 The scanner
-  Its weights are the weights these counts give. Its threshold is 32, which is the threshold these counts give.
+  Its weights are the weights these counts give. Its threshold is 32, which is the threshold these counts give. Its bar for a second sign is 14, which is the bar these counts give.
 
 What a threshold of 32 does
                                    malicious files flagged           benign files flagged
@@ -175,10 +179,40 @@ What a threshold of 32 does
   all kinds  system                                                      0 % (0 of 9,015)
   all kinds  software                                                   0 % (0 of 45,261)
 
-Other thresholds
+What a bar of 14 for a second sign does
+  (files that reach it; none of them is flagged for that)
+                             malicious files that reach it     benign files that reach it
+  program    train            55.18 % (533,191 of 966,243)     4.11 % (14,941 of 363,180)
+  program    test             56.12 % (125,742 of 224,062)       3.02 % (1,922 of 63,669)
+  program    challenge                1.35 % (49 of 3,640)                               
+  program    system                                                   0.13 % (2 of 1,547)
+  program    software                                                      0 % (0 of 658)
+  library    train              28.28 % (18,245 of 64,505)      1.01 % (6,635 of 658,673)
+  library    test                32.85 % (4,647 of 14,144)      0.67 % (1,185 of 175,573)
+  library    challenge                  3.89 % (15 of 386)                               
+  library    system                                                 0.0137 % (1 of 7,301)
+  library    software                                                      0 % (0 of 694)
+  .NET       train             38.60 % (53,614 of 138,896)      1.68 % (2,489 of 147,724)
+  .NET       test               38.38 % (12,201 of 31,790)         1.68 % (513 of 30,571)
+  .NET       challenge                  3.68 % (31 of 842)                               
+  .NET       system                                                     1.20 % (2 of 167)
+  .NET       software                                                   0 % (0 of 43,909)
+  all kinds  train          51.73 % (605,050 of 1,169,644)   2.06 % (24,065 of 1,169,577)
+  all kinds  test             52.81 % (142,590 of 269,996)      1.34 % (3,620 of 269,813)
+  all kinds  challenge                1.95 % (95 of 4,868)                               
+  all kinds  system                                                 0.0555 % (5 of 9,015)
+  all kinds  software                                                   0 % (0 of 45,261)
+
+Other scores
   (share of the files with at least that score; system and software as counts)
   program: area under the ROC curve 0.8644 on the training part, 0.8834 on the test part
     score train mal train ben  test mal  test ben challenge           system         software
+     >=10     72.03     15.06     71.35     10.82     38.43      73 of 1,547         0 of 658
+     >=11     60.83      6.18     61.47      4.96      2.64       5 of 1,547         0 of 658
+     >=12     60.17      5.88     60.81      4.68      2.39       5 of 1,547         0 of 658
+     >=13     59.84      5.70     60.54      4.54      2.36       3 of 1,547         0 of 658
+     >=14     55.18      4.11     56.12      3.02      1.35       2 of 1,547         0 of 658
+     >=15     52.57      3.93     53.82      2.87      1.29       2 of 1,547         0 of 658
      >=16     49.52      3.70     51.44      2.60      0.96       2 of 1,547         0 of 658
      >=17     49.24      3.64     51.14      2.52      0.96       2 of 1,547         0 of 658
      >=18     48.65      3.13     50.54      2.18      0.74       2 of 1,547         0 of 658
@@ -208,6 +242,12 @@ Other thresholds
      >=42      0.89    0.0008      0.91    0.0016         0       0 of 1,547         0 of 658
   library: area under the ROC curve 0.8185 on the training part, 0.8858 on the test part
     score train mal train ben  test mal  test ben challenge           system         software
+     >=10     39.37      2.66     47.44      1.49      8.03       1 of 7,301         1 of 694
+     >=11     36.83      2.03     42.83      1.12      5.18       1 of 7,301         0 of 694
+     >=12     34.79      1.98     40.31      1.06      4.66       1 of 7,301         0 of 694
+     >=13     34.76      1.97     40.26      1.05      4.66       1 of 7,301         0 of 694
+     >=14     28.28      1.01     32.85      0.67      3.89       1 of 7,301         0 of 694
+     >=15     24.02      0.97     26.90      0.65      3.89       1 of 7,301         0 of 694
      >=16     22.63      0.87     25.32      0.58      3.89       1 of 7,301         0 of 694
      >=17     22.40      0.86     25.10      0.57      3.63       1 of 7,301         0 of 694
      >=18     21.63      0.78     23.08      0.51      3.63       0 of 7,301         0 of 694
@@ -237,6 +277,11 @@ Other thresholds
      >=42    0.0124         0    0.0071         0         0       0 of 7,301         0 of 694
   .NET: area under the ROC curve 0.8206 on the training part, 0.8531 on the test part
     score train mal train ben  test mal  test ben challenge           system         software
+     >=10     43.32      1.76     44.82      1.68      3.68         2 of 167      0 of 43,909
+     >=12     38.78      1.69     38.47      1.68      3.68         2 of 167      0 of 43,909
+     >=13     38.77      1.69     38.46      1.68      3.68         2 of 167      0 of 43,909
+     >=14     38.60      1.68     38.38      1.68      3.68         2 of 167      0 of 43,909
+     >=15      8.05      0.30      8.01      0.31      0.24         0 of 167      0 of 43,909
      >=16      6.64    0.0616      7.21    0.0916      0.24         0 of 167      0 of 43,909
      >=17      6.64    0.0616      7.21    0.0883      0.24         0 of 167      0 of 43,909
      >=18      6.57    0.0589      7.17    0.0883      0.24         0 of 167      0 of 43,909
@@ -260,6 +305,12 @@ Other thresholds
      >=39    0.0007         0         0         0         0         0 of 167      0 of 43,909
   all kinds: area under the ROC curve 0.8915 on the training part, 0.9149 on the test part
     score train mal train ben  test mal  test ben challenge           system         software
+     >=10     66.82      6.40     66.97      3.71     30.01      76 of 9,015      1 of 45,261
+     >=11     56.89      3.28     57.78      2.09      3.02       8 of 9,015      0 of 45,261
+     >=12     56.23      3.15     57.10      1.99      2.79       8 of 9,015      0 of 45,261
+     >=13     55.95      3.09     56.88      1.95      2.77       6 of 9,015      0 of 45,261
+     >=14     51.73      2.06     52.81      1.34      1.95       5 of 9,015      0 of 45,261
+     >=15     45.71      1.80     47.02      1.14      1.31       3 of 9,015      0 of 45,261
      >=16     42.94      1.65     44.86      1.00      1.07       3 of 9,015      0 of 45,261
      >=17     42.70      1.63     44.60      0.98      1.05       3 of 9,015      0 of 45,261
      >=18     42.16      1.42     44.00      0.86      0.88       2 of 9,015      0 of 45,261

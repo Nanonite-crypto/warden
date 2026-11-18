@@ -1,5 +1,10 @@
 //! `warden false-positives`: scan files that are known to be clean and
 //! report what was flagged anyway.
+//!
+//! A finding that did not count is not a false positive: the file kept its
+//! clean verdict. Such findings are reported next to the flagged files all
+//! the same, because they are what the verdict policy held back, and a
+//! check of clean files is where one wants to see that it did.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -8,7 +13,7 @@ use std::process::ExitCode;
 use anyhow::{Context, bail};
 use clap::Args;
 use serde::Serialize;
-use warden_engine::{DetectorInfo, ENGINE_VERSION, ScanReport, Verdict};
+use warden_engine::{DetectorInfo, ENGINE_VERSION, Finding, ScanReport, Verdict};
 
 use crate::EXIT_FOUND;
 use crate::render::{
@@ -67,6 +72,20 @@ struct FlaggedFile {
     names: Vec<String>,
 }
 
+/// A file that kept its clean verdict and has findings on record.
+#[derive(Debug, Serialize)]
+struct RecordedFile {
+    path: String,
+    size: u64,
+    sha256: String,
+    /// The names of the findings, each once.
+    names: Vec<String>,
+}
+
+/// Version of the JSON layout below. Version 2 added the files with
+/// findings on record.
+const FP_SCHEMA: u32 = 2;
+
 #[derive(Debug, Serialize)]
 struct FpReport {
     schema: u32,
@@ -93,6 +112,44 @@ struct FpReport {
     /// The flagged files, sorted by path. At most 1000 are listed.
     flagged: Vec<FlaggedFile>,
     flagged_truncated: bool,
+    /// Files that kept a clean verdict and have findings on record: what
+    /// the detectors noticed and the verdict policy did not count.
+    recorded_files: u64,
+    /// How many of those files each finding name is on record for, most
+    /// first.
+    recorded_by_name: Vec<NameCount>,
+    /// Those files, sorted by path. At most 1000 are listed.
+    recorded: Vec<RecordedFile>,
+    recorded_truncated: bool,
+}
+
+/// The names of the findings, each once, in the order they were found.
+fn names_of(findings: &[Finding]) -> Vec<&str> {
+    let mut names: Vec<&str> = Vec::new();
+    for finding in findings {
+        if !names.contains(&finding.name.as_str()) {
+            names.push(&finding.name);
+        }
+    }
+    names
+}
+
+/// Counts per name, the most frequent first.
+fn ranked(by_name: BTreeMap<&str, u64>) -> Vec<NameCount> {
+    let mut ranked: Vec<NameCount> = by_name
+        .into_iter()
+        .map(|(name, files)| NameCount {
+            name: name.to_owned(),
+            files,
+        })
+        .collect();
+    ranked.sort_by(|left, right| {
+        right
+            .files
+            .cmp(&left.files)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    ranked
 }
 
 fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> FpReport {
@@ -106,12 +163,7 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
             Verdict::Suspicious => suspicious += 1,
             Verdict::Clean => {}
         }
-        let mut names: Vec<&str> = Vec::new();
-        for finding in &detection.findings {
-            if !names.contains(&finding.name.as_str()) {
-                names.push(&finding.name);
-            }
-        }
+        let names = names_of(&detection.findings);
         for name in &names {
             *by_name.entry(name).or_insert(0) += 1;
         }
@@ -125,23 +177,30 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
             });
         }
     }
-    let mut by_name: Vec<NameCount> = by_name
-        .into_iter()
-        .map(|(name, files)| NameCount {
-            name: name.to_owned(),
-            files,
-        })
-        .collect();
-    by_name.sort_by(|left, right| {
-        right
-            .files
-            .cmp(&left.files)
-            .then_with(|| left.name.cmp(&right.name))
-    });
+    let by_name = ranked(by_name);
+
+    // The scan lists at most ten thousand of these files; its count of
+    // them is complete. The names are counted over the files it lists.
+    let mut recorded_by_name: BTreeMap<&str, u64> = BTreeMap::new();
+    let mut recorded = Vec::new();
+    for entry in &report.recorded {
+        let names = names_of(&entry.findings);
+        for name in &names {
+            *recorded_by_name.entry(name).or_insert(0) += 1;
+        }
+        if recorded.len() < MAX_LISTED {
+            recorded.push(RecordedFile {
+                path: entry.path.to_string_lossy().into_owned(),
+                size: entry.size,
+                sha256: entry.sha256.clone(),
+                names: names.into_iter().map(str::to_owned).collect(),
+            });
+        }
+    }
 
     let flagged_total = malicious + suspicious;
     FpReport {
-        schema: 1,
+        schema: FP_SCHEMA,
         label,
         engine_version: ENGINE_VERSION,
         system: system_info(),
@@ -174,6 +233,10 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
         by_name,
         flagged_truncated: flagged_total > flagged.len() as u64,
         flagged,
+        recorded_files: stats.files_recorded,
+        recorded_by_name: ranked(recorded_by_name),
+        recorded_truncated: stats.files_recorded > recorded.len() as u64,
+        recorded,
     }
 }
 
@@ -236,37 +299,73 @@ fn text(report: &FpReport, duration: std::time::Duration) -> String {
         group_digits(report.flagged_malicious),
         group_digits(report.flagged_suspicious)
     );
-    if flagged == 0 {
-        return out;
+    if report.recorded_files > 0 {
+        let _ = writeln!(
+            out,
+            "On record   {} {} that did not count; the verdict is clean",
+            group_digits(report.recorded_files),
+            if report.recorded_files == 1 {
+                "file has findings"
+            } else {
+                "files have findings"
+            },
+        );
     }
 
-    let _ = writeln!(out);
-    let _ = writeln!(out, "By detection name");
-    for entry in &report.by_name {
-        let _ = writeln!(
-            out,
-            "  {:>7}  {}",
-            group_digits(entry.files),
-            shown(&entry.name)
-        );
+    let by_name = |out: &mut String, title: &str, entries: &[NameCount]| {
+        let _ = writeln!(out);
+        let _ = writeln!(out, "{title}");
+        for entry in entries {
+            let _ = writeln!(
+                out,
+                "  {:>7}  {}",
+                group_digits(entry.files),
+                shown(&entry.name)
+            );
+        }
+    };
+
+    if flagged > 0 {
+        by_name(&mut out, "By detection name", &report.by_name);
+        let _ = writeln!(out);
+        let _ = writeln!(out, "Flagged files");
+        for file in &report.flagged {
+            let verdict = match file.verdict {
+                Verdict::Malicious => "MALICIOUS ",
+                Verdict::Suspicious => "SUSPICIOUS",
+                Verdict::Clean => "CLEAN     ",
+            };
+            let _ = writeln!(
+                out,
+                "  {verdict}  {}  ({})",
+                shown_path(std::path::Path::new(&file.path)),
+                shown(&file.names.join(", "))
+            );
+        }
+        if report.flagged_truncated {
+            let _ = writeln!(out, "  ... and more; the list was cut short.");
+        }
     }
-    let _ = writeln!(out);
-    let _ = writeln!(out, "Flagged files");
-    for file in &report.flagged {
-        let verdict = match file.verdict {
-            Verdict::Malicious => "MALICIOUS ",
-            Verdict::Suspicious => "SUSPICIOUS",
-            Verdict::Clean => "CLEAN     ",
-        };
-        let _ = writeln!(
-            out,
-            "  {verdict}  {}  ({})",
-            shown_path(std::path::Path::new(&file.path)),
-            shown(&file.names.join(", "))
+
+    if report.recorded_files > 0 {
+        by_name(
+            &mut out,
+            "On record, by the name of the finding",
+            &report.recorded_by_name,
         );
-    }
-    if report.flagged_truncated {
-        let _ = writeln!(out, "  ... and more; the list was cut short.");
+        let _ = writeln!(out);
+        let _ = writeln!(out, "Files with findings on record");
+        for file in &report.recorded {
+            let _ = writeln!(
+                out,
+                "  ON RECORD   {}  ({})",
+                shown_path(std::path::Path::new(&file.path)),
+                shown(&file.names.join(", "))
+            );
+        }
+        if report.recorded_truncated {
+            let _ = writeln!(out, "  ... and more; the list was cut short.");
+        }
     }
     out
 }

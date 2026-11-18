@@ -21,10 +21,10 @@ pub struct ScanOptions {
     /// Paths to leave out. A directory excludes everything below it.
     pub exclude: Vec<PathBuf>,
 
-    /// How many skipped files, and how many partially scanned files, are
-    /// listed individually in the report. The per-reason counts are always
-    /// complete; this only bounds memory when a scan meets very many
-    /// unreadable files.
+    /// How many skipped files, how many partially scanned files and how
+    /// many files with findings on record are listed individually in the
+    /// report, each list by itself. The counts are always complete; this
+    /// only bounds memory when a scan meets very many of them.
     pub max_recorded_skips: usize,
 
     /// Whether and how far archives are unpacked.

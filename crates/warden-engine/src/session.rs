@@ -257,18 +257,18 @@ impl<'s> ScanSession<'s> {
         member: Option<&Member>,
         collected: &mut Collected,
     ) {
+        // Everything the layers say about this one file or member. The
+        // policy settles what counts while it is still together: a second
+        // sign is a sign about the same bytes, not about a neighbour in the
+        // same archive.
+        let mut found = Vec::new();
         let detectors = self.scanner.detectors.iter();
         for (detector, session) in detectors.zip(&mut self.sessions) {
             if detector.needs_content() && view.content().is_none() {
                 continue;
             }
             match session.inspect(view) {
-                Ok(findings) => {
-                    for mut finding in findings {
-                        finding.member = member.cloned();
-                        collected.find(finding);
-                    }
-                }
+                Ok(findings) => found.extend(findings),
                 Err(error) => {
                     let reason = match error {
                         DetectorError::Failed(_) => PartialReason::DetectorError,
@@ -281,6 +281,11 @@ impl<'s> ScanSession<'s> {
                     collected.note(reason, format!("{}{place}: {error}", detector.id()));
                 }
             }
+        }
+        self.scanner.policy.settle(&mut found);
+        for mut finding in found {
+            finding.member = member.cloned();
+            collected.find(finding);
         }
     }
 

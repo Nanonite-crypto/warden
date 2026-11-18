@@ -146,6 +146,13 @@ fn build(
         }
         println!("{line}");
     }
+    let generated = built.bundle.generated_rules();
+    if generated > 0 {
+        println!(
+            "A tool generated {} of them. A match of one counts only together with a sign from another layer.",
+            group_digits(generated)
+        );
+    }
     if let Some(path) = exclusions {
         if report.excluded.is_empty() {
             println!(
@@ -218,6 +225,9 @@ struct Scores {
     suspicious: u64,
     /// Rules whose matches are recorded without changing the verdict.
     recorded_only: u64,
+    /// Rules that a tool generated. A match counts only together with a
+    /// sign from another layer, and is then reported as suspicious.
+    with_second_sign: u64,
     /// Rules that state no score and are given the default.
     unscored: u64,
 }
@@ -276,6 +286,7 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
             malicious: stats.high,
             suspicious: stats.medium,
             recorded_only: stats.low,
+            with_second_sign: stats.generated,
             unscored: stats.unscored,
         },
         licences,
@@ -311,6 +322,12 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
         "  recorded only  for {} (score below 60)",
         rule_count(description.scores.recorded_only)
     );
+    if description.scores.with_second_sign > 0 {
+        println!(
+            "  suspicious, and only with a second sign from another layer,\n                 for {} that a tool generated",
+            rule_count(description.scores.with_second_sign)
+        );
+    }
     if description.scores.unscored > 0 {
         println!(
             "  {} state no score and count as 75.",

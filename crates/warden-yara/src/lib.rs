@@ -53,5 +53,5 @@ pub use bundle::{
     BundleError, ENGINE, ExclusionInfo, FORMAT_VERSION, HEADER_LEN, MAGIC, Manifest, RuleBundle,
     SourceInfo, write_bundle,
 };
-pub use detector::{RuleStats, YaraDetector, YaraOptions};
+pub use detector::{RuleStats, YaraDetector, YaraOptions, generator};
 pub use exclusions::{Evidence, ExcludedRule, ExclusionError, ExclusionList};

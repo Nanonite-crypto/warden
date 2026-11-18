@@ -463,6 +463,19 @@ fn assessment_text(out: &mut String, assessment: &Assessment, all: bool) {
         )
     };
     let _ = writeln!(out, "Verdict     {verdict}");
+    if !assessment.suspicious {
+        // What a score below the threshold is still good for.
+        let second_sign = if assessment.second_sign {
+            "yes: it backs up a finding of another layer that does not count alone, which"
+        } else {
+            "no: to back up a finding of another layer that does not count alone"
+        };
+        let _ = writeln!(
+            out,
+            "Second sign {second_sign} takes a score of {}",
+            assessment.second_sign_from
+        );
+    }
     let _ = writeln!(out);
     out.push_str(&wrapped(
         "A weight says how much an indicator shifts the odds that a file is malicious: 10 is tenfold, 20 a hundredfold. The weights are fitted to the 2.3 million files of the training weeks of the EMBER2024 dataset; docs/HEURISTICS.md has the numbers.",
