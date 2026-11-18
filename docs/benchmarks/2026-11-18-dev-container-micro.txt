@@ -1,0 +1,8 @@
+sha256/one_mebibyte     time:   [600.22 µs 616.14 µs 633.08 µs]
+                        thrpt:  [1.5426 GiB/s 1.5850 GiB/s 1.6270 GiB/s]
+sigdb_1m_entries/lookup_hit
+                        time:   [63.750 ns 64.367 ns 65.110 ns]
+sigdb_1m_entries/lookup_miss
+                        time:   [26.545 ns 27.739 ns 29.063 ns]
+sigdb_1m_entries/verify_on_open
+                        time:   [33.250 ms 35.559 ms 38.152 ms]
