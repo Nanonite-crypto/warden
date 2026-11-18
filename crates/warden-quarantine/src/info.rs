@@ -221,12 +221,65 @@ pub struct Times {
     pub created: Option<Stamp>,
 }
 
+/// Numbers that people read in another base than ten are written into a
+/// record in that base, as text: a record is meant to be read.
+mod in_base {
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    fn digits(text: &str, radix: u32, most: usize) -> Option<u32> {
+        let plain = !text.is_empty()
+            && text.len() <= most
+            && text.chars().all(|digit| digit.is_digit(radix));
+        if plain {
+            u32::from_str_radix(text, radix).ok()
+        } else {
+            None
+        }
+    }
+
+    /// Permission bits, the way `chmod` takes them: `"0640"`.
+    pub mod octal {
+        use super::{Deserialize, Deserializer, Error, Serializer, digits};
+
+        pub fn serialize<S: Serializer>(bits: &u32, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_str(&format!("{bits:04o}"))
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+            let text = String::deserialize(deserializer)?;
+            digits(&text, 8, 4)
+                .ok_or_else(|| D::Error::custom("permission bits are one to four octal digits"))
+        }
+    }
+
+    /// Attribute bits, the way Windows documents them: `"0x00000021"`.
+    pub mod hex {
+        use super::{Deserialize, Deserializer, Error, Serializer, digits};
+
+        pub fn serialize<S: Serializer>(bits: &u32, serializer: S) -> Result<S::Ok, S::Error> {
+            serializer.serialize_str(&format!("{bits:#010x}"))
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+            let text = String::deserialize(deserializer)?;
+            text.strip_prefix("0x")
+                .and_then(|text| digits(text, 16, 8))
+                .ok_or_else(|| {
+                    D::Error::custom("attribute bits are 0x and one to eight hexadecimal digits")
+                })
+        }
+    }
+}
+
 /// What a Unix system keeps about who may do what with a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnixMeta {
     /// The permission bits, including set-user-id, set-group-id and sticky:
-    /// the lowest twelve bits of the file's mode.
+    /// the lowest twelve bits of the file's mode. In a record they are
+    /// text, in octal: `"0640"`.
+    #[serde(with = "in_base::octal")]
     pub mode: u32,
     /// The owner's user id.
     pub uid: u32,
@@ -238,7 +291,9 @@ pub struct UnixMeta {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WindowsMeta {
-    /// The file's attribute bits: read-only, hidden, system and so on.
+    /// The file's attribute bits: read-only, hidden, system and so on. In a
+    /// record they are text, in hexadecimal: `"0x00000021"`.
+    #[serde(with = "in_base::hex")]
     pub attributes: u32,
     /// Owner, group and access-control list, as the self-relative security
     /// descriptor Windows hands out, in hexadecimal. Absent if it could not
@@ -353,6 +408,75 @@ mod tests {
             Stamp { secs: 1, nanos: 0 },
         ];
         assert!(stamps.is_sorted());
+    }
+
+    #[test]
+    fn bits_are_written_the_way_people_read_them() {
+        let unix = UnixMeta {
+            mode: 0o640,
+            uid: 1000,
+            gid: 100,
+        };
+        let text = serde_json::to_string(&unix).unwrap();
+        assert_eq!(text, r#"{"mode":"0640","uid":1000,"gid":100}"#);
+        assert_eq!(serde_json::from_str::<UnixMeta>(&text).unwrap(), unix);
+        let all = UnixMeta {
+            mode: 0o7777,
+            ..unix
+        };
+        let text = serde_json::to_string(&all).unwrap();
+        assert!(text.contains(r#""mode":"7777""#), "{text}");
+        assert_eq!(serde_json::from_str::<UnixMeta>(&text).unwrap(), all);
+
+        let windows = WindowsMeta {
+            attributes: 0x2021,
+            security_descriptor: None,
+            zone_identifier: None,
+        };
+        let text = serde_json::to_string(&windows).unwrap();
+        assert_eq!(text, r#"{"attributes":"0x00002021"}"#);
+        assert_eq!(serde_json::from_str::<WindowsMeta>(&text).unwrap(), windows);
+        let all = WindowsMeta {
+            attributes: u32::MAX,
+            ..windows
+        };
+        let text = serde_json::to_string(&all).unwrap();
+        assert_eq!(serde_json::from_str::<WindowsMeta>(&text).unwrap(), all);
+    }
+
+    #[test]
+    fn bits_in_another_form_are_refused() {
+        for mode in [
+            r#"416"#,
+            r#""""#,
+            r#""0o640""#,
+            r#""648""#,
+            r#""+640""#,
+            r#"" 640""#,
+            r#""17777""#,
+        ] {
+            let text = format!(r#"{{"mode":{mode},"uid":0,"gid":0}}"#);
+            assert!(serde_json::from_str::<UnixMeta>(&text).is_err(), "{text}");
+        }
+        for attributes in [
+            r#"33"#,
+            r#""21""#,
+            r#""0x""#,
+            r#""0xg1""#,
+            r#""0x+21""#,
+            r#""0x100000000""#,
+        ] {
+            let text = format!(r#"{{"attributes":{attributes}}}"#);
+            assert!(
+                serde_json::from_str::<WindowsMeta>(&text).is_err(),
+                "{text}"
+            );
+        }
+        // Fewer digits than are written are still digits.
+        let short: UnixMeta = serde_json::from_str(r#"{"mode":"7","uid":0,"gid":0}"#).unwrap();
+        assert_eq!(short.mode, 0o7);
+        let short: WindowsMeta = serde_json::from_str(r#"{"attributes":"0x1"}"#).unwrap();
+        assert_eq!(short.attributes, 1);
     }
 
     #[test]

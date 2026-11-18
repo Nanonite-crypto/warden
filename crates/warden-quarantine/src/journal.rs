@@ -70,10 +70,25 @@ pub(crate) fn path_for(journal: &Path, id: &str) -> PathBuf {
 
 /// Writes a note and makes sure it is on disk before anything it speaks of
 /// is touched.
+/// Creates a file of the quarantine: one that must not be there yet, and
+/// that, where the system has permission bits, only its owner can read. The
+/// folder keeps others out already; this is for the day the file is copied
+/// somewhere else.
+pub(crate) fn create_new_private(path: &Path) -> io::Result<File> {
+    let mut options = File::options();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
 pub(crate) fn write(journal: &Path, note: &Note) -> io::Result<()> {
     let path = path_for(journal, note.id());
     let text = serde_json::to_vec_pretty(note).map_err(io::Error::other)?;
-    let mut file = File::options().write(true).create_new(true).open(&path)?;
+    let mut file = create_new_private(&path)?;
     file.write_all(&text)?;
     file.sync_all()?;
     sync_dir(journal);

@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::format::{self, EXTENSION, Problem};
 use crate::info::{CIPHER, Cipher, EntryInfo, ExactPath, Reason};
-use crate::journal::{self, Note, NotedPath, sync_dir};
+use crate::journal::{self, Note, NotedPath, create_new_private, sync_dir};
 use crate::{hex, meta};
 
 /// Why something could not be done with the quarantine.
@@ -276,11 +276,14 @@ impl Quarantine {
                 folder.display()
             )))?;
         }
-        let lock = File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
+        let mut lock = File::options();
+        lock.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            lock.mode(0o600);
+        }
+        let lock = lock
             .open(dir.join("lock"))
             .and_then(|file| {
                 file.lock()?;
@@ -404,11 +407,7 @@ impl Quarantine {
 
         let partial = self.partial_path(&id);
         let written = (|| -> io::Result<EntryInfo> {
-            let file = File::options()
-                .write(true)
-                .create_new(true)
-                .open(&partial)?;
-            let mut out = BufWriter::new(file);
+            let mut out = BufWriter::new(create_new_private(&partial)?);
             let info = format::write_entry(&mut source, &mut out, &key, &nonce, |size, sha256| {
                 EntryInfo {
                     id: id.clone(),

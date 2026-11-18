@@ -596,15 +596,35 @@ fn only_one_program_has_the_quarantine_open() {
 #[test]
 fn the_quarantine_folder_is_private() {
     use std::os::unix::fs::PermissionsExt;
+    use warden_quarantine::Step;
 
     let scene = Scene::new();
-    let quarantine = scene.quarantine();
+    let mut quarantine = scene.quarantine();
     for folder in ["", "items", "journal", "tmp"] {
         let mode = fs::metadata(quarantine.dir().join(folder))
             .unwrap()
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o700, "{folder:?}");
+    }
+
+    // And so is every file in it: an entry, the lock, and what an operation
+    // that was cut off leaves lying around, a note and a half-made entry.
+    quarantine
+        .add(&scene.file("kept.bin", &content(20, 100)), note())
+        .unwrap();
+    quarantine.interrupt_after(Step::EntryWritten);
+    quarantine
+        .add(&scene.file("cut-off.bin", &content(21, 100)), note())
+        .unwrap_err();
+    let stored = scene.stored();
+    assert_eq!(stored.len(), 4, "{stored:?}");
+    for file in stored {
+        let mode = fs::metadata(quarantine.dir().join(&file))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600, "{}", file.display());
     }
 }
 
