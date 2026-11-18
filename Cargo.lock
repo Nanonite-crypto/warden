@@ -2770,6 +2770,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "warden-pe"
+version = "0.1.0"
+dependencies = [
+ "object",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "warden-engine",
+]
+
+[[package]]
 name = "warden-sigdb"
 version = "0.1.0"
 dependencies = [

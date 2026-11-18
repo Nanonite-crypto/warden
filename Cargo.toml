@@ -4,6 +4,7 @@ members = [
     "crates/warden-sigdb",
     "crates/warden-engine",
     "crates/warden-yara",
+    "crates/warden-pe",
     "crates/warden-cli",
 ]
 
@@ -17,6 +18,7 @@ publish = false
 
 [workspace.dependencies]
 warden-engine = { path = "crates/warden-engine" }
+warden-pe = { path = "crates/warden-pe" }
 warden-yara = { path = "crates/warden-yara" }
 warden-sigdb = { path = "crates/warden-sigdb" }
 
@@ -70,6 +72,10 @@ zip = { version = "=9.7.0", default-features = false, features = ["deflate-flate
 # Test and benchmark only.
 assert_cmd = "2.2.2"
 criterion = "0.8.2"
+# A second, independent reader of Windows executables. Warden's own reader
+# is checked against it in tests. It is already part of the build through
+# yara-x, so nothing new is compiled for it.
+object = { version = "0.39.1", default-features = false, features = ["read_core", "pe"] }
 predicates = "3.1.4"
 proptest = "1.12.0"
 tempfile = "3.27.0"
