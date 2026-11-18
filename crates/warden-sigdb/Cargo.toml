@@ -1,0 +1,26 @@
+[package]
+name = "warden-sigdb"
+description = "Warden signature database: an immutable, memory-mappable set of SHA-256 hashes with detection names."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+memmap2.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "lookup"
+harness = false

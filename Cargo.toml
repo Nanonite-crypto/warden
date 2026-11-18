@@ -1,0 +1,38 @@
+[workspace]
+resolver = "3"
+members = ["crates/warden-sigdb"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+authors = ["Vevang Technologies"]
+repository = "https://github.com/Nanonite-crypto/warden"
+publish = false
+
+[workspace.dependencies]
+memmap2 = "0.9.12"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+
+# Test and benchmark only.
+criterion = "0.8.2"
+proptest = "1.12.0"
+tempfile = "3.27.0"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "warn"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
+
+[profile.bench]
+inherits = "release"
