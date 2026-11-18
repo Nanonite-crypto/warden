@@ -1,0 +1,78 @@
+{
+  "schema": 2,
+  "label": "local machine",
+  "path": "C:\\WINDOWS\\System32",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795020848,
+        "bundle_digest": "493f518cd60f99ae080d07a4dac16120bbb8b9164d842e0ef1a8bff21c6e842d",
+        "engine": "yara-x 1.23.0",
+        "origin": "built-in rules",
+        "rule_files": 1,
+        "rules": 1
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 16,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 36587.2928,
+          "files_scanned": 27642,
+          "bytes_scanned": 10120433487,
+          "files_skipped": 37,
+          "detections": 0,
+          "files_per_second": 755.5082074834463,
+          "megabytes_per_second": 276.6106129338982
+        },
+        {
+          "first": false,
+          "duration_ms": 7605.2605,
+          "files_scanned": 27642,
+          "bytes_scanned": 10120433487,
+          "files_skipped": 37,
+          "detections": 0,
+          "files_per_second": 3634.5895055139795,
+          "megabytes_per_second": 1330.7149027965577
+        },
+        {
+          "first": false,
+          "duration_ms": 7714.6578,
+          "files_scanned": 27642,
+          "bytes_scanned": 10120433487,
+          "files_skipped": 37,
+          "detections": 0,
+          "files_per_second": 3583.0493998061716,
+          "megabytes_per_second": 1311.8447699650399
+        }
+      ],
+      "repeat_median_files_per_second": 3608.8194526600755,
+      "repeat_median_megabytes_per_second": 1321.2798363807988
+    }
+  ]
+}

@@ -1,13 +1,18 @@
 name: False positives
 
-# Scans files that are known to be clean with the rule bundle and records
-# what gets flagged anyway: Windows system files, and the software that is
-# installed on a hosted runner.
+# Scans files that are known to be clean with every layer (signatures, the
+# rule bundle, the heuristics) and records what gets flagged anyway: Windows
+# system files, and the software that is installed on a hosted runner.
 #
 # This reads many gigabytes from a slow disk, so it does not run on every
 # change. Start it by hand, or push a branch named fp-run/<anything>.
 on:
   workflow_dispatch:
+    inputs:
+      all_rules:
+        description: Use every rule of the package and ignore rules/exclusions.toml (the "before" of a comparison)
+        type: boolean
+        default: false
   push:
     branches: ["fp-run/**"]
 
@@ -31,13 +36,16 @@ jobs:
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
       # Builds the release binary, checks EICAR detection, builds the rule
-      # bundle from the pinned YARA Forge package, and scans all of System32
-      # with it. Results go to target\check\fp.json.
+      # bundle from the pinned YARA Forge package without the rules named in
+      # rules\exclusions.toml, and scans all of System32 with it. Results go
+      # to target\check\fp.json.
       - name: Windows system files (System32)
         shell: cmd
-        run: call scripts\win\check.cmd -SkipTests -SkipBench -RequireEicar -Rules
+        run: call scripts\win\check.cmd -SkipTests -SkipBench -RequireEicar -Rules %ALL_RULES%
         env:
           WARDEN_NO_PAUSE: "1"
+          # Empty unless the run was started by hand with "all_rules" ticked.
+          ALL_RULES: ${{ inputs.all_rules && '-AllRules' || '' }}
       # Whatever of this list is installed on the runner. Exit code 1 means
       # that something was flagged, which is a result, not a failure.
       - name: Common software
@@ -61,11 +69,32 @@ jobs:
             --output target\check\fp-software.json
           if ($LASTEXITCODE -gt 1) { exit $LASTEXITCODE }
           exit 0
+      # What the heuristic layer costs: the same folder, mostly executables,
+      # scanned with and without it, once next to hash matching alone and
+      # once next to the rule bundle. Shared hardware, so the numbers are
+      # for comparing the four with each other and nothing else.
+      - name: Cost of the heuristic layer
+        shell: pwsh
+        run: |
+          $folder = 'C:\Program Files\PowerShell'
+          $variants = [ordered]@{
+            'hash'            = @('--no-yara', '--no-heuristics')
+            'hash-heuristics' = @('--no-yara')
+            'rules'           = @('--rules', 'rules\vendor\rules.wrb', '--no-heuristics')
+            'rules-heuristics' = @('--rules', 'rules\vendor\rules.wrb')
+          }
+          foreach ($name in $variants.Keys) {
+            $options = $variants[$name]
+            & target\release\warden.exe bench $folder @options --runs 5 `
+              --label "GitHub-hosted Windows runner, $name" `
+              --output "target\check\bench-$name.json"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: Show the results
         if: always()
         shell: bash
         run: |
-          for file in summary.json system.json fp.json fp-software.json; do
+          for file in summary.json system.json fp.json fp-software.json bench-hash.json bench-hash-heuristics.json bench-rules.json bench-rules-heuristics.json; do
             echo "::group::$file"
             cat "target/check/$file" 2>/dev/null || echo "(not written)"
             echo

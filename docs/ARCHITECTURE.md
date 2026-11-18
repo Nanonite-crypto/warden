@@ -98,15 +98,25 @@ crates/
   warden-engine/    detector interface, verdict policy, the parallel scan
                     pipeline, zip unpacking, the hash detector
   warden-yara/      YARA layer: rule bundles and the detector that runs them
+  warden-pe/        heuristic layer: a reader for Windows executables, the
+                    indicators with their weights, the score, the detector,
+                    and inert executables for tests
   warden-cli/       the `warden` command-line tool
+  warden-calibrate/ development tool: measures the indicators on a public
+                    dataset and fits their weights; not part of the scanner
+calibration/        the counts the weights are fitted to, and the report
 docs/               this document, the roadmap, format specs, testing, benchmarks
-rules/              which public rule release the rule bundle is built from
+fuzz/               fuzz targets for the parsers
+rules/              which public rule release the rule bundle is built from,
+                    and which of its rules are left out, with the evidence
 scripts/            fetch and check scripts, for Linux and Windows
 ```
 
 The YARA layer is a crate of its own because its rule engine is a large
 dependency. The engine crate stays small and builds in seconds; only what
-needs YARA pays for it.
+needs YARA pays for it. The heuristic layer is a crate of its own for the
+opposite reason: it depends on nothing but the engine's detector interface,
+so the calibration tool and the fuzzers can use it without the rest.
 
 Crates planned for later phases: `quarantine`, `remediation`, `realtime`,
 `ipc`, `service`, and the Tauri app.
@@ -155,14 +165,49 @@ at any time and still returns a report of what it covered.
 |---|---|---|---|
 | Hash match | 1, done | Exact copies of known files | One changed byte evades it |
 | YARA rules | 2, done | Byte patterns and structure shared by a family | Packing and encryption hide the patterns |
-| PE heuristics | 3 | Signs of packing, injection and evasion in executables | Legitimate software can look suspicious |
+| PE heuristics | 3, built | Executables nobody has seen that are built the way malware often is: packed, with no imports, with the entry point where no linker puts it | Clean software is packed too, and malware can be built to look plain. Says little about libraries and .NET assemblies |
 | ML classifier | 11, optional | Statistical resemblance to known malware | Opaque, and only as good as its training data |
 
-A valid Authenticode signature will be able to lower a heuristic score. It
-never cancels a hash or YARA hit.
+The layers run in that order, the most certain first, and a file gets the
+verdict of its strongest finding. The heuristic layer can make a file
+suspicious and never malicious.
 
-How a rule match becomes a verdict, where rules come from and what a rule
-bundle looks like on disk is in [RULES.md](RULES.md).
+Whether a file carries a signature is not part of the heuristic score,
+because the presence of a signature proves nothing: one can be appended to
+any file. Checking signatures properly is later work. A valid one may then
+lower a heuristic score; it will never cancel a hash or YARA hit.
+
+How a rule match becomes a verdict, where rules come from, which rules are
+left out because they flag clean files, and what a rule bundle looks like on
+disk is in [RULES.md](RULES.md).
+
+### The heuristic layer
+
+Implemented in `warden-pe`, in three steps that can each be used alone.
+
+1. A **reader** turns the bytes of a Windows executable into facts: its
+   sections with sizes, flags and entropy, what it imports, which tables
+   its header points to, what follows its last section. It is written for
+   hostile input: every offset and count comes from the file, so each is
+   checked against the file before use and every loop has a limit.
+2. **Indicators** are yes-or-no questions about those facts, such as "is a
+   section both writable and executable?". Each has a weight.
+3. The **score** is the sum of the weights of the indicators that apply. A
+   file whose score reaches the threshold is reported as suspicious, with
+   one reason per indicator.
+
+The reader is Warden's own, and small, for two reasons. A general-purpose
+parser treats a file that contradicts itself as an error; for this layer it
+is a finding. And the facts are exactly those that the
+EMBER2024 dataset records for its files, so the same indicator code runs
+over a file on disk and over a record of the dataset. That is what lets the
+weights be fitted to data and not chosen by hand. The reader is checked
+against the `object` crate on every test fixture and on 1,500 real
+executables in CI.
+
+[HEURISTICS.md](HEURISTICS.md) explains the indicators, where the weights
+and the threshold come from, and what the score does on files it was not
+fitted to.
 
 ### Archives
 

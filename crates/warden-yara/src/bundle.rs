@@ -74,6 +74,9 @@ pub enum BundleError {
     /// A rule source could not be used.
     #[error("{0}")]
     Source(String),
+    /// The exclusion list asks for something that is refused.
+    #[error("the exclusion list cannot be applied: {0}")]
+    Exclusion(String),
     /// There is nothing to put in a bundle.
     #[error("no rule could be compiled, so there is nothing to put in a bundle")]
     Empty,
@@ -87,6 +90,21 @@ pub struct Manifest {
     /// The rule files that went into the bundle, in the order they were
     /// compiled.
     pub sources: Vec<SourceInfo>,
+    /// The exclusion list the bundle was built with. Absent if there was
+    /// none, and in bundles written before exclusion lists existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exclusions: Option<ExclusionInfo>,
+}
+
+/// What a bundle records about the exclusion list it was built with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExclusionInfo {
+    /// SHA-256 of the list, in lowercase hexadecimal.
+    pub sha256: String,
+    /// Names of the rules that were found in the rule files and left out
+    /// because the list names them. Each name appears once, in the order
+    /// the rules were found.
+    pub rules: Vec<String>,
 }
 
 /// One rule file that went into a bundle.
@@ -102,6 +120,15 @@ pub struct SourceInfo {
     pub rules: u64,
     /// Rules from this file that could not be compiled and were left out.
     pub skipped: u64,
+    /// Rules from this file that were left out because they are on the
+    /// exclusion list.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub excluded: u64,
+}
+
+/// Serde hands `skip_serializing_if` a reference.
+fn is_zero(count: &u64) -> bool {
+    *count == 0
 }
 
 /// Compiled YARA rules, ready to scan with, plus their provenance.
@@ -373,7 +400,9 @@ mod tests {
                 bytes: 29,
                 rules: 1,
                 skipped: 0,
+                excluded: 0,
             }],
+            exclusions: None,
         }
     }
 
@@ -400,6 +429,21 @@ mod tests {
         assert_eq!(loaded.rule_count(), 1);
         assert_eq!(loaded.created_unix_secs(), 1_234);
         assert_eq!(loaded.digest(), bundle.digest());
+    }
+
+    #[test]
+    fn a_manifest_without_the_exclusion_fields_reads_and_writes_as_before() {
+        // This is what a manifest looked like before exclusion lists.
+        let old = format!(
+            r#"{{"engine":"{ENGINE}","sources":[{{"name":"tiny.yar","sha256":"{}","bytes":29,"rules":1,"skipped":0}}]}}"#,
+            "00".repeat(32)
+        );
+        let read: Manifest = serde_json::from_str(&old).unwrap();
+        assert_eq!(read, manifest(ENGINE));
+        assert_eq!(read.exclusions, None);
+        assert_eq!(read.sources[0].excluded, 0);
+        // A bundle built without a list is written exactly as it was then.
+        assert_eq!(serde_json::to_string(&read).unwrap(), old);
     }
 
     #[test]

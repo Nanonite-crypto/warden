@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 warden-engine.workspace = true
+warden-pe.workspace = true
 warden-sigdb.workspace = true
 warden-yara.workspace = true
 

@@ -7,7 +7,9 @@ use anyhow::Context;
 use clap::Subcommand;
 use serde::Serialize;
 use warden_sigdb::hex;
-use warden_yara::{BundleBuilder, RuleBundle, SourceInfo, YaraDetector, write_bundle};
+use warden_yara::{
+    BundleBuilder, ExclusionInfo, ExclusionList, RuleBundle, SourceInfo, YaraDetector, write_bundle,
+};
 
 use crate::render::{group_digits, human_bytes, human_duration, human_timestamp, shown};
 
@@ -21,6 +23,10 @@ pub enum RulesCommand {
     /// Takes rule files (.yar, .yara), folders of them, and zip packages of
     /// them, such as the packages YARA Forge publishes. A rule that does not
     /// compile is left out and counted; it does not stop the build.
+    ///
+    /// Rules that flag clean files can be left out with --exclusions. The
+    /// bundle records which list it was built with and which rules that
+    /// removed, and `warden rules info` shows it.
     Build {
         /// Rule files, folders of rule files, or zip packages of rule files
         #[arg(required = true, value_name = "PATH")]
@@ -33,6 +39,14 @@ pub enum RulesCommand {
         /// Leave out the rules that ship inside Warden
         #[arg(long)]
         no_builtin: bool,
+
+        /// Leave out the rules named in this exclusion list
+        ///
+        /// The list is a TOML file. Every entry names a rule and gives the
+        /// evidence against it: a clean file the rule flagged, with its
+        /// SHA-256, the day and the machine. See docs/RULES.md.
+        #[arg(long, value_name = "FILE")]
+        exclusions: Option<PathBuf>,
 
         /// Creation time to record, in seconds since the Unix epoch
         #[arg(long, value_name = "SECONDS", env = "SOURCE_DATE_EPOCH")]
@@ -61,9 +75,17 @@ pub fn run(command: RulesCommand) -> anyhow::Result<ExitCode> {
             sources,
             out,
             no_builtin,
+            exclusions,
             created,
             show_skipped,
-        } => build(&sources, &out, no_builtin, created, show_skipped),
+        } => build(
+            &sources,
+            &out,
+            no_builtin,
+            exclusions.as_deref(),
+            created,
+            show_skipped,
+        ),
         RulesCommand::Info { bundle, json } => info(&bundle, json),
     }
 }
@@ -80,12 +102,18 @@ fn build(
     sources: &[PathBuf],
     out: &Path,
     no_builtin: bool,
+    exclusions: Option<&Path>,
     created: Option<u64>,
     show_skipped: bool,
 ) -> anyhow::Result<ExitCode> {
     let mut builder = BundleBuilder::new().builtin_rules(!no_builtin);
     if let Some(created) = created {
         builder = builder.created_unix_secs(created);
+    }
+    if let Some(path) = exclusions {
+        let list = ExclusionList::load(path)
+            .with_context(|| format!("cannot use the exclusion list {}", path.display()))?;
+        builder = builder.exclusions(list);
     }
     for source in sources {
         builder.add_path(source)?;
@@ -110,14 +138,44 @@ fn build(
         if source.skipped > 0 {
             line.push_str(&format!(", {} left out", group_digits(source.skipped)));
         }
+        if source.excluded > 0 {
+            line.push_str(&format!(", {} excluded", group_digits(source.excluded)));
+        }
         if source.replaced_invalid_text {
             line.push_str(", contained bytes that are not valid text");
         }
         println!("{line}");
     }
+    if let Some(path) = exclusions {
+        if report.excluded.is_empty() {
+            println!(
+                "The exclusion list {} names no rule that is in these files.",
+                path.display()
+            );
+        } else {
+            println!(
+                "Excluded {}, named in {}:",
+                rule_count(report.excluded.len() as u64),
+                path.display()
+            );
+            for entry in &report.excluded {
+                println!("  {} (in {})", shown(&entry.rule), shown(&entry.source));
+            }
+        }
+        if !report.unused_exclusions.is_empty() {
+            println!(
+                "The list also names {} that no rule file declares:",
+                rule_count(report.unused_exclusions.len() as u64)
+            );
+            for name in &report.unused_exclusions {
+                println!("  {}", shown(name));
+            }
+            println!("Check the spelling, or remove the entry if the rule set dropped the rule.");
+        }
+    }
     if report.skipped_total > 0 {
         println!(
-            "Left out {} that did not compile.",
+            "Left out {} that could not be used.",
             rule_count(report.skipped_total)
         );
         if show_skipped {
@@ -181,6 +239,8 @@ struct BundleInfo<'a> {
     size_bytes: u64,
     digest: String,
     sources: &'a [SourceInfo],
+    /// The exclusion list the bundle was built with, if any.
+    exclusions: Option<&'a ExclusionInfo>,
     scores: Scores,
     licences: Vec<LicenceCount>,
 }
@@ -211,6 +271,7 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
         size_bytes: bundle.size_bytes(),
         digest: hex::encode(&bundle.digest()),
         sources: &bundle.manifest().sources,
+        exclusions: bundle.manifest().exclusions.as_ref(),
         scores: Scores {
             malicious: stats.high,
             suspicious: stats.medium,
@@ -263,10 +324,27 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
         if source.skipped > 0 {
             line.push_str(&format!(", {} left out", group_digits(source.skipped)));
         }
+        if source.excluded > 0 {
+            line.push_str(&format!(", {} excluded", group_digits(source.excluded)));
+        }
         println!("{line}");
         println!("    sha256 {}", source.sha256);
     }
     println!();
+    if let Some(exclusions) = description.exclusions {
+        println!("Excluded on purpose");
+        if exclusions.rules.is_empty() {
+            println!("  (nothing: the exclusion list named no rule that was in the rule files)");
+        }
+        for rule in &exclusions.rules {
+            println!("  {}", shown(rule));
+        }
+        println!(
+            "  named by the exclusion list with sha256 {}",
+            exclusions.sha256
+        );
+        println!();
+    }
     println!("Licences named by the rules");
     for entry in description.licences.iter().take(LICENCES_SHOWN) {
         let name = if entry.licence.is_empty() {

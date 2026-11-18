@@ -116,6 +116,9 @@ pub fn rule_summary(detectors: &[DetectorInfo]) -> Option<String> {
         group_digits(files),
         plural(files, "file", "files")
     );
+    if let Some(excluded) = count(yara, "rules_excluded").filter(|excluded| *excluded > 0) {
+        let _ = write!(line, ", {} excluded", group_digits(excluded));
+    }
     if let Some(created) = count(yara, "bundle_created_unix_secs") {
         let _ = write!(line, " (bundle built {})", human_timestamp(created));
     }
@@ -123,6 +126,20 @@ pub fn rule_summary(detectors: &[DetectorInfo]) -> Option<String> {
 }
 
 /// One line describing which signatures a scan used.
+/// What the heuristic layer runs with, if it runs.
+pub fn heuristic_summary(detectors: &[DetectorInfo]) -> Option<String> {
+    let heuristic = detectors
+        .iter()
+        .find(|detector| detector.id == "heuristic")?;
+    let scored = count(heuristic, "indicators_scored").unwrap_or(0);
+    Some(format!(
+        "{} scored {} of a Windows executable's structure, suspicious from a score of {}",
+        group_digits(scored),
+        plural(scored, "indicator", "indicators"),
+        group_digits(count(heuristic, "suspicious_from").unwrap_or(0)),
+    ))
+}
+
 pub fn signature_summary(detectors: &[DetectorInfo]) -> String {
     let Some(hash) = detectors.iter().find(|detector| detector.id == "hash") else {
         return "none".to_owned();
@@ -204,6 +221,9 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
     let _ = writeln!(out, "Signatures  {}", signature_summary(&report.detectors));
     if let Some(rules) = rule_summary(&report.detectors) {
         let _ = writeln!(out, "Rules       {rules}");
+    }
+    if let Some(heuristics) = heuristic_summary(&report.detectors) {
+        let _ = writeln!(out, "Heuristics  {heuristics}");
     }
     if stats.archives_unpacked > 0 {
         let _ = writeln!(

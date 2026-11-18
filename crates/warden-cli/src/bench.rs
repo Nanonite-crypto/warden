@@ -8,7 +8,9 @@ use clap::Args;
 use serde::Serialize;
 use warden_engine::{DetectorInfo, ENGINE_VERSION, NoObserver, ScanReport};
 
-use crate::render::{group_digits, human_bytes, human_duration, rule_summary, signature_summary};
+use crate::render::{
+    group_digits, heuristic_summary, human_bytes, human_duration, rule_summary, signature_summary,
+};
 use crate::scan::{LayerArgs, build_scanner, cancel_on_ctrl_c};
 use crate::system::{SystemInfo, system_info};
 
@@ -196,6 +198,9 @@ fn text(report: &BenchReport) -> String {
     let _ = writeln!(out, "Signatures  {}", signature_summary(&report.detectors));
     if let Some(rules) = rule_summary(&report.detectors) {
         let _ = writeln!(out, "Rules       {rules}");
+    }
+    if let Some(heuristics) = heuristic_summary(&report.detectors) {
+        let _ = writeln!(out, "Heuristics  {heuristics}");
     }
     let _ = writeln!(out);
     let _ = writeln!(

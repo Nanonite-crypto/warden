@@ -10,6 +10,7 @@
 
 mod bench;
 mod fp;
+mod inspect;
 mod misc;
 mod render;
 mod rules;
@@ -63,6 +64,13 @@ enum Command {
     #[command(name = "false-positives", visible_alias = "fp")]
     FalsePositives(fp::FpArgs),
 
+    /// Show what the heuristics see in one Windows executable, and why
+    ///
+    /// Prints the file's structure (sections, imports, tables), then every
+    /// indicator that applies to it with the points it adds to the score
+    /// and the reason it counts. Exits with 1 if the file is suspicious.
+    Inspect(inspect::InspectArgs),
+
     /// Print the SHA-256 of files
     Hash {
         /// Files to hash
@@ -83,6 +91,7 @@ fn main() -> ExitCode {
         Command::Rules(command) => rules::run(command),
         Command::Bench(args) => bench::run(&args),
         Command::FalsePositives(args) => fp::run(&args),
+        Command::Inspect(args) => inspect::run(&args),
         Command::Hash { files } => misc::hash(&files),
         Command::Eicar(command) => misc::eicar(&command),
     };

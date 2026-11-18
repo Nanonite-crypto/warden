@@ -5,8 +5,9 @@
 .DESCRIPTION
     Builds the release binary, checks that the EICAR antivirus test file is
     detected in each of its forms, runs the test suite and measures scan
-    throughput. With -Rules it also builds a rule bundle from YARA Forge and
-    counts false positives over the benchmark folder.
+    throughput. With -Rules it also builds a rule bundle from YARA Forge,
+    without the rules that rules\exclusions.toml names, and counts false
+    positives over the benchmark folder.
 
     What it touches:
     - It writes its results and the test files inside this repository only:
@@ -43,7 +44,13 @@
 .PARAMETER Rules
     Also fetch the pinned YARA Forge rule package, build a rule bundle from
     it, and scan BenchPath with it. Everything it flags there is counted as
-    a false positive, because the folder is expected to be clean.
+    a false positive, because the folder is expected to be clean. The rules
+    named in rules\exclusions.toml are left out of the bundle.
+
+.PARAMETER AllRules
+    With -Rules: build the bundle from every rule of the package and ignore
+    rules\exclusions.toml. This is the "before" of a before-and-after
+    comparison, and how a rule is shown to deserve its place on that list.
 
 .PARAMETER RequireEicar
     Count "the antivirus got to the EICAR test files first" as a failure
@@ -56,6 +63,7 @@ param(
     [switch]$SkipTests,
     [switch]$SkipBench,
     [switch]$Rules,
+    [switch]$AllRules,
     [switch]$RequireEicar
 )
 
@@ -402,14 +410,20 @@ if ($Rules) {
         $steps.rules = 'failed'
         Complete-Check
     }
-    & $warden rules build $package --out $bundle
+    if ($AllRules) {
+        $notes.rules = 'every rule of the package, exclusion list ignored'
+        & $warden rules build $package --out $bundle
+    } else {
+        $notes.rules = 'without the rules named in rules\exclusions.toml'
+        & $warden rules build $package --exclusions (Join-Path $repo 'rules\exclusions.toml') --out $bundle
+    }
     if ($LASTEXITCODE -ne 0) {
         $steps.rules = 'failed'
         Complete-Check
     }
     $steps.rules = 'passed'
 
-    Write-Heading "False positives: $BenchPath with the rule bundle (read-only)"
+    Write-Heading "False positives: $BenchPath with the rule bundle and the heuristics (read-only)"
     $fpReport = Join-Path $out 'fp.json'
     Remove-Item -LiteralPath $fpReport -Force -ErrorAction SilentlyContinue
     & $warden false-positives $BenchPath --rules $bundle --label 'local machine' --no-progress --output $fpReport

@@ -206,6 +206,17 @@ impl Detector for YaraDetector {
             "rule_files",
             InfoValue::Count(bundle.manifest().sources.len() as u64),
         );
+        if bundle.manifest().exclusions.is_some() {
+            // Present only for a bundle that was built with an exclusion
+            // list, so a report shows that rules were left out on purpose.
+            let excluded = bundle
+                .manifest()
+                .sources
+                .iter()
+                .map(|source| source.excluded)
+                .sum();
+            details.insert("rules_excluded", InfoValue::Count(excluded));
+        }
         details.insert("engine", InfoValue::Text(ENGINE.to_owned()));
         details.insert(
             "origin",

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "label": "local machine",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel64 Family 6 Model 106 Stepping 6, GenuineIntel"
+  },
+  "paths": [
+    "C:\\Windows\\System32"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1794999157,
+        "bundle_digest": "a103850b3e3bb101b5809ff358c59cdbacef6e709f48b86e5f921174a0bc7c79",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5136,
+        "rules_excluded": 2
+      }
+    }
+  ],
+  "threads": 2,
+  "duration_ms": 277219,
+  "files_scanned": 21792,
+  "bytes_scanned": 4778163177,
+  "files_skipped": 38,
+  "files_partially_scanned": 2,
+  "archive_members_scanned": 193,
+  "files_per_second": 78.6090800863594,
+  "megabytes_per_second": 17.236004581795452,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false
+}

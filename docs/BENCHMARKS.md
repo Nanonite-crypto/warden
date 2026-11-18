@@ -11,7 +11,7 @@ Every number on this page comes from a run that is recorded in
 | Signature lookup and hashing speed | Phase 1 |
 | What each detection layer costs in throughput | Phase 2 |
 | False positives on clean files | Phase 2 |
-| Detection and false-positive rates in feature space (EMBER2024) | From phase 3 |
+| How the heuristic score does on the labelled records of EMBER2024, and on the files of a clean Windows installation | Phase 3 |
 | Real-time time-to-detect | From phase 9 |
 
 **Not measured, by design:** detection rates on live malware samples. Warden
@@ -303,12 +303,137 @@ Raw results:
 [the run with rules](benchmarks/2026-11-18-windows-desktop-system32-false-positives.json),
 [machine](benchmarks/2026-11-18-windows-desktop-phase2-machine.json).
 
+## Results: phase 3
+
+Phase 3 added the heuristic layer for Windows executables.
+[HEURISTICS.md](HEURISTICS.md) explains it; this section has its numbers.
+
+### The heuristic score on EMBER2024
+
+EMBER2024 holds feature records and labels of files, not the files. The
+score was fitted to its first 52 weeks and is measured here on its last 12,
+which the fit did not see. A file is flagged when its score is 32 or more.
+
+| Files of the test weeks | Malicious files flagged | Benign files flagged |
+|---|---|---|
+| Programs | 29.6 % (66,262 of 224,062) | 0.0079 % (5 of 63,669) |
+| Libraries | 0.98 % (138 of 14,144) | 0.0057 % (10 of 175,573) |
+| .NET assemblies | 0.079 % (25 of 31,790) | 0 of 30,571 |
+| All Windows executables | 24.6 % (66,425 of 269,996) | 0.0056 % (15 of 269,813) |
+| The challenge set: malicious files that no antivirus product detected at first | 0 of 4,868 | |
+
+Area under the ROC curve on the test weeks: 0.915 for all kinds of file
+together, 0.883 for programs. For comparison, the dataset's authors report
+more than 0.99 for a gradient-boosted classifier on all features of the
+dataset. The score here is thirteen yes-or-no questions with whole-number
+weights, chosen so that a verdict can be explained line by line.
+
+These are rates over a dataset's records, with the dataset's labels. They
+say how the score behaves on those files. They are not a detection rate of
+Warden on malware in the wild, which stays unmeasured.
+
+Reproduce: `cargo run --release -p warden-calibrate -- report
+calibration/ember2024-counts.zip calibration/installed-counts.json`. The
+output is [`calibration/report.txt`](../calibration/report.txt), and a test
+keeps that file and the scanner's weights in step with the counts.
+
+### On the files of a clean Windows installation
+
+The threshold was set on a dataset's benign files. Whether it holds on the
+files of a real machine was counted separately, by the same tool that
+counted the dataset, on a GitHub-hosted runner (Windows Server 2025, image
+`win25-vs2026` 20261103.298.1):
+
+| Folder | Windows executables | Reach the threshold of 32 | Highest score |
+|---|---|---|---|
+| `C:\Windows\System32` | 9,015 | 0 | 20 |
+| Installed software: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 45,261 | 0 | below 16 |
+
+The counts are [`calibration/installed-counts.json`](../calibration/README.md).
+The full scan of the same folders, with all layers and with the files
+inside archives, is under [False positives](#with-the-heuristic-layer).
+
+### What the heuristic layer costs
+
+One folder that is almost all executables, `C:\Program Files\PowerShell`
+on the runner (1,104 files, 297 MB, 959 of them Windows executables),
+scanned five times in each of four configurations. The median is over the
+four repeat runs, which are served from the file cache.
+
+| Layers | Median time | MB/s | Files/s |
+|---|---|---|---|
+| Hash matching | 0.25 s | 1,177 | 4,373 |
+| Hash matching and heuristics | 0.45 s | 666 | 2,474 |
+| Hash matching and 5,136 YARA rules | 10.34 s | 28.7 | 107 |
+| All three | 10.43 s | 28.5 | 106 |
+
+Next to hash matching alone, the layer adds three quarters to the time of
+a folder of executables: it measures the entropy of the whole file and of
+every section, which is two more passes over the bytes. Next to the rules
+it adds under one percent. A file that is not an executable is dismissed
+after its first two bytes.
+
+Machine: AMD EPYC 7763, 2 logical processors, 8 GB RAM, Windows Server
+2025, Microsoft Defender real-time protection off. A shared CI runner: the
+four rows can be compared with each other and with nothing else.
+
+Raw results:
+[hash](benchmarks/2026-11-18-github-windows-runner-heuristics-cost-hash.json),
+[hash and heuristics](benchmarks/2026-11-18-github-windows-runner-heuristics-cost-hash-heuristics.json),
+[rules](benchmarks/2026-11-18-github-windows-runner-heuristics-cost-rules.json),
+[all three](benchmarks/2026-11-18-github-windows-runner-heuristics-cost-rules-heuristics.json).
+
+### Windows desktop
+
+The machine described under phases 1 and 2: AMD Ryzen 7 5800X, 16 threads,
+32 GB RAM, Windows 11 Home, Microsoft Defender real-time protection on. Run
+with administrator rights, on commit `f276730`, some hours after the
+phase 2 runs.
+
+**Scan throughput** over `C:\Windows\System32`, with
+`scripts\win\check.cmd -Rules -SkipTests`. The three benchmark passes read
+27,642 files, 10.12 GB, and could not read 37; the pass with rules read
+27,645 files, 10.28 GB, and could not read 34.
+
+| Layers | Pass | Time | Files/s | MB/s |
+|---|---|---|---|---|
+| Default: hash, the built-in rule, heuristics, archives | 1 | 36.59 s | 756 | 276.6 |
+| | 2 | 7.61 s | 3,635 | 1,330.7 |
+| | 3 | 7.71 s | 3,583 | 1,311.8 |
+| Hash, archives, 5,136 rules, heuristics | One, after those | 22.78 s | 1,214 | 451.4 |
+
+- With the default layers the heuristic layer cannot be seen in the times
+  on this machine: the passes from the file cache took 7.6 and 7.7 s with
+  it, and 7.6 and 8.1 s without it in phase 2.
+- The pass with all rules took 22.78 s. The same pass took 19.35 s in
+  phase 2, without the heuristic layer. That is one run each, hours apart,
+  on a machine in use, so how much of the 3.4 s belongs to the layer is not
+  known. The comparison on the runner above is the only controlled one so
+  far, and it is a different kind of machine: two threads, and a rule scan
+  that is many times slower. A controlled comparison on this desktop is
+  still to do.
+- No file was flagged, see
+  [False positives](#with-the-heuristic-layer).
+
+Raw results:
+[benchmark](benchmarks/2026-11-18-windows-desktop-phase3-system32.json),
+[the run with rules](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
+[machine](benchmarks/2026-11-18-windows-desktop-phase3-machine.json).
+
 ## False positives
+
+Three rounds of runs. The first used every rule of the rule package and
+found two rules that flag clean files. Those two went onto the
+[exclusion list](RULES.md#rules-that-are-left-out), and the second round
+measured what is left. The third round has the heuristic layer switched on
+as well.
+
+### With every rule of the package
 
 The rule set is the YARA Forge core package, release 20261018, with
 Warden's built-in rule: 5,138 rules. A match of 205 of them leads to the
 verdict malicious, a match of any of the other 4,933 to suspicious. The
-tables count files with either verdict.
+table counts files with either verdict.
 
 | Files expected to be clean | Files | Data | Files inside archives | Malicious | Suspicious |
 |---|---|---|---|---|---|
@@ -340,9 +465,9 @@ What follows from this:
   and it stayed at zero. A suspicious file is shown to the user and nothing
   else happens to it.
 - Both cases have the same root: Warden takes a rule's score at face
-  value. What a match of a medium-score rule should mean is an open
-  decision in the [roadmap](ROADMAP.md#open-decisions), to be settled
-  with the heuristics of phase 3.
+  value. The answer chosen for now is to leave out a rule that is shown to
+  flag clean files, with the evidence written down. The next section has
+  the result.
 - Zero flagged files in a folder says that the rules are quiet there. It
   says nothing about what they catch, which is not measured here.
 - A hosted runner is a server image with developer tools on it, and of
@@ -369,3 +494,131 @@ Raw results:
 [software](benchmarks/2026-11-18-github-windows-runner-software-false-positives.json),
 [machine](benchmarks/2026-11-18-github-windows-runner-false-positives-machine.json),
 [`/usr`](benchmarks/2026-11-18-dev-container-usr-false-positives.json).
+
+### With the exclusion list
+
+[`rules/exclusions.toml`](../rules/exclusions.toml) names the two rules,
+each with the files above as evidence. A bundle built with it has 5,136
+rules: 205 lead to the verdict malicious, 4,931 to suspicious. The runs on
+the GitHub-hosted runner were repeated with that bundle on the same day.
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged with every rule | Flagged with the exclusion list |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,792 | 4.78 GB | 193 | 1 of 21,804 | 0 |
+| Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 20 | 0 |
+
+How far the two rounds can be compared:
+
+- **The software folders held the same files both times**: the same number
+  of files, of bytes (14,416,680,921) and of files inside archives. The 20
+  copies of `singlefilehost.exe` were scanned again and are no longer
+  flagged.
+- **The System32 runs are less alike.** Every run gets a fresh virtual
+  machine. The first had an AMD processor and the second an Intel one, and
+  the second run scanned 12 files fewer, 18 MB less. It did not record
+  whether `vulkan-1.dll` was among the files it scanned.
+- **The desktop was scanned again in the third round**, with the exclusion
+  list and the heuristic layer together: none of 27,645 files was flagged,
+  where `liblouis.dll` had been in the first round. The run does not record
+  which files it read. That `liblouis.dll` was among them is an assumption,
+  if a safe one: the file is part of Windows, and the folder held one file
+  more than in the first round, not one fewer.
+- **`/usr` was not scanned again.** It had no flagged file with every rule,
+  and a bundle with fewer rules cannot flag more.
+
+Nothing else surfaced: in 109,499 files, the 5,136 remaining rules flagged
+none. As before, that says the rules are quiet in these folders and nothing
+about what they catch.
+
+In System32, 38 files could not be read and 2 were checked in part; in the
+software folders 7 were checked in part, as before. The second runner: Intel Xeon Platinum 8370C, 2 logical processors, 8 GB RAM, Windows
+Server 2025, Microsoft Defender real-time protection off. The runs took
+4 min 37 s and 13 min 16 s, again reading every file for the first time
+from the disk.
+
+Raw results:
+[System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-exclusions.json),
+[software](benchmarks/2026-11-18-github-windows-runner-software-false-positives-with-exclusions.json),
+[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-exclusions-machine.json).
+
+### With the heuristic layer
+
+The runs on the GitHub-hosted runner were repeated once more with all three
+layers: the built-in signature, the 5,136 rules that the exclusion list
+leaves, and the heuristics with 13 scored indicators and a threshold of 32.
+The system folder of the desktop was scanned again the same way, and after
+it the two folders that hold the desktop's installed programs.
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged by the heuristics | Flagged by rules |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,793 | 4.78 GB | 193 | 0 | 0 |
+| Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 0 | 0 |
+| `C:\Windows\System32` on a Windows 11 desktop | 27,645 | 10.28 GB | 194 | 0 | 0 |
+| `C:\Program Files` and `C:\Program Files (x86)` on that desktop | 310,849 | 74.50 GB | 345,010 | 0 | 13 |
+
+**The heuristic layer flagged none of 447,994 files.** The last row is the
+test it was most likely to fail: the installed programs of a machine in
+daily use, which is where packed and protected software is. Of the runner's
+109,500 files, about 54,000 are Windows executables, which is what the
+layer judges; it also judges the executables among the files inside
+archives. How many of the desktop's files are executables was not counted.
+
+**The rules flagged 13 files among the installed programs**, all as
+suspicious and none as malicious. Eight rules account for them:
+
+| Rule | Files | What it flagged |
+|---|---|---|
+| `MALPEDIA_Win_Bqtlock_Auto` | 2 | `libstdc++-6.dll`, the GNU C++ runtime library, twice in Git for Windows |
+| `MALPEDIA_Win_Mystic_Stealer_Auto` | 2 | `zip.dll` and `unpack200.exe` of the Java runtime |
+| `MALPEDIA_Win_Yokai_Auto` | 2 | `ucrtbased.dll`, the debug build of Microsoft's C runtime, in two places of the Windows SDK |
+| `DITEKSHEN_INDICATOR_TOOL_UAC_NSISUAC` | 2 | The uninstallers of two versions of FL Studio |
+| `COD3NYM_SUSP_OBF_NET_Reactor_Indicators_Jan24` | 2 | Two files of a commercial .NET application protected with .NET Reactor |
+| `CAPE_Obfuscar` | 1 | A library of a small .NET utility protected with Obfuscar |
+| `COD3NYM_SUSP_NET_Shellcode_Loader_Indicators_Jan24` | 1 | `Clipchamp.Widgets.exe`, part of the video editor that Microsoft ships with Windows 11 |
+| `SECUINFRA_SUSP_Powershell_Download_Temp_Rundll_1` | 1 | `node_modules.asar` of Visual Studio Code, a 55 MB archive of JavaScript |
+
+The first three are generated automatically from samples of one malware
+family, like the rule that flagged `liblouis.dll` in the first round. The
+next three recognise an installer plug-in and two obfuscators, and the last
+two ask for a few common strings.
+[RULES.md](RULES.md#rules-that-are-left-out) goes through each.
+
+Of the 5,137 rules in the package, 1,622 are generated automatically in
+the way of the first three. Four of those have now flagged clean files, in
+about 448,000 Windows files on two machines. Every further machine is
+likely to find more: that is what public rules are like, and what the
+exclusion list is for.
+
+**All eight went onto the exclusion list the same day**, each with its
+evidence. A bundle built with the list now has 5,128 rules: 205 lead to the
+verdict malicious and 4,923 to suspicious. The scan of the installed
+programs has not been repeated with that bundle yet, so what the longer
+list does there is not measured.
+
+Three of the 13 files are not named, here or in the raw result: their names
+would show which programs are installed on a private machine. They are
+described by their kind.
+
+What the runs still do not cover: the folders of a user, such as downloads
+and application data, programs on other drives, and other people's
+machines. The runner is a tidy server image with developer tools, where two
+thirds of the files belong to .NET, and the desktop is one desktop.
+
+In System32 on the runner, 38 files could not be read and 2 were checked in
+part; in its software folders 7 were checked in part, as in the rounds
+before. The runner: AMD EPYC 7763, 2 logical processors, 8 GB RAM, Windows
+Server 2025, Microsoft Defender real-time protection off. Its runs took
+5 min 28 s and 12 min 31 s, reading every file for the first time from the
+disk. The desktop is described [above](#windows-desktop-2). In its
+System32, 34 files could not be read and 6 were checked in part, also as
+before, and the run took 23 s from the file cache. Among its installed
+programs, 2 files could not be read and 1,069 were checked in part. That
+run took 7 min 59 s, at 155 MB/s: these folders were read from the disk,
+not from the file cache.
+
+Raw results:
+[System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-heuristics.json),
+[software](benchmarks/2026-11-18-github-windows-runner-software-false-positives-with-heuristics.json),
+[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-heuristics-machine.json),
+[System32 on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
+[installed programs on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-programs-false-positives.json).

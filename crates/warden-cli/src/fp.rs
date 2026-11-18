@@ -12,8 +12,8 @@ use warden_engine::{DetectorInfo, ENGINE_VERSION, ScanReport, Verdict};
 
 use crate::EXIT_FOUND;
 use crate::render::{
-    ProgressLine, group_digits, human_bytes, human_duration, rule_summary, shown, shown_path,
-    signature_summary,
+    ProgressLine, group_digits, heuristic_summary, human_bytes, human_duration, rule_summary,
+    shown, shown_path, signature_summary,
 };
 use crate::scan::{LayerArgs, build_scanner, cancel_on_ctrl_c};
 use crate::system::{SystemInfo, system_info};
@@ -191,6 +191,9 @@ fn text(report: &FpReport, duration: std::time::Duration) -> String {
     let _ = writeln!(out, "Signatures  {}", signature_summary(&report.detectors));
     if let Some(rules) = rule_summary(&report.detectors) {
         let _ = writeln!(out, "Rules       {rules}");
+    }
+    if let Some(heuristics) = heuristic_summary(&report.detectors) {
+        let _ = writeln!(out, "Heuristics  {heuristics}");
     }
     let _ = writeln!(out);
     let _ = writeln!(
