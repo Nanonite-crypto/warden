@@ -404,10 +404,13 @@ phase 2 runs.
 
 - With the default layers the heuristic layer cannot be seen in the times
   on this machine: the passes from the file cache took 7.6 and 7.7 s with
-  it, and 7.6 and 8.1 s without it in phase 2.
-- The pass with all rules took 22.78 s. The same pass took 19.35 s in
-  phase 2, without the heuristic layer. That is one run each, hours apart,
-  on a machine in use, so how much of the 3.4 s belongs to the layer is not
+  it, and 7.6 and 8.1 s without it in phase 2. When the check was run again
+  two and a half hours later, they took 7.8 s twice.
+- The pass with all rules took 22.78 s, and 21.21 s in that later run, by
+  then with eight rules fewer. The same pass took 19.35 s in phase 2,
+  without the heuristic layer. These are single runs, hours apart, on a
+  machine in use, and the two with the layer differ by 1.6 s between
+  themselves. So how much of the 1.9 to 3.4 s belongs to the layer is not
   known. The comparison on the runner above is the only controlled one so
   far, and it is a different kind of machine: two threads, and a rule scan
   that is many times slower. A controlled comparison on this desktop is
@@ -418,7 +421,10 @@ phase 2 runs.
 Raw results:
 [benchmark](benchmarks/2026-11-18-windows-desktop-phase3-system32.json),
 [the run with rules](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
-[machine](benchmarks/2026-11-18-windows-desktop-phase3-machine.json).
+[machine](benchmarks/2026-11-18-windows-desktop-phase3-machine.json);
+the later run:
+[benchmark](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32.json),
+[the run with rules](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32-false-positives.json).
 
 ## False positives
 
@@ -622,3 +628,25 @@ Raw results:
 [machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-heuristics-machine.json),
 [System32 on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
 [installed programs on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-programs-false-positives.json).
+
+### With ten rules on the list
+
+The check on the desktop was run again with the bundle that the longer list
+gives: 5,128 rules, of which 205 lead to the verdict malicious and 4,923 to
+suspicious.
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged by the heuristics | Flagged by rules |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on the Windows 11 desktop | 27,642 | 10.12 GB | 194 | 0 | 0 |
+
+That shows two things: a bundle with ten exclusions builds and runs on this
+machine, and nothing new surfaced in its system folder. It does not show
+what the eight new entries do, because none of those rules had flagged
+anything in System32. The folders in which they had, the installed
+programs, have not been scanned again yet.
+
+37 files could not be read and 5 were checked in part; the run took 21 s
+from the file cache.
+
+Raw results:
+[System32](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32-false-positives.json).
