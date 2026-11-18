@@ -1,0 +1,14 @@
+# The parts of the EMBER2024 dataset that the Calibration workflow reads,
+# one per line. Each is a zip archive in the dataset's repository,
+# https://huggingface.co/datasets/joyce8/EMBER2024.
+#
+# These are all the parts that hold Windows executables. The dataset also
+# has Android packages, PDF files and ELF files, which Warden's heuristics
+# do not look at.
+Win32_train
+Win32_test
+Win64_train
+Win64_test
+Dot_Net_train
+Dot_Net_test
+challenge

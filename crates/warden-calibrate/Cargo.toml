@@ -1,0 +1,24 @@
+[package]
+name = "warden-calibrate"
+description = "Development tool: measures Warden's heuristic indicators on the EMBER2024 dataset. Not part of the scanner."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+warden-pe.workspace = true
+
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

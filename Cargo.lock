@@ -2732,6 +2732,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "warden-calibrate"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "warden-pe",
+ "zip",
+]
+
+[[package]]
 name = "warden-cli"
 version = "0.1.0"
 dependencies = [

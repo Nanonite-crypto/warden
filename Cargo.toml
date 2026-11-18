@@ -6,6 +6,7 @@ members = [
     "crates/warden-yara",
     "crates/warden-pe",
     "crates/warden-cli",
+    "crates/warden-calibrate",
 ]
 
 [workspace.package]

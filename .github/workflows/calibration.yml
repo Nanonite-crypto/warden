@@ -1,0 +1,100 @@
+name: Calibration
+
+# Measures the heuristic indicators on the EMBER2024 dataset: how often
+# each one applies to malicious and to benign files, which weight follows
+# from that, and what the score does at every threshold. The numbers in
+# docs/HEURISTICS.md come from this workflow.
+#
+# The dataset holds features and labels of 3.2 million files. It holds no
+# file content: no malware is downloaded or handled here.
+#
+# Runs by hand, or when a branch named calib-run/... is pushed. The parts
+# of the dataset to read are listed in calibration/sets.txt. Each part is
+# downloaded, counted and deleted before the next one, because the parts
+# together are larger than the runner's disk.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["calib-run/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calibration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep in step with rust-toolchain.toml.
+  RUST_TOOLCHAIN: "1.97.0"
+  DATASET: https://huggingface.co/datasets/joyce8/EMBER2024/resolve/main
+
+jobs:
+  calibrate:
+    name: Measure the indicators on EMBER2024
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install the pinned toolchain
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the calibration tool
+        run: cargo build --release --locked -p warden-calibrate
+
+      # The largest part is about 24 GB. The preinstalled SDKs that this job
+      # does not use take more than that.
+      - name: Make room on the disk
+        run: |
+          df -h / /mnt 2>/dev/null || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h / /mnt 2>/dev/null || true
+
+      - name: Download and count, one part at a time
+        run: |
+          set -euo pipefail
+          mkdir -p counts data
+          first=yes
+          grep -v '^#' calibration/sets.txt | grep -v '^[[:space:]]*$' | while read -r part; do
+            echo "::group::$part"
+            curl --fail --location --silent --show-error --retry 5 --retry-delay 10 \
+              --output "data/$part.zip" "$DATASET/$part.zip"
+            ls -l "data/$part.zip"
+            unzip -l "data/$part.zip" | tail -n 5
+            if [ "$first" = yes ]; then sample=--sample; else sample=; fi
+            first=no
+            ./target/release/warden-calibrate collect "data/$part.zip" --out "counts/$part.json" $sample
+            rm "data/$part.zip"
+            echo "::endgroup::"
+          done
+
+      - name: Report
+        run: |
+          set -euo pipefail
+          ./target/release/warden-calibrate merge counts/*.json --out ember2024-counts.json
+          ./target/release/warden-calibrate report ember2024-counts.json --json ember2024-report.json
+          ls -l ember2024-counts.json ember2024-report.json
+
+      # The counts are small, and everything in the report can be computed
+      # from them again. They are printed so that they can be taken from the
+      # log, and they go into the repository under docs/calibration.
+      - name: Print the counts
+        run: |
+          echo "::group::ember2024-counts.json, gzip, base64"
+          echo "-----BEGIN WARDEN COUNTS-----"
+          gzip -9 -c ember2024-counts.json | base64 -w 120
+          echo "-----END WARDEN COUNTS-----"
+          echo "::endgroup::"
+
+      - name: Keep the counts and the report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: calibration
+          path: |
+            ember2024-counts.json
+            ember2024-report.json
+            counts/
+          if-no-files-found: ignore
