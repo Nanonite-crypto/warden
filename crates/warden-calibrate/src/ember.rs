@@ -22,6 +22,10 @@ use warden_pe::{
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Record {
+    /// The SHA-256 of the file, in hexadecimal: what tells one file from
+    /// another.
+    #[serde(default)]
+    pub sha256: Option<String>,
     /// 1 for malicious, 0 for benign.
     pub label: Option<i64>,
     /// `Win32`, `Win64`, `Dot_Net`, `APK`, `ELF` or `PDF`.

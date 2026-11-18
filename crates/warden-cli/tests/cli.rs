@@ -1096,12 +1096,19 @@ fn inspect_shows_the_structure_and_every_indicator_that_applies() {
         "A section has a name that a packer or protector writes: sections \"UPX0\", \"UPX1\", \"UPX2\"",
         "An executable section looks compressed or encrypted: section \"UPX1\" has an entropy of 7.99 bits per byte",
         "The imports are little more than what is needed to load other functions: imports LoadLibraryA and GetProcAddress",
-        "Score       ",
-        "Verdict     ",
+        "   +10  A section is both writable and executable: sections \"UPX0\", \"UPX1\"",
+        "    +9  An executable section looks compressed or encrypted",
+        "Also seen, and not scored",
+        "     ·  A section has a name that a packer or protector writes",
+        "Score       28",
+        "Verdict     not suspicious: a file counts as suspicious from a score of 32",
+        "docs/HEURISTICS.md",
     ] {
         assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
     }
     assert!(text.contains(&sha256_hex(&packed)), "{text}");
+    // Packed, and nothing else: that is not suspicious, and not a failure.
+    assert!(output.status.success());
 
     // The same as JSON: the facts and the assessment in full.
     let json: serde_json::Value = serde_json::from_str(&stdout_of(
@@ -1133,8 +1140,58 @@ fn inspect_shows_the_structure_and_every_indicator_that_applies() {
     let first = &json["assessment"]["hits"][0];
     assert!(first["indicator"]["rationale"].as_str().unwrap().len() > 60);
     assert!(first["detail"].as_str().unwrap().contains("UPX0"));
-    assert!(json["assessment"]["score"].is_u64());
-    assert!(json["thresholds"]["suspicious"].is_u64());
+    assert_eq!(first["indicator"]["weight"], 0);
+    assert_eq!(json["assessment"]["score"], 28);
+    assert_eq!(json["assessment"]["suspicious_from"], 32);
+    assert_eq!(json["assessment"]["suspicious"], false);
+}
+
+/// A file whose score reaches the threshold: `inspect` says so, lists what
+/// the score is made of, and ends with the exit code of a detection.
+#[test]
+fn inspect_calls_a_file_suspicious_when_its_score_reaches_the_threshold() {
+    let file = warden_pe::fixture::Fixture::suspicious_looking().build();
+    let output = warden()
+        .args(["inspect", "-"])
+        .write_stdin(file.clone())
+        .assert()
+        .code(1)
+        .get_output()
+        .clone();
+    let text = String::from_utf8(output.stdout).unwrap();
+    for expected in [
+        "Imports     0 functions from 0 libraries",
+        "After the last section: 16,384 bytes with an entropy of 7.99",
+        "   +10  A section is both writable and executable",
+        "    +8  The program imports nothing: the import table is empty or missing",
+        "    +5  A quarter of the file or more sits after the last section",
+        "Score       41",
+        "Verdict     suspicious: a file counts as suspicious from a score of 32",
+        "It is not proof of",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+
+    let json: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(
+        &warden()
+            .args(["inspect", "-", "--json"])
+            .write_stdin(file)
+            .assert()
+            .code(1)
+            .get_output()
+            .stdout,
+    ))
+    .unwrap();
+    assert_eq!(json["assessment"]["score"], 41);
+    assert_eq!(json["assessment"]["suspicious"], true);
+    // The weights of the scored hits add up to the score.
+    let sum: u64 = json["assessment"]["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|hit| hit["indicator"]["weight"].as_u64().unwrap())
+        .sum();
+    assert_eq!(sum, 41);
 }
 
 #[test]

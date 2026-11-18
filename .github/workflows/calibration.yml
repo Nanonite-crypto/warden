@@ -2,19 +2,34 @@ name: Calibration
 
 # Measures the heuristic indicators on the EMBER2024 dataset: how often
 # each one applies to malicious and to benign files, which weight follows
-# from that, and what the score does at every threshold. The numbers in
-# docs/HEURISTICS.md come from this workflow.
+# from that, and what the score does at every threshold. The counts in
+# calibration/ and the numbers in docs/HEURISTICS.md come from this
+# workflow.
 #
 # The dataset holds features and labels of 3.2 million files. It holds no
 # file content: no malware is downloaded or handled here.
 #
-# Runs by hand, or when a branch named calib-run/... is pushed. The parts
-# of the dataset to read are listed in calibration/sets.txt. Each part is
-# downloaded, counted and deleted before the next one, because the parts
-# together are larger than the runner's disk.
+# A second job counts the same things on real files: the system folder of
+# the Windows runner and the software installed on it. The dataset's
+# benign files are files somebody uploaded to a scanning service; false
+# alarms happen on the files of a Windows installation, so the score is
+# checked there as well.
+#
+# Runs by hand, or when a branch named calib-run/... is pushed: the job
+# for installed files if the name goes on with "installed", the job for
+# the dataset otherwise. The parts of the dataset to read are listed in
+# calibration/sets.txt. Each part is downloaded, counted and deleted
+# before the next one, because the parts together are larger than the
+# runner's disk.
 
 on:
   workflow_dispatch:
+    inputs:
+      what:
+        description: What to measure
+        type: choice
+        options: [ember, installed, both]
+        default: ember
   push:
     branches: ["calib-run/**"]
 
@@ -34,6 +49,9 @@ env:
 jobs:
   calibrate:
     name: Measure the indicators on EMBER2024
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.what != 'installed') ||
+      (github.event_name == 'push' && !startsWith(github.ref_name, 'calib-run/installed'))
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -79,7 +97,7 @@ jobs:
 
       # The counts are small, and everything in the report can be computed
       # from them again. They are printed so that they can be taken from the
-      # log, and they go into the repository under docs/calibration.
+      # log, and they go into the repository as calibration/ember2024-counts.zip.
       - name: Print the counts
         run: |
           echo "::group::ember2024-counts.json, gzip, base64"
@@ -96,5 +114,70 @@ jobs:
           path: |
             ember2024-counts.json
             ember2024-report.json
+            counts/
+          if-no-files-found: ignore
+
+  installed:
+    name: Measure the indicators on installed Windows files
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.what != 'ember') ||
+      (github.event_name == 'push' && startsWith(github.ref_name, 'calib-run/installed'))
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install the pinned toolchain
+        shell: bash
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the calibration tool
+        run: cargo build --release --locked -p warden-calibrate
+      - name: What this machine is
+        shell: pwsh
+        run: |
+          $os = Get-CimInstance Win32_OperatingSystem
+          Write-Host "$($os.Caption), version $($os.Version), build $($os.BuildNumber)"
+          Write-Host "Runner image: $env:ImageOS $env:ImageVersion"
+
+      # Files are read and not changed. The software is whatever of this
+      # list is installed: the same list as in the false-positive workflow.
+      - name: Count
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force counts | Out-Null
+          & target\release\warden-calibrate.exe collect-files --as system C:\Windows\System32 --out counts\system.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $wanted = @(
+            'C:\Program Files\7-Zip',
+            'C:\Program Files\Git',
+            'C:\Program Files\Google\Chrome',
+            'C:\Program Files\Mozilla Firefox',
+            'C:\Program Files\PowerShell',
+            'C:\Program Files\dotnet',
+            'C:\Program Files\nodejs'
+          )
+          $present = @($wanted | Where-Object { Test-Path -LiteralPath $_ })
+          Write-Host "Software: $($present -join ', ')"
+          & target\release\warden-calibrate.exe collect-files --as software @present --out counts\software.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & target\release\warden-calibrate.exe merge counts\system.json counts\software.json --out installed-counts.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Print the counts
+        shell: bash
+        run: |
+          echo "::group::installed-counts.json, gzip, base64"
+          echo "-----BEGIN WARDEN COUNTS-----"
+          gzip -9 -c installed-counts.json | base64 -w 120
+          echo "-----END WARDEN COUNTS-----"
+          echo "::endgroup::"
+
+      - name: Keep the counts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: calibration-installed
+          path: |
+            installed-counts.json
             counts/
           if-no-files-found: ignore

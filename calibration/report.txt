@@ -1,0 +1,339 @@
+What was counted
+  (seen: the records of a dataset file, or the files in a folder; repeats: records of a file that was already counted; of other kinds: not Windows executables)
+  Dot_Net_test.zip: 120,000 seen, 59,953 counted, 60,047 repeats, 0 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+  Dot_Net_train.zip: 520,000 seen, 259,996 counted, 259,996 repeats, 0 of other kinds, 8 not readable as an executable, 0 without a label, 0 unreadable
+  Win32_test.zip: 720,000 seen, 359,872 counted, 359,884 repeats, 0 of other kinds, 244 not readable as an executable, 0 without a label, 0 unreadable
+  Win32_train.zip: 3,120,000 seen, 1,559,291 counted, 1,559,291 repeats, 0 of other kinds, 1,418 not readable as an executable, 0 without a label, 0 unreadable
+  Win64_test.zip: 240,000 seen, 119,984 counted, 119,998 repeats, 0 of other kinds, 18 not readable as an executable, 0 without a label, 0 unreadable
+  Win64_train.zip: 1,040,000 seen, 519,934 counted, 519,934 repeats, 0 of other kinds, 132 not readable as an executable, 0 without a label, 0 unreadable
+  challenge.zip: 6,315 seen, 4,868 counted, 0 repeats, 1,447 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+  C:\Windows\System32: 21,822 seen, 9,015 counted, 0 repeats, 12,769 of other kinds, 0 not readable as an executable, 0 without a label, 38 unreadable
+  C:\Program Files\7-Zip: 107 seen, 9 counted, 0 repeats, 98 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+  C:\Program Files\Git: 9,622 seen, 687 counted, 0 repeats, 8,935 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+  C:\Program Files\Google\Chrome: 273 seen, 20 counted, 0 repeats, 252 of other kinds, 0 not readable as an executable, 0 without a label, 1 unreadable
+  C:\Program Files\Mozilla Firefox: 82 seen, 50 counted, 0 repeats, 32 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+  C:\Program Files\PowerShell: 1,104 seen, 959 counted, 0 repeats, 145 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+  C:\Program Files\dotnet: 74,489 seen, 43,535 counted, 0 repeats, 30,954 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+  C:\Program Files\nodejs: 2,030 seen, 1 counted, 0 repeats, 2,029 of other kinds, 0 not readable as an executable, 0 without a label, 0 unreadable
+
+Files by part and kind
+  (train, test, challenge: the EMBER2024 dataset; system, software: files of a Windows machine, taken to be benign)
+  train      program     966,243 malicious    363,180 benign
+  train      library      64,505 malicious    658,673 benign
+  train      .NET        138,896 malicious    147,724 benign
+  test       program     224,062 malicious     63,669 benign
+  test       library      14,144 malicious    175,573 benign
+  test       .NET         31,790 malicious     30,571 benign
+  challenge  program       3,640 malicious          0 benign
+  challenge  library         386 malicious          0 benign
+  challenge  .NET            842 malicious          0 benign
+  system     program           0 malicious      1,547 benign
+  system     library           0 malicious      7,301 benign
+  system     .NET              0 malicious        167 benign
+  software   program           0 malicious        658 benign
+  software   library           0 malicious        694 benign
+  software   .NET              0 malicious     43,909 benign
+
+Indicators, each on its own
+  mal %, ben %: share of the malicious and of the benign training files it applies to
+  dB: ten times the base-ten logarithm of the ratio of the two; dB test: the same on the test part
+  program, library, .NET: dB among the training files of that kind
+  fitted: the weight the fit gives it next to the others, in dB; rule: that weight as these counts make it; use: the weight the scanner has
+                                          mal %    ben %     dB dB test   program library    .NET   fitted rule  use
+  sections.packer_name                    13.74     0.98   11.5    11.8       8.1    14.8    12.6     0.00    0    0
+  sections.writable_and_executable        45.94     1.90   13.8    15.4      11.2    12.7    12.0     9.66   10   10
+  sections.code_without_file_data         13.66     1.21   10.5    10.6       7.7    14.0    14.9     0.00    0    0
+  sections.code_mostly_in_memory          14.75     0.13   20.6    23.6      19.4    13.8    11.3     3.59    4    4
+  sections.high_entropy_code              41.75     1.83   13.6    15.5      11.5    15.0    10.9     8.86    9    9
+  sections.high_entropy_data               9.07     1.57    7.6    11.6       5.2    12.0    10.1     7.70    8    8
+  sections.no_standard_name                4.32   0.0915   16.7    15.2      17.2    13.5     4.1     1.69    0    0
+  file.high_entropy                       40.73    11.68    5.4     6.6       1.3    11.1    11.5     1.51    0    0
+  overlay.large_unsigned                  38.25     9.17    6.2     8.1       2.3     7.0    16.9     5.13    5    5
+  overlay.high_entropy                    16.98     2.88    7.7    10.5       3.6    10.6    27.8     2.42    0    0
+  entry.outside_sections                   0.77   0.0422   12.6    11.9      11.0     5.3    24.2     9.93   10   10
+  entry.in_last_section                    3.45     0.11   15.0    22.2      12.5    16.1    29.7     0.29    0    0
+  entry.not_in_first_section              28.85     5.49    7.2     9.3       4.3     8.9     6.9     0.00    0    0
+  entry.in_writable_section               26.13     1.42   12.6    12.8       9.5    13.2    18.3     0.00    0    0
+  entry.in_non_executable_section          1.51   0.0396   15.8    17.3      13.1     8.8       -     6.77    7    7
+  header.pe_header_in_dos_header           0.57   0.0003   31.7    31.7      27.4       -       -    18.15   18   18
+  sections.beyond_file                     5.82     1.31    6.5     8.8       4.0     6.6    12.8     0.94    0    0
+  imports.none                             9.21     1.53    7.8     8.7       7.5     6.9       -     7.84    8    8
+  imports.few                              3.03     0.98    4.9     7.1       3.2     8.8       -     0.00    0    0
+  imports.single_library                   5.72     4.48    1.1     2.6       0.6     0.8       -     1.51    0    0
+  imports.loader_only                      7.63     0.56   11.3    10.4       7.9    16.0       -     0.00    0    0
+  imports.process_injection                0.87     0.74    0.7     1.5      -2.0     6.0       -     0.00    0    0
+  imports.process_hollowing              0.0108   0.0353   -5.1    -1.7       2.2    -3.1       -     rare    0    0
+  imports.remote_memory                    1.58     0.80    2.9     3.9      -0.3     8.9       -     5.51    6    6
+  imports.keyboard_hook                    4.28     5.38   -1.0     1.0      -3.6     1.8       -     0.00    0    0
+  imports.debugger_checks                  0.14     0.27   -3.0     0.7      -4.9    -0.0       -     0.00    0    0
+  imports.download_to_file                 1.19     0.37    5.0     6.5       1.9    10.0       -     5.20    5    5
+  imports.winexec                         13.25     1.34    9.9    13.5       7.0     7.2       -     1.69    0    0
+  imports.token_privileges                 5.81     9.98   -2.4    -0.3      -6.0     1.0       -     0.00    0    0
+  imports.process_listing                  3.77     5.38   -1.5    -0.4      -4.9     3.8       -     0.00    0    0
+  imports.creates_service                  1.88     1.43    1.2     2.6      -1.8     3.0       -     1.08    0    0
+  header.no_aslr                          60.13    21.49    4.5     6.2       3.6     1.7     0.5     2.20    0    0
+  header.no_dep                           54.63    18.82    4.6     6.6       3.6     2.4     0.4     0.00    0    0
+  header.timestamp_zero                    5.41     5.13    0.2    -1.1       4.6    -6.3     1.3     0.19    0    0
+  header.timestamp_in_future               6.45    11.77   -2.6    -2.6       0.6    -5.9    -1.8     0.00    0    0
+  header.timestamp_before_2000            12.83     4.81    4.3     4.2       3.9    -0.9     6.5     0.00    0    0
+  header.no_checksum                      61.04    24.28    4.0     5.2       4.0     4.2     2.1     5.15    5    5
+  header.no_rich_header                   38.63    17.83    3.4     5.2       2.5     2.4       -     0.00    0    0
+  tables.no_resources                     20.68     1.41   11.6    13.8       7.4       -    14.6     4.21    4    4
+  tables.no_debug                         68.01    29.22    3.7     5.4       2.1     4.1     2.8     0.60    0    0
+  tables.tls                              22.40    34.09   -1.8    -2.3      -2.7    -0.0    -6.7     0.00    0    0
+  tables.no_relocations                   56.66    12.23    6.7     8.8       2.4       -     6.2     0.00    0    0
+  signature.none                          90.58    40.43    3.5     3.2       4.1     3.6     1.6       no    0    0
+
+Probes: other thresholds and properties, for comparison. They are not part of the scanner.
+                                          mal %    ben %     dB dB test   program library    .NET   fitted rule  use
+  probe.code_entropy_ge_6.5               58.43    23.34    4.0     5.0       2.3     4.3     6.9        -    -    -
+  probe.code_entropy_ge_6.8               43.95     2.48   12.5    14.1      11.0    13.0     9.8        -    -    -
+  probe.code_entropy_ge_7.2               31.03     1.66   12.7    14.5      10.1    15.5    11.7        -    -    -
+  probe.code_entropy_ge_7.5               26.95     1.50   12.5    14.2       9.6    15.2    12.7        -    -    -
+  probe.data_entropy_ge_7.0                9.86     2.16    6.6    10.6       4.4    10.5     7.9        -    -    -
+  probe.data_entropy_ge_7.5                8.29     1.03    9.1    13.4       6.1    14.4    13.1        -    -    -
+  probe.file_entropy_ge_6.8               52.76    17.35    4.8     5.9       1.7     7.7     8.6        -    -    -
+  probe.file_entropy_ge_7.0               47.10    13.27    5.5     6.8       1.7    10.2    10.4        -    -    -
+  probe.file_entropy_ge_7.5               33.65    10.06    5.2     6.6       0.8    12.4    12.8        -    -    -
+  probe.imports_1_to_3                     1.64     0.56    4.7     6.6       6.9     6.0       -        -    -    -
+  probe.imports_1_to_10                   10.64     1.34    9.0     8.4       7.8    10.4       -        -    -    -
+  probe.imports_1_to_20                   17.40     2.67    8.1     7.8       6.3    10.1       -        -    -    -
+  probe.overlay_share_ge_10               43.78    10.70    6.1     7.8       2.4     7.7    16.6        -    -    -
+  probe.overlay_share_ge_50               31.36     7.81    6.0     8.6       1.9     7.9    16.7        -    -    -
+  probe.sections_le_2                      3.32    12.72   -5.8    -8.1      13.6   -11.9     0.1        -    -    -
+  probe.sections_ge_8                     26.28    18.01    1.6     3.0       0.9     1.9     2.3        -    -    -
+  probe.size_lt_16k                        4.62     8.61   -2.7    -7.0       4.4    -2.1    -3.3        -    -    -
+  probe.size_ge_10m                        7.29     6.20    0.7     9.1      -2.5     2.6     4.1        -    -    -
+  probe.no_guard_cf                       94.30    87.30    0.3     0.4       0.5     0.2    -0.0        -    -    -
+  probe.no_high_entropy_va_64              4.77     2.30    3.2     7.6       3.2     1.9    -0.6        -    -    -
+  probe.program_with_exports               2.88     5.87   -3.1    -0.6      -7.3       -    -8.8        -    -    -
+  probe.driver                             0.36     1.25   -5.4    -8.2      -8.7    -2.9       -        -    -    -
+  probe.is_dll                             6.78    67.68  -10.0   -10.8         -    -0.0    -9.3        -    -    -
+  probe.is_dotnet                         11.88    12.63   -0.3     0.2         -       -    -0.0        -    -    -
+  probe.has_signature                      9.42    59.57   -8.0    -7.1      -8.6    -7.6    -5.2        -    -    -
+  probe.no_entry_point                     1.15    14.39  -11.0    -4.9       9.2   -11.6    -2.5        -    -    -
+
+The fit
+  Not offered to the fit: signature.none, because whether a signature is present says nothing about whether it is valid, and one can be appended to any file.
+  Applies to fewer than 500 malicious training files, so not offered: imports.process_hollowing.
+  Held at zero by the fit: next to the others they say nothing against a file.
+    sections.packer_name, sections.code_without_file_data, entry.not_in_first_section, entry.in_writable_section, imports.few, imports.loader_only, imports.process_injection, imports.keyboard_hook, imports.debugger_checks, imports.token_privileges, imports.process_listing, header.no_dep, header.timestamp_in_future, header.timestamp_before_2000, header.no_rich_header, tables.tls, tables.no_relocations
+  Taken out one at a time, weakest first, because the fit gave less than 3 dB:
+    header.timestamp_zero                 0.19 dB
+    entry.in_last_section                 0.29 dB
+    tables.no_debug                       0.60 dB
+    sections.beyond_file                  0.94 dB
+    imports.creates_service               1.08 dB
+    file.high_entropy                     1.51 dB
+    imports.single_library                1.51 dB
+    imports.winexec                       1.69 dB
+    sections.no_standard_name             1.69 dB
+    header.no_aslr                        2.20 dB
+    overlay.high_entropy                  2.42 dB
+  The weights that remain:
+    sections.writable_and_executable      9.66 dB  ->  10
+    sections.code_mostly_in_memory        3.59 dB  ->   4
+    sections.high_entropy_code            8.86 dB  ->   9
+    sections.high_entropy_data            7.70 dB  ->   8
+    overlay.large_unsigned                5.13 dB  ->   5
+    entry.outside_sections                9.93 dB  ->  10
+    entry.in_non_executable_section       6.77 dB  ->   7
+    header.pe_header_in_dos_header       18.15 dB  ->  18
+    imports.none                          7.84 dB  ->   8
+    imports.remote_memory                 5.51 dB  ->   6
+    imports.download_to_file              5.20 dB  ->   5
+    header.no_checksum                    5.15 dB  ->   5
+    tables.no_resources                   4.21 dB  ->   4
+  The terms for the kind of file, which are not part of the score: program -4.2 dB, library -14.2 dB, .NET -6.0 dB.
+
+The threshold
+  The lowest score that at most one in 5,000 of the benign training files of every kind reaches: 32.
+
+The scanner
+  Its weights are the weights these counts give. Its threshold is 32, which is the threshold these counts give.
+
+What a threshold of 32 does
+                                   malicious files flagged           benign files flagged
+  program    train            21.89 % (211,505 of 966,243)       0.0171 % (62 of 363,180)
+  program    test              29.57 % (66,262 of 224,062)         0.0079 % (5 of 63,669)
+  program    challenge                    0 % (0 of 3,640)                               
+  program    system                                                      0 % (0 of 1,547)
+  program    software                                                      0 % (0 of 658)
+  library    train                  1.35 % (868 of 64,505)       0.0020 % (13 of 658,673)
+  library    test                   0.98 % (138 of 14,144)       0.0057 % (10 of 175,573)
+  library    challenge                      0 % (0 of 386)                               
+  library    system                                                      0 % (0 of 7,301)
+  library    software                                                      0 % (0 of 694)
+  .NET       train                0.0641 % (89 of 138,896)             0 % (0 of 147,724)
+  .NET       test                  0.0786 % (25 of 31,790)              0 % (0 of 30,571)
+  .NET       challenge                      0 % (0 of 842)                               
+  .NET       system                                                        0 % (0 of 167)
+  .NET       software                                                   0 % (0 of 43,909)
+  all kinds  train          18.16 % (212,462 of 1,169,644)     0.0064 % (75 of 1,169,577)
+  all kinds  test              24.60 % (66,425 of 269,996)       0.0056 % (15 of 269,813)
+  all kinds  challenge                    0 % (0 of 4,868)                               
+  all kinds  system                                                      0 % (0 of 9,015)
+  all kinds  software                                                   0 % (0 of 45,261)
+
+Other thresholds
+  (share of the files with at least that score; system and software as counts)
+  program: area under the ROC curve 0.8644 on the training part, 0.8834 on the test part
+    score train mal train ben  test mal  test ben challenge           system         software
+     >=16     49.52      3.70     51.44      2.60      0.96       2 of 1,547         0 of 658
+     >=17     49.24      3.64     51.14      2.52      0.96       2 of 1,547         0 of 658
+     >=18     48.65      3.13     50.54      2.18      0.74       2 of 1,547         0 of 658
+     >=19     47.68      2.73     49.63      1.89      0.69       1 of 1,547         0 of 658
+     >=20     42.50      2.00     46.32      1.42      0.41       1 of 1,547         0 of 658
+     >=21     41.55      1.97     45.48      1.38      0.41       0 of 1,547         0 of 658
+     >=22     41.35      1.95     45.29      1.37      0.41       0 of 1,547         0 of 658
+     >=23     40.20      1.88     44.69      1.32      0.41       0 of 1,547         0 of 658
+     >=24     37.81      1.68     41.79      1.15      0.38       0 of 1,547         0 of 658
+     >=25     32.67      0.32     37.91      0.22      0.14       0 of 1,547         0 of 658
+     >=26     32.35      0.31     37.67      0.22      0.14       0 of 1,547         0 of 658
+     >=27     32.24      0.29     37.53      0.22      0.14       0 of 1,547         0 of 658
+     >=28     30.74      0.16     35.11    0.0927      0.11       0 of 1,547         0 of 658
+     >=29     28.07      0.14     32.97    0.0644      0.11       0 of 1,547         0 of 658
+     >=30     22.21    0.0341     29.90    0.0157         0       0 of 1,547         0 of 658
+     >=31     22.05    0.0218     29.77    0.0141         0       0 of 1,547         0 of 658
+     >=32     21.89    0.0171     29.57    0.0079         0       0 of 1,547         0 of 658
+     >=33     12.21    0.0088     18.15    0.0047         0       0 of 1,547         0 of 658
+     >=34     10.19    0.0047     17.64    0.0047         0       0 of 1,547         0 of 658
+     >=35     10.08    0.0047     17.61    0.0047         0       0 of 1,547         0 of 658
+     >=36      9.97    0.0039     17.52    0.0031         0       0 of 1,547         0 of 658
+     >=37      9.42    0.0028     10.18    0.0031         0       0 of 1,547         0 of 658
+     >=38      2.39    0.0019      2.46    0.0031         0       0 of 1,547         0 of 658
+     >=39      2.35    0.0017      2.43    0.0031         0       0 of 1,547         0 of 658
+     >=40      1.84    0.0017      1.74    0.0031         0       0 of 1,547         0 of 658
+     >=41      1.39    0.0014      1.09    0.0031         0       0 of 1,547         0 of 658
+     >=42      0.89    0.0008      0.91    0.0016         0       0 of 1,547         0 of 658
+  library: area under the ROC curve 0.8185 on the training part, 0.8858 on the test part
+    score train mal train ben  test mal  test ben challenge           system         software
+     >=16     22.63      0.87     25.32      0.58      3.89       1 of 7,301         0 of 694
+     >=17     22.40      0.86     25.10      0.57      3.63       1 of 7,301         0 of 694
+     >=18     21.63      0.78     23.08      0.51      3.63       0 of 7,301         0 of 694
+     >=19     19.75      0.66     21.74      0.44      3.63       0 of 7,301         0 of 694
+     >=20     16.45      0.45     17.69      0.27      2.33       0 of 7,301         0 of 694
+     >=21     16.11      0.45     17.37      0.27      2.33       0 of 7,301         0 of 694
+     >=22     15.74      0.45     16.55      0.27      2.33       0 of 7,301         0 of 694
+     >=23     14.70      0.44     15.49      0.26      2.33       0 of 7,301         0 of 694
+     >=24     13.09      0.35     14.32      0.23      2.33       0 of 7,301         0 of 694
+     >=25      5.91    0.0794      6.02    0.0330      0.52       0 of 7,301         0 of 694
+     >=26      5.76    0.0782      5.04    0.0325      0.52       0 of 7,301         0 of 694
+     >=27      5.71    0.0782      4.95    0.0325      0.52       0 of 7,301         0 of 694
+     >=28      3.01    0.0267      2.38    0.0199      0.26       0 of 7,301         0 of 694
+     >=29      2.13    0.0251      1.72    0.0199      0.26       0 of 7,301         0 of 694
+     >=30      1.57    0.0052      1.33    0.0068         0       0 of 7,301         0 of 694
+     >=31      1.48    0.0050      1.07    0.0068         0       0 of 7,301         0 of 694
+     >=32      1.35    0.0020      0.98    0.0057         0       0 of 7,301         0 of 694
+     >=33      0.43    0.0011      0.37    0.0034         0       0 of 7,301         0 of 694
+     >=34      0.39    0.0011      0.31    0.0034         0       0 of 7,301         0 of 694
+     >=35      0.38    0.0011      0.29    0.0034         0       0 of 7,301         0 of 694
+     >=36      0.35    0.0011      0.26    0.0017         0       0 of 7,301         0 of 694
+     >=37      0.27    0.0006      0.18    0.0017         0       0 of 7,301         0 of 694
+     >=38    0.0620         0    0.0495         0         0       0 of 7,301         0 of 694
+     >=39    0.0574         0    0.0283         0         0       0 of 7,301         0 of 694
+     >=40    0.0558         0    0.0283         0         0       0 of 7,301         0 of 694
+     >=41    0.0388         0    0.0141         0         0       0 of 7,301         0 of 694
+     >=42    0.0124         0    0.0071         0         0       0 of 7,301         0 of 694
+  .NET: area under the ROC curve 0.8206 on the training part, 0.8531 on the test part
+    score train mal train ben  test mal  test ben challenge           system         software
+     >=16      6.64    0.0616      7.21    0.0916      0.24         0 of 167      0 of 43,909
+     >=17      6.64    0.0616      7.21    0.0883      0.24         0 of 167      0 of 43,909
+     >=18      6.57    0.0589      7.17    0.0883      0.24         0 of 167      0 of 43,909
+     >=19      6.52    0.0589      7.13    0.0883      0.24         0 of 167      0 of 43,909
+     >=20      3.69    0.0027      4.56    0.0164         0         0 of 167      0 of 43,909
+     >=21      3.50    0.0027      4.36    0.0164         0         0 of 167      0 of 43,909
+     >=22      3.50    0.0027      4.35    0.0164         0         0 of 167      0 of 43,909
+     >=23      3.43    0.0027      4.33    0.0164         0         0 of 167      0 of 43,909
+     >=24      3.41    0.0027      4.30    0.0164         0         0 of 167      0 of 43,909
+     >=25      0.27         0      0.24         0         0         0 of 167      0 of 43,909
+     >=26      0.24         0      0.24         0         0         0 of 167      0 of 43,909
+     >=27      0.24         0      0.24         0         0         0 of 167      0 of 43,909
+     >=28      0.22         0      0.23         0         0         0 of 167      0 of 43,909
+     >=29      0.19         0      0.22         0         0         0 of 167      0 of 43,909
+     >=30    0.0698         0    0.0818         0         0         0 of 167      0 of 43,909
+     >=31    0.0684         0    0.0818         0         0         0 of 167      0 of 43,909
+     >=32    0.0641         0    0.0786         0         0         0 of 167      0 of 43,909
+     >=34    0.0310         0    0.0031         0         0         0 of 167      0 of 43,909
+     >=36    0.0022         0         0         0         0         0 of 167      0 of 43,909
+     >=38    0.0014         0         0         0         0         0 of 167      0 of 43,909
+     >=39    0.0007         0         0         0         0         0 of 167      0 of 43,909
+  all kinds: area under the ROC curve 0.8915 on the training part, 0.9149 on the test part
+    score train mal train ben  test mal  test ben challenge           system         software
+     >=16     42.94      1.65     44.86      1.00      1.07       3 of 9,015      0 of 45,261
+     >=17     42.70      1.63     44.60      0.98      1.05       3 of 9,015      0 of 45,261
+     >=18     42.16      1.42     44.00      0.86      0.88       2 of 9,015      0 of 45,261
+     >=19     41.25      1.23     43.17      0.74      0.84       1 of 9,015      0 of 45,261
+     >=20     36.46      0.88     39.91      0.52      0.49       1 of 9,015      0 of 45,261
+     >=21     35.63      0.87     39.17      0.51      0.49       0 of 9,015      0 of 45,261
+     >=22     35.44      0.86     38.96      0.50      0.49       0 of 9,015      0 of 45,261
+     >=23     34.42      0.83     38.41      0.49      0.49       0 of 9,015      0 of 45,261
+     >=24     32.36      0.72     35.94      0.42      0.47       0 of 9,015      0 of 45,261
+     >=25     27.34      0.15     31.80    0.0741      0.14       0 of 9,015      0 of 45,261
+     >=26     27.07      0.14     31.55    0.0726      0.14       0 of 9,015      0 of 45,261
+     >=27     26.98      0.13     31.43    0.0723      0.14       0 of 9,015      0 of 45,261
+     >=28     25.59    0.0644     29.29    0.0348      0.10       0 of 9,015      0 of 45,261
+     >=29     23.33    0.0564     27.48    0.0282      0.10       0 of 9,015      0 of 45,261
+     >=30     18.45    0.0135     24.89    0.0082         0       0 of 9,015      0 of 45,261
+     >=31     18.31    0.0096     24.77    0.0078         0       0 of 9,015      0 of 45,261
+     >=32     18.16    0.0064     24.60    0.0056         0       0 of 9,015      0 of 45,261
+     >=33     10.12    0.0033     15.08    0.0033         0       0 of 9,015      0 of 45,261
+     >=34      8.45    0.0021     14.65    0.0033         0       0 of 9,015      0 of 45,261
+     >=35      8.35    0.0021     14.63    0.0033         0       0 of 9,015      0 of 45,261
+     >=36      8.26    0.0018     14.56    0.0019         0       0 of 9,015      0 of 45,261
+     >=37      7.80    0.0012      8.46    0.0019         0       0 of 9,015      0 of 45,261
+     >=38      1.97    0.0006      2.05    0.0007         0       0 of 9,015      0 of 45,261
+     >=39      1.94    0.0005      2.02    0.0007         0       0 of 9,015      0 of 45,261
+     >=40      1.52    0.0005      1.44    0.0007         0       0 of 9,015      0 of 45,261
+     >=41      1.15    0.0004      0.90    0.0007         0       0 of 9,015      0 of 45,261
+     >=42      0.74    0.0003      0.76    0.0004         0       0 of 9,015      0 of 45,261
+
+Entropy of the most evenly spread executable section (training part): share of files at or above
+  >= 4.00  malicious   97.32 %   benign   86.38 %
+  >= 5.00  malicious   93.48 %   benign   83.55 %
+  >= 5.50  malicious   89.93 %   benign   78.79 %
+  >= 6.00  malicious   81.05 %   benign   64.97 %
+  >= 6.25  malicious   74.11 %   benign   50.13 %
+  >= 6.50  malicious   58.43 %   benign   23.34 %
+  >= 6.75  malicious   44.32 %   benign    3.10 %
+  >= 7.00  malicious   41.75 %   benign    1.83 %
+  >= 7.25  malicious   28.42 %   benign    1.63 %
+  >= 7.50  malicious   26.95 %   benign    1.50 %
+  >= 7.75  malicious   21.92 %   benign    1.35 %
+Entropy of the whole file (training part): share of files at or above
+  >= 4.00  malicious   95.13 %   benign   95.16 %
+  >= 5.00  malicious   87.84 %   benign   88.37 %
+  >= 5.50  malicious   82.76 %   benign   81.73 %
+  >= 6.00  malicious   74.27 %   benign   69.13 %
+  >= 6.25  malicious   68.77 %   benign   57.88 %
+  >= 6.50  malicious   62.15 %   benign   40.59 %
+  >= 6.75  malicious   55.75 %   benign   22.22 %
+  >= 7.00  malicious   48.92 %   benign   14.24 %
+  >= 7.25  malicious   41.39 %   benign   11.45 %
+  >= 7.50  malicious   33.70 %   benign   10.06 %
+  >= 7.75  malicious   25.69 %   benign    8.48 %
+Number of imported functions (training part, native programs with an entry point)
+  0         malicious   10.47 %   benign    2.05 %
+  1-5       malicious    3.45 %   benign    1.31 %
+  6-10      malicious    8.65 %   benign    0.48 %
+  11-20     malicious    7.68 %   benign    1.78 %
+  21-50     malicious    9.33 %   benign    8.27 %
+  51-100    malicious   15.22 %   benign   18.53 %
+  101-200   malicious   34.42 %   benign   31.67 %
+  201-500   malicious    9.02 %   benign   23.18 %
+  501+      malicious    1.77 %   benign   12.74 %
+Number of sections (training part)
+  0         malicious    0.18 %   benign  0.0058 %
+  1         malicious    0.34 %   benign    1.25 %
+  2         malicious    2.80 %   benign   11.46 %
+  3         malicious   24.05 %   benign   13.14 %
+  4         malicious   12.19 %   benign    5.89 %
+  5         malicious   14.70 %   benign   25.95 %
+  6         malicious   11.35 %   benign   14.91 %
+  7         malicious    8.12 %   benign    9.38 %
+  8         malicious    5.69 %   benign    5.56 %
+  9         malicious    2.36 %   benign    3.37 %
+  10        malicious    3.94 %   benign    3.60 %
+  11        malicious    1.51 %   benign    2.12 %
+  12        malicious    1.71 %   benign    1.09 %
+  13+       malicious   11.07 %   benign    2.27 %

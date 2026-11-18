@@ -6,7 +6,7 @@
 //! computed from those counts, for any choice of weights, without reading
 //! the dataset again.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -37,6 +37,12 @@ pub enum Subset {
     Test,
     /// Malicious files that no antivirus product detected at first.
     Challenge,
+    /// Not from the dataset: the system files of a Windows installation,
+    /// counted by `collect-files`. Taken to be benign.
+    System,
+    /// Not from the dataset: software installed on a Windows machine,
+    /// counted by `collect-files`. Taken to be benign.
+    Software,
 }
 
 impl Subset {
@@ -59,7 +65,15 @@ impl Subset {
             Self::Train => "train",
             Self::Test => "test",
             Self::Challenge => "challenge",
+            Self::System => "system",
+            Self::Software => "software",
         }
+    }
+
+    /// Whether the part comes from the dataset, and not from the files of
+    /// a machine.
+    pub fn is_dataset(self) -> bool {
+        matches!(self, Self::Train | Self::Test | Self::Challenge)
     }
 }
 
@@ -76,8 +90,6 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Self; 3] = [Self::Win32, Self::Win64, Self::DotNet];
-
     fn from_name(name: &str) -> Option<Self> {
         match name {
             "Win32" => Some(Self::Win32),
@@ -87,11 +99,15 @@ impl Kind {
         }
     }
 
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Win32 => "Win32",
-            Self::Win64 => "Win64",
-            Self::DotNet => ".NET",
+    /// The kind a file would have in the dataset, told from the file.
+    pub fn of(facts: &PeFacts) -> Self {
+        if facts.is_dotnet() {
+            Self::DotNet
+        } else {
+            match facts.format {
+                warden_pe::Format::Pe32 => Self::Win32,
+                warden_pe::Format::Pe32Plus => Self::Win64,
+            }
         }
     }
 }
@@ -262,7 +278,7 @@ pub fn bit_names() -> Vec<String> {
 }
 
 /// Which indicators and probes apply to a file, one bit each.
-fn pattern_of(facts: &PeFacts, context: &Context) -> u128 {
+pub(crate) fn pattern_of(facts: &PeFacts, context: &Context) -> u128 {
     let mut pattern = 0u128;
     let hits = evaluate(facts, context);
     let mut hit_ids = hits.iter().map(|hit| hit.indicator.id).peekable();
@@ -349,6 +365,10 @@ pub struct InputSummary {
     pub records: u64,
     /// Records of Windows executables with a label, which were counted.
     pub counted: u64,
+    /// Records of a file that was already counted in the same run. The
+    /// dataset's training and test files hold every record twice.
+    #[serde(default)]
+    pub duplicates: u64,
     /// Records of other kinds of file: Android packages, PDF and ELF files.
     pub other_kinds: u64,
     /// Records the dataset's own parser could not read as an executable.
@@ -376,16 +396,93 @@ pub struct Collected {
     pub first_errors: Vec<String>,
 }
 
+type GroupCounts = HashMap<(Subset, Kind, bool, u128), u64>;
+type DistributionCounts = HashMap<(Subset, bool, usize), Vec<u64>>;
+
+fn count_into(
+    groups: &mut GroupCounts,
+    distributions: &mut DistributionCounts,
+    (subset, kind, malicious): (Subset, Kind, bool),
+    facts: &PeFacts,
+    context: &Context,
+) {
+    *groups
+        .entry((subset, kind, malicious, pattern_of(facts, context)))
+        .or_insert(0) += 1;
+    for (index, bin) in distribution_bins(facts).into_iter().enumerate() {
+        distributions
+            .entry((subset, malicious, index))
+            .or_insert_with(|| vec![0; distribution_len(index)])[bin] += 1;
+    }
+}
+
+impl Collected {
+    /// Reads counts from a file written by this tool: JSON, or a zip
+    /// archive that holds one JSON file, which is how large counts are kept
+    /// in the repository.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the file cannot be read or does not hold counts.
+    pub fn read(path: &Path) -> anyhow::Result<Self> {
+        let is_zip = path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"));
+        let text = if is_zip {
+            let file =
+                File::open(path).with_context(|| format!("cannot open {}", path.display()))?;
+            let mut archive = zip::ZipArchive::new(BufReader::new(file))
+                .with_context(|| format!("{} is not a zip archive", path.display()))?;
+            if archive.len() != 1 {
+                bail!(
+                    "{} holds {} files; counts are one file",
+                    path.display(),
+                    archive.len()
+                );
+            }
+            let mut text = String::new();
+            archive
+                .by_index(0)?
+                .read_to_string(&mut text)
+                .with_context(|| format!("cannot read {}", path.display()))?;
+            text
+        } else {
+            std::fs::read_to_string(path)
+                .with_context(|| format!("cannot read {}", path.display()))?
+        };
+        serde_json::from_str(&text)
+            .with_context(|| format!("{} does not hold counts", path.display()))
+    }
+}
+
 #[derive(Default)]
-struct Tally {
-    groups: HashMap<(Subset, Kind, bool, u128), u64>,
-    distributions: HashMap<(Subset, bool, usize), Vec<u64>>,
-    inputs: BTreeMap<usize, InputSummary>,
-    errors: Vec<String>,
+pub(crate) struct Tally {
+    groups: GroupCounts,
+    distributions: DistributionCounts,
+    pub(crate) inputs: BTreeMap<usize, InputSummary>,
+    pub(crate) errors: Vec<String>,
 }
 
 impl Tally {
-    fn merge(&mut self, other: Tally) {
+    /// Counts one file.
+    pub(crate) fn count(
+        &mut self,
+        subset: Subset,
+        kind: Kind,
+        malicious: bool,
+        facts: &PeFacts,
+        context: &Context,
+    ) {
+        count_into(
+            &mut self.groups,
+            &mut self.distributions,
+            (subset, kind, malicious),
+            facts,
+            context,
+        );
+    }
+
+    pub(crate) fn merge(&mut self, other: Tally) {
         for (key, files) in other.groups {
             *self.groups.entry(key).or_insert(0) += files;
         }
@@ -403,12 +500,64 @@ impl Tally {
             total.name = summary.name;
             total.records += summary.records;
             total.counted += summary.counted;
+            total.duplicates += summary.duplicates;
             total.other_kinds += summary.other_kinds;
             total.not_parsed_as_pe += summary.not_parsed_as_pe;
             total.unlabelled += summary.unlabelled;
             total.unreadable += summary.unreadable;
         }
         self.errors.extend(other.errors);
+    }
+
+    /// Turns the tally into counts. `names` are the names of the inputs, in
+    /// the order of their indices.
+    pub(crate) fn finish(mut self, names: Vec<String>) -> Collected {
+        let mut inputs = Vec::with_capacity(names.len());
+        for (index, name) in names.into_iter().enumerate() {
+            let mut summary = self.inputs.remove(&index).unwrap_or_default();
+            summary.name = name;
+            inputs.push(summary);
+        }
+        let mut groups: Vec<Group> = self
+            .groups
+            .into_iter()
+            .map(|((subset, kind, malicious, pattern), files)| Group {
+                subset,
+                kind,
+                malicious,
+                pattern: format!("{pattern:x}"),
+                files,
+            })
+            .collect();
+        groups.sort_by(|left, right| {
+            (left.subset, left.kind, left.malicious, &left.pattern).cmp(&(
+                right.subset,
+                right.kind,
+                right.malicious,
+                &right.pattern,
+            ))
+        });
+        let distributions = self
+            .distributions
+            .into_iter()
+            .map(|((subset, malicious, index), counts)| {
+                let label = if malicious { "malicious" } else { "benign" };
+                (
+                    format!("{}/{label}/{}", subset.name(), DISTRIBUTIONS[index]),
+                    counts,
+                )
+            })
+            .collect();
+        self.errors.sort();
+        self.errors.truncate(5);
+        Collected {
+            schema: SCHEMA,
+            inputs,
+            bits: bit_names(),
+            groups,
+            distributions,
+            first_errors: self.errors,
+        }
     }
 }
 
@@ -482,15 +631,40 @@ fn units_of(input: usize, path: &Path) -> anyhow::Result<Vec<Unit>> {
     Ok(units)
 }
 
+/// The files counted so far in a run, by their SHA-256.
+type Seen = Mutex<HashSet<[u8; 32]>>;
+
+/// A SHA-256 in hexadecimal as bytes. `None` for anything else.
+fn digest_of(hex: &str) -> Option<[u8; 32]> {
+    let hex = hex.as_bytes();
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut digest = [0u8; 32];
+    for (byte, pair) in digest.iter_mut().zip(hex.chunks_exact(2)) {
+        let high = char::from(pair[0]).to_digit(16)?;
+        let low = char::from(pair[1]).to_digit(16)?;
+        *byte = (high * 16 + low) as u8;
+    }
+    Some(digest)
+}
+
 fn count_unit(
     unit: &Unit,
     tally: &mut Tally,
+    seen: &Seen,
     sample: &Mutex<Option<String>>,
 ) -> anyhow::Result<()> {
     let file =
         File::open(&unit.path).with_context(|| format!("cannot open {}", unit.path.display()))?;
     match unit.member {
-        None => count_lines(unit, BufReader::with_capacity(1 << 20, file), tally, sample),
+        None => count_lines(
+            unit,
+            BufReader::with_capacity(1 << 20, file),
+            tally,
+            seen,
+            sample,
+        ),
         Some(index) => {
             let mut archive = zip::ZipArchive::new(BufReader::new(file))?;
             let member = archive.by_index(index)?;
@@ -498,6 +672,7 @@ fn count_unit(
                 unit,
                 BufReader::with_capacity(1 << 20, member),
                 tally,
+                seen,
                 sample,
             )
         }
@@ -508,6 +683,7 @@ fn count_lines(
     unit: &Unit,
     mut reader: impl BufRead,
     tally: &mut Tally,
+    seen: &Seen,
     sample: &Mutex<Option<String>>,
 ) -> anyhow::Result<()> {
     let summary = tally.inputs.entry(unit.input).or_default();
@@ -555,6 +731,16 @@ fn count_lines(
                 continue;
             }
         };
+        // A file is counted once, however often the dataset lists it. A
+        // record without a usable digest cannot be told from another and is
+        // counted as it comes.
+        if let Some(digest) = record.sha256.as_deref().and_then(digest_of) {
+            let first_time = seen.lock().map_or(true, |mut seen| seen.insert(digest));
+            if !first_time {
+                summary.duplicates += 1;
+                continue;
+            }
+        }
         summary.counted += 1;
 
         if let Ok(mut slot) = sample.lock()
@@ -571,16 +757,13 @@ fn count_lines(
                 .first_submission_date
                 .map_or(0, |seconds| seconds.max(0.0) as u64),
         };
-        *tally
-            .groups
-            .entry((unit.subset, kind, malicious, pattern_of(&facts, &context)))
-            .or_insert(0) += 1;
-        for (index, bin) in distribution_bins(&facts).into_iter().enumerate() {
-            tally
-                .distributions
-                .entry((unit.subset, malicious, index))
-                .or_insert_with(|| vec![0; distribution_len(index)])[bin] += 1;
-        }
+        count_into(
+            &mut tally.groups,
+            &mut tally.distributions,
+            (unit.subset, kind, malicious),
+            &facts,
+            &context,
+        );
     }
     Ok(())
 }
@@ -655,6 +838,7 @@ pub fn collect(paths: &[PathBuf], threads: usize) -> anyhow::Result<(Collected, 
         units.extend(units_of(input, path)?);
     }
     let queue = Mutex::new(units);
+    let seen = Seen::default();
     let sample = Mutex::new(None);
     let failure: Mutex<Option<anyhow::Error>> = Mutex::new(None);
 
@@ -672,7 +856,7 @@ pub fn collect(paths: &[PathBuf], threads: usize) -> anyhow::Result<(Collected, 
                         let Some(unit) = unit else {
                             break;
                         };
-                        if let Err(error) = count_unit(&unit, &mut tally, &sample) {
+                        if let Err(error) = count_unit(&unit, &mut tally, &seen, &sample) {
                             if let Ok(mut slot) = failure.lock() {
                                 slot.get_or_insert(error);
                             }
@@ -693,57 +877,8 @@ pub fn collect(paths: &[PathBuf], threads: usize) -> anyhow::Result<(Collected, 
         return Err(error);
     }
 
-    let mut inputs = Vec::with_capacity(names.len());
-    for (index, name) in names.into_iter().enumerate() {
-        let mut summary = total.inputs.remove(&index).unwrap_or_default();
-        summary.name = name;
-        inputs.push(summary);
-    }
-    let mut groups: Vec<Group> = total
-        .groups
-        .into_iter()
-        .map(|((subset, kind, malicious, pattern), files)| Group {
-            subset,
-            kind,
-            malicious,
-            pattern: format!("{pattern:x}"),
-            files,
-        })
-        .collect();
-    groups.sort_by(|left, right| {
-        (left.subset, left.kind, left.malicious, &left.pattern).cmp(&(
-            right.subset,
-            right.kind,
-            right.malicious,
-            &right.pattern,
-        ))
-    });
-    let distributions = total
-        .distributions
-        .into_iter()
-        .map(|((subset, malicious, index), counts)| {
-            let label = if malicious { "malicious" } else { "benign" };
-            (
-                format!("{}/{label}/{}", subset.name(), DISTRIBUTIONS[index]),
-                counts,
-            )
-        })
-        .collect();
-    total.errors.sort();
-    total.errors.truncate(5);
-
     let sample = sample.into_inner().ok().flatten();
-    Ok((
-        Collected {
-            schema: SCHEMA,
-            inputs,
-            bits: bit_names(),
-            groups,
-            distributions,
-            first_errors: total.errors,
-        },
-        sample,
-    ))
+    Ok((total.finish(names), sample))
 }
 
 /// Adds up the counts of several runs. They must have been made with the
@@ -919,6 +1054,75 @@ mod tests {
         let mut other = collected.clone();
         other.bits.pop();
         assert!(merge(vec![collected, other]).is_err());
+    }
+
+    /// The dataset's training and test files list every file twice. A
+    /// file is told from another by its SHA-256 and counted once, across
+    /// the weekly files of a run.
+    #[test]
+    fn a_file_the_dataset_lists_twice_is_counted_once() {
+        let plain = warden_pe::read(&Fixture::plain().build()).unwrap();
+        let record = |digest: &str| {
+            let json = record_json(&plain, 0, "Win64", 1_700_000_000);
+            let with_digest = json.replace(r#""sha256":"00""#, &format!(r#""sha256":"{digest}""#));
+            assert_ne!(with_digest, json);
+            format!("{with_digest}\n")
+        };
+        let first = "a".repeat(64);
+        let second = "b".repeat(64);
+        let dir = tempfile::tempdir().unwrap();
+        let week_one = dir.path().join("2024-09-01_Win64_train.jsonl");
+        let week_two = dir.path().join("2024-09-08_Win64_train.jsonl");
+        std::fs::write(
+            &week_one,
+            format!("{}{}{}", record(&first), record(&second), record(&first)),
+        )
+        .unwrap();
+        std::fs::write(
+            &week_two,
+            // The same file again in another week, in capitals; and two
+            // records whose digest is none, which cannot be told apart.
+            format!(
+                "{}{}{}",
+                record(&second.to_uppercase()),
+                record("not a digest"),
+                record("not a digest")
+            ),
+        )
+        .unwrap();
+
+        let (collected, _) = collect(&[week_one, week_two], 2).unwrap();
+        let total = |pick: fn(&InputSummary) -> u64| collected.inputs.iter().map(pick).sum::<u64>();
+        assert_eq!(
+            total(|input| input.records),
+            6,
+            "{:?}",
+            collected.first_errors
+        );
+        assert_eq!(total(|input| input.counted), 4);
+        assert_eq!(total(|input| input.duplicates), 2);
+        assert_eq!(
+            collected
+                .groups
+                .iter()
+                .map(|group| group.files)
+                .sum::<u64>(),
+            4
+        );
+
+        // Counts that were written before duplicates were told apart can
+        // still be read.
+        let mut old = serde_json::to_value(&collected).unwrap();
+        for input in old["inputs"].as_array_mut().unwrap() {
+            input.as_object_mut().unwrap().remove("duplicates");
+        }
+        let old: Collected = serde_json::from_value(old).unwrap();
+        assert_eq!(old.inputs[0].duplicates, 0);
+
+        assert_eq!(digest_of(&first), Some([0xaa; 32]));
+        assert_eq!(digest_of(&"A".repeat(64)), Some([0xaa; 32]));
+        assert_eq!(digest_of(&"a".repeat(63)), None);
+        assert_eq!(digest_of(&"g".repeat(64)), None);
     }
 
     #[test]

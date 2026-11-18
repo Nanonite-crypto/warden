@@ -10,9 +10,7 @@ use anyhow::{Context as _, bail};
 use clap::Args;
 use serde::Serialize;
 use warden_engine::ScanOptions;
-use warden_pe::{
-    Assessment, Context, Directory, Format, Group, Hit, Level, PeFacts, Thresholds, assess, read,
-};
+use warden_pe::{Assessment, Context, Directory, Format, Group, Hit, PeFacts, assess, read};
 
 use crate::EXIT_FOUND;
 use crate::render::{group_digits, human_timestamp, shown, shown_path};
@@ -58,7 +56,6 @@ struct Inspection<'a> {
     facts: Option<&'a PeFacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     assessment: Option<&'a Assessment>,
-    thresholds: Thresholds,
 }
 
 fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
@@ -91,12 +88,11 @@ fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
 pub fn run(args: &InspectArgs) -> anyhow::Result<ExitCode> {
     let content = read_file(&args.file)?;
     let sha256 = warden_sigdb::hex::encode(&warden_engine::sha256(&content));
-    let thresholds = Thresholds::DEFAULT;
     let outcome = read(&content);
     let assessment = outcome
         .as_ref()
         .ok()
-        .map(|facts| assess(facts, &Context::now(), &thresholds));
+        .map(|facts| assess(facts, &Context::now()));
 
     if args.json {
         let inspection = Inspection {
@@ -109,7 +105,6 @@ pub fn run(args: &InspectArgs) -> anyhow::Result<ExitCode> {
             not_an_executable_because: outcome.as_ref().err().map(ToString::to_string),
             facts: outcome.as_ref().ok(),
             assessment: assessment.as_ref(),
-            thresholds,
         };
         println!("{}", serde_json::to_string_pretty(&inspection)?);
     } else {
@@ -134,7 +129,7 @@ pub fn run(args: &InspectArgs) -> anyhow::Result<ExitCode> {
         match (&outcome, &assessment) {
             (Ok(facts), Some(assessment)) => {
                 facts_text(&mut out, facts, args.all);
-                assessment_text(&mut out, assessment, &thresholds, args.all);
+                assessment_text(&mut out, assessment, args.all);
             }
             (Err(reason), _) => {
                 let _ = writeln!(out, "Kind        not a Windows executable: {reason}");
@@ -149,7 +144,7 @@ pub fn run(args: &InspectArgs) -> anyhow::Result<ExitCode> {
         print!("{out}");
     }
 
-    let suspicious = assessment.is_some_and(|assessment| assessment.level == Level::Suspicious);
+    let suspicious = assessment.is_some_and(|assessment| assessment.suspicious);
     Ok(if suspicious {
         ExitCode::from(EXIT_FOUND)
     } else {
@@ -429,7 +424,7 @@ fn hit_text(out: &mut String, hit: &Hit, explain: bool) {
     }
 }
 
-fn assessment_text(out: &mut String, assessment: &Assessment, thresholds: &Thresholds, all: bool) {
+fn assessment_text(out: &mut String, assessment: &Assessment, all: bool) {
     let _ = writeln!(out);
     let scored: Vec<&Hit> = assessment.scored().collect();
     let unscored: Vec<&Hit> = assessment.unscored().collect();
@@ -447,7 +442,7 @@ fn assessment_text(out: &mut String, assessment: &Assessment, thresholds: &Thres
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "Also seen, and not scored: too common in clean files, or too rare to measure"
+            "Also seen, and not scored: measured next to the others these add nothing, or they are left out on purpose"
         );
         for hit in &unscored {
             hit_text(out, hit, all);
@@ -456,28 +451,27 @@ fn assessment_text(out: &mut String, assessment: &Assessment, thresholds: &Thres
 
     let _ = writeln!(out);
     let _ = writeln!(out, "Score       {}", assessment.score);
-    let verdict = if thresholds.suspicious == u32::MAX {
-        "none: the indicators have not been given weights yet".to_owned()
+    let verdict = if assessment.suspicious {
+        format!(
+            "suspicious: a file counts as suspicious from a score of {}",
+            assessment.suspicious_from
+        )
     } else {
-        match assessment.level {
-            Level::Suspicious => format!(
-                "suspicious: a file counts as suspicious from a score of {}",
-                thresholds.suspicious
-            ),
-            Level::Noted => format!(
-                "noted, not suspicious: a file counts as suspicious from a score of {}",
-                thresholds.suspicious
-            ),
-            Level::Unremarkable => format!(
-                "unremarkable: a file counts as suspicious from a score of {}",
-                thresholds.suspicious
-            ),
-        }
+        format!(
+            "not suspicious: a file counts as suspicious from a score of {}",
+            assessment.suspicious_from
+        )
     };
     let _ = writeln!(out, "Verdict     {verdict}");
     let _ = writeln!(out);
     out.push_str(&wrapped(
-        "The score says how unusual the file's structure is. It is not proof of anything: clean programs are packed and protected too, and malware can be built to look plain.",
+        "A weight says how much an indicator shifts the odds that a file is malicious: 10 is tenfold, 20 a hundredfold. The weights are fitted to the 2.3 million files of the training weeks of the EMBER2024 dataset; docs/HEURISTICS.md has the numbers.",
+        "",
+        WRAP_AT,
+    ));
+    let _ = writeln!(out);
+    out.push_str(&wrapped(
+        "The score says how unusual the structure of the file is. It is not proof of anything: clean programs are packed and protected too, and malware can be built to look plain.",
         "",
         WRAP_AT,
     ));

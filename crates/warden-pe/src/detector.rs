@@ -7,7 +7,7 @@ use warden_engine::{
     ThreatCategory,
 };
 
-use crate::assess::{Assessment, Level, Thresholds, assess};
+use crate::assess::{Assessment, SUSPICIOUS_FROM, assess_with};
 use crate::indicators::{self, Context};
 use crate::reader::read;
 
@@ -16,26 +16,33 @@ pub const FINDING_NAME: &str = "Heuristic.SuspiciousExecutable";
 
 /// Judges Windows executables by their structure.
 ///
-/// The strongest finding it makes has [`Confidence::Medium`], which the
-/// default verdict policy reports as suspicious: a file is shown to the
-/// user, and nothing is done to it. Structure alone never makes a file
-/// malicious.
-#[derive(Debug, Clone, Default)]
+/// The finding it makes has [`Confidence::Medium`], which the default
+/// verdict policy reports as suspicious: the file is shown to the user,
+/// and nothing is done to it. Structure alone never makes a file malicious.
+#[derive(Debug, Clone)]
 pub struct PeDetector {
-    thresholds: Thresholds,
+    suspicious_from: u32,
 }
 
 impl PeDetector {
-    /// A detector with Warden's thresholds.
+    /// A detector with Warden's threshold.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            suspicious_from: SUSPICIOUS_FROM,
+        }
     }
 
-    /// A detector with other thresholds.
+    /// A detector that counts a file as suspicious from another score.
     #[must_use]
-    pub fn with_thresholds(thresholds: Thresholds) -> Self {
-        Self { thresholds }
+    pub fn with_threshold(suspicious_from: u32) -> Self {
+        Self { suspicious_from }
+    }
+}
+
+impl Default for PeDetector {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -64,11 +71,7 @@ impl Detector for PeDetector {
         );
         details.insert(
             "suspicious_from",
-            InfoValue::Count(u64::from(self.thresholds.suspicious)),
-        );
-        details.insert(
-            "noted_from",
-            InfoValue::Count(u64::from(self.thresholds.noted)),
+            InfoValue::Count(u64::from(self.suspicious_from)),
         );
         DetectorInfo {
             id: self.id(),
@@ -78,14 +81,14 @@ impl Detector for PeDetector {
 
     fn session(&self) -> Box<dyn Session + '_> {
         Box::new(PeSession {
-            thresholds: self.thresholds,
+            suspicious_from: self.suspicious_from,
             context: Context::now(),
         })
     }
 }
 
 struct PeSession {
-    thresholds: Thresholds,
+    suspicious_from: u32,
     context: Context,
 }
 
@@ -97,24 +100,21 @@ impl Session for PeSession {
         let Ok(facts) = read(content) else {
             return Ok(Vec::new());
         };
-        let assessment = assess(&facts, &self.context, &self.thresholds);
-        Ok(finding_for(&assessment, &self.thresholds)
-            .into_iter()
-            .collect())
+        let assessment = assess_with(&facts, &self.context, self.suspicious_from);
+        Ok(finding_for(&assessment).into_iter().collect())
     }
 }
 
-/// The finding an assessment amounts to, if any.
+/// The finding an assessment amounts to: one if the file is suspicious,
+/// none otherwise. Its reasons are the indicators behind the score.
 #[must_use]
-pub fn finding_for(assessment: &Assessment, thresholds: &Thresholds) -> Option<Finding> {
-    let confidence = match assessment.level {
-        Level::Unremarkable => return None,
-        Level::Noted => Confidence::Low,
-        Level::Suspicious => Confidence::Medium,
-    };
+pub fn finding_for(assessment: &Assessment) -> Option<Finding> {
+    if !assessment.suspicious {
+        return None;
+    }
     let mut reasons = vec![format!(
-        "The file's structure scores {}; a file counts as suspicious from {}",
-        assessment.score, thresholds.suspicious
+        "The structure of the file scores {}; a file counts as suspicious from {}",
+        assessment.score, assessment.suspicious_from
     )];
     reasons.extend(assessment.scored().map(|hit| {
         format!(
@@ -126,7 +126,7 @@ pub fn finding_for(assessment: &Assessment, thresholds: &Thresholds) -> Option<F
         "heuristic",
         FINDING_NAME,
         ThreatCategory::Malware,
-        confidence,
+        Confidence::Medium,
         reasons,
     ))
 }

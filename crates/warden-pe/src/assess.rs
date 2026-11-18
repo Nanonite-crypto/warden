@@ -1,69 +1,27 @@
-//! From indicators to a score, and from a score to a level.
+//! From indicators to a score, and from a score to a judgement.
 
 use serde::Serialize;
 
 use crate::facts::PeFacts;
 use crate::indicators::{Context, Hit, evaluate};
 
-/// What a score amounts to.
+/// The score from which a file counts as suspicious.
 ///
-/// The order matters: later levels are stronger.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Level {
-    /// Nothing that adds up to anything.
-    Unremarkable,
-    /// Worth recording in a report. No verdict follows from it.
-    Noted,
-    /// Unusual enough to show to the user as suspicious.
-    Suspicious,
-}
-
-/// The scores at which the levels start.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct Thresholds {
-    /// Lowest score that is recorded.
-    pub noted: u32,
-    /// Lowest score that makes a file suspicious.
-    pub suspicious: u32,
-}
-
-impl Thresholds {
-    /// The thresholds Warden uses.
-    ///
-    /// Not set yet: the indicators have no weights until they have been
-    /// measured, so no score can reach a level.
-    pub const DEFAULT: Self = Self {
-        noted: u32::MAX,
-        suspicious: u32::MAX,
-    };
-
-    /// The level a score reaches.
-    #[must_use]
-    pub fn level(&self, score: u32) -> Level {
-        if score >= self.suspicious {
-            Level::Suspicious
-        } else if score >= self.noted {
-            Level::Noted
-        } else {
-            Level::Unremarkable
-        }
-    }
-}
-
-impl Default for Thresholds {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
+/// It is the lowest score that at most one in 5,000 of the benign files
+/// of any kind reaches in the training weeks of EMBER2024. The calibration
+/// tool computes it from the counts in `calibration/`, and a test fails if
+/// this number is not what the counts give.
+pub const SUSPICIOUS_FROM: u32 = 32;
 
 /// The heuristic judgement of one file, with everything it rests on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Assessment {
     /// The sum of the weights of the indicators that apply.
     pub score: u32,
-    /// What the score amounts to.
-    pub level: Level,
+    /// The score from which a file counts as suspicious.
+    pub suspicious_from: u32,
+    /// Whether the score reaches it.
+    pub suspicious: bool,
     /// Every indicator that applies, in the order they are defined. Those
     /// with weight zero are listed and add nothing to the score.
     pub hits: Vec<Hit>,
@@ -87,34 +45,61 @@ pub fn score_of(hits: &[Hit]) -> u32 {
     hits.iter().map(|hit| u32::from(hit.indicator.weight)).sum()
 }
 
-/// Judges a file by its facts.
+/// Judges a file by its facts, with Warden's threshold.
 #[must_use]
-pub fn assess(facts: &PeFacts, context: &Context, thresholds: &Thresholds) -> Assessment {
+pub fn assess(facts: &PeFacts, context: &Context) -> Assessment {
+    assess_with(facts, context, SUSPICIOUS_FROM)
+}
+
+/// Judges a file by its facts, with another threshold.
+#[must_use]
+pub fn assess_with(facts: &PeFacts, context: &Context, suspicious_from: u32) -> Assessment {
     let hits = evaluate(facts, context);
     let score = score_of(&hits);
     Assessment {
         score,
-        level: thresholds.level(score),
+        suspicious_from,
+        suspicious: score >= suspicious_from,
         hits,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
+    use crate::fixture::Fixture;
+    use crate::reader::read;
 
     #[test]
-    fn levels_start_at_their_thresholds() {
-        let thresholds = Thresholds {
-            noted: 10,
-            suspicious: 25,
-        };
-        assert_eq!(thresholds.level(0), Level::Unremarkable);
-        assert_eq!(thresholds.level(9), Level::Unremarkable);
-        assert_eq!(thresholds.level(10), Level::Noted);
-        assert_eq!(thresholds.level(24), Level::Noted);
-        assert_eq!(thresholds.level(25), Level::Suspicious);
-        assert_eq!(thresholds.level(u32::MAX), Level::Suspicious);
-        assert!(Level::Suspicious > Level::Noted && Level::Noted > Level::Unremarkable);
+    fn a_file_is_suspicious_from_the_threshold_on() {
+        let facts = read(&Fixture::packed_looking().build()).unwrap();
+        let context = Context::now();
+        let score = assess(&facts, &context).score;
+        assert!(score > 0, "the packed-looking fixture scores nothing");
+
+        let at = assess_with(&facts, &context, score);
+        assert!(at.suspicious);
+        assert_eq!(at.suspicious_from, score);
+        let above = assess_with(&facts, &context, score + 1);
+        assert!(!above.suspicious);
+        assert_eq!(above.score, score);
+        assert_eq!(above.hits, at.hits);
+    }
+
+    #[test]
+    fn the_score_is_the_sum_of_the_weights_of_the_scored_hits() {
+        let facts = read(&Fixture::packed_looking().build()).unwrap();
+        let assessment = assess(&facts, &Context::now());
+        let sum: u32 = assessment
+            .scored()
+            .map(|hit| u32::from(hit.indicator.weight))
+            .sum();
+        assert_eq!(assessment.score, sum);
+        assert_eq!(
+            assessment.scored().count() + assessment.unscored().count(),
+            assessment.hits.len()
+        );
     }
 }

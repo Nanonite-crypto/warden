@@ -13,7 +13,7 @@
 use proptest::prelude::*;
 use warden_pe::fixture::{Filler, Fixture, FixtureImport};
 use warden_pe::indicators::{Context, evaluate};
-use warden_pe::{MAX_FUNCTIONS, MAX_LIBRARIES, MAX_SECTIONS, PeFacts, Thresholds, assess, read};
+use warden_pe::{MAX_FUNCTIONS, MAX_LIBRARIES, MAX_SECTIONS, PeFacts, assess, read};
 
 const NOW: Context = Context {
     now_unix_secs: 1_748_736_000,
@@ -58,7 +58,7 @@ fn check(facts: &PeFacts, input_len: usize) {
     for hit in &hits {
         assert!(!hit.detail.is_empty());
     }
-    let assessment = assess(facts, &NOW, &Thresholds::DEFAULT);
+    let assessment = assess(facts, &NOW);
     assert_eq!(assessment.hits.len(), hits.len());
 }
 

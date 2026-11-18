@@ -7,7 +7,8 @@
 //!
 //! The files have the structure of Windows executables and no behaviour:
 //! see `warden_pe::fixture`. An antivirus that judges files by structure
-//! may still object to `packed-looking.exe`, which is the point of it.
+//! may still object to `packed-looking.exe` and `suspicious-looking.exe`,
+//! which is the point of them.
 
 use std::path::PathBuf;
 
@@ -22,6 +23,7 @@ fn main() -> std::io::Result<()> {
     for (name, fixture) in [
         ("plain.exe", Fixture::plain()),
         ("packed-looking.exe", Fixture::packed_looking()),
+        ("suspicious-looking.exe", Fixture::suspicious_looking()),
     ] {
         let path = folder.join(name);
         std::fs::write(&path, fixture.build())?;

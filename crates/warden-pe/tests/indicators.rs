@@ -474,3 +474,70 @@ fn the_list_of_indicators_is_well_formed() {
     }
     assert!(indicators::by_id("no.such_indicator").is_none());
 }
+
+/// The three ready-made fixtures, and what the score makes of them.
+#[test]
+fn packed_is_not_suspicious_and_packed_without_imports_with_a_payload_is() {
+    use warden_pe::{SUSPICIOUS_FROM, assess};
+
+    let plain = assess(&facts_of(&Fixture::plain()), &NOW);
+    let packed = assess(&facts_of(&Fixture::packed_looking()), &NOW);
+    let suspicious = assess(&facts_of(&Fixture::suspicious_looking()), &NOW);
+
+    assert!(!plain.suspicious);
+    assert!(
+        plain.score < 10,
+        "an ordinary program scores {}",
+        plain.score
+    );
+    // A lot of clean software is packed, and the fitted weights know it.
+    assert!(!packed.suspicious);
+    assert!(packed.score > plain.score && packed.score < SUSPICIOUS_FROM);
+    assert!(suspicious.suspicious);
+    assert!(suspicious.score >= SUSPICIOUS_FROM);
+    assert_eq!(suspicious.suspicious_from, SUSPICIOUS_FROM);
+
+    let scored: BTreeSet<&str> = suspicious.scored().map(|hit| hit.indicator.id).collect();
+    assert_eq!(
+        scored,
+        BTreeSet::from([
+            "sections.writable_and_executable",
+            "sections.high_entropy_code",
+            "overlay.large_unsigned",
+            "imports.none",
+            "header.no_checksum",
+            "tables.no_resources",
+        ])
+    );
+    // What the packed-looking fixture lacks to be suspicious is exactly
+    // what was added to it.
+    let before: BTreeSet<&str> = packed.scored().map(|hit| hit.indicator.id).collect();
+    let added: Vec<&&str> = scored.difference(&before).collect();
+    assert_eq!(added, [&"imports.none", &"overlay.large_unsigned"]);
+}
+
+/// The weights make sense as a table: every indicator has an identifier of
+/// its own, a scored one weighs at least the three decibans that double
+/// the odds, and none weighs more than twenty.
+#[test]
+fn the_table_of_indicators_is_well_formed() {
+    let ids: BTreeSet<&str> = indicators::all().map(|indicator| indicator.id).collect();
+    assert_eq!(ids.len(), indicators::all().count());
+    for indicator in indicators::all() {
+        assert!(
+            indicator.weight == 0 || (3..=20).contains(&indicator.weight),
+            "{} weighs {}",
+            indicator.id,
+            indicator.weight
+        );
+        assert!(!indicator.summary.ends_with('.'), "{}", indicator.id);
+        assert!(indicator.rationale.ends_with('.'), "{}", indicator.id);
+        assert!(indicators::by_id(indicator.id).is_some());
+    }
+    assert!(indicators::all().any(|indicator| indicator.weight > 0));
+    assert_eq!(
+        indicators::by_id("signature.none").map(|indicator| indicator.weight),
+        Some(0),
+        "whether a signature is present is not scored"
+    );
+}

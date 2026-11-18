@@ -15,7 +15,7 @@
 //! 2. [`indicators::evaluate`] asks a fixed list of yes-or-no questions
 //!    about those facts. Each question is an [`Indicator`] with a weight.
 //! 3. [`assess`] adds up the weights of the indicators that apply and
-//!    compares the sum with [`Thresholds`].
+//!    compares the sum with [`SUSPICIOUS_FROM`].
 //!
 //! The result is an [`Assessment`] that lists every indicator behind the
 //! score, which is what `warden inspect` prints. [`PeDetector`] wraps the
@@ -24,11 +24,12 @@
 //! # Where the weights come from
 //!
 //! A weight is not an opinion. `PeFacts` holds only facts that the
-//! EMBER2024 dataset also records for its 3.2 million files, so the same
-//! indicator code runs over a file on disk and over the dataset, and the
-//! weight of an indicator is computed from how often it applies to the
-//! malicious and to the benign files there. `docs/HEURISTICS.md` has the
-//! numbers.
+//! EMBER2024 dataset also records for the 2.9 million Windows executables
+//! it describes, so the same indicator code runs over a file on disk and
+//! over the dataset. The weights are fitted to how the indicators are
+//! spread over the malicious and the benign files there, all of them
+//! together, and the threshold is set on the benign ones.
+//! `docs/HEURISTICS.md` has the method and the numbers.
 //!
 //! # What this layer cannot do
 //!
@@ -37,13 +38,13 @@
 //! which Warden shows to the user and never acts on.
 //!
 //! ```
-//! use warden_pe::{Context, Thresholds, assess, fixture::Fixture, read};
+//! use warden_pe::{Context, assess, fixture::Fixture, read};
 //!
 //! let file = Fixture::packed_looking().build();
 //! let facts = read(&file)?;
 //! assert_eq!(facts.sections[0].name, "UPX0");
 //!
-//! let assessment = assess(&facts, &Context::now(), &Thresholds::DEFAULT);
+//! let assessment = assess(&facts, &Context::now());
 //! assert!(assessment
 //!     .hits
 //!     .iter()
@@ -60,7 +61,7 @@ pub mod fixture;
 pub mod indicators;
 mod reader;
 
-pub use assess::{Assessment, Level, Thresholds, assess, score_of};
+pub use assess::{Assessment, SUSPICIOUS_FROM, assess, assess_with, score_of};
 pub use detector::{FINDING_NAME, PeDetector, finding_for};
 pub use facts::{
     Anomaly, Directory, Format, ImportedLibrary, Overlay, PeFacts, Section, image_flags,

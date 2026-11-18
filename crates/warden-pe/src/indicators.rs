@@ -1,17 +1,23 @@
-//! The indicators: things about a Windows executable that are more common
-//! in malware than in clean software.
+//! The indicators: things about a Windows executable that are worth a
+//! second look.
 //!
 //! An indicator is a yes-or-no question about [`PeFacts`], with a weight.
 //! None of them proves anything by itself. A game protected against
 //! cheating is packed, a debugger writes into other processes, an installer
 //! carries megabytes of compressed data behind its last section. What
-//! counts is how much more often an indicator is seen in malware than in
-//! clean files, and that is measured, not assumed: see
-//! `docs/HEURISTICS.md` for the numbers behind every weight.
+//! counts is how much an indicator shifts the odds, and that is measured,
+//! not assumed: the weights are fitted to the EMBER2024 dataset, all
+//! together, and a test fails if a weight in this file is not what the
+//! counts in `calibration/` give. `docs/HEURISTICS.md` has the numbers.
 //!
-//! An indicator with weight zero is shown by `warden inspect` and adds
-//! nothing to the score. That is where an indicator stays until a
-//! measurement gives it a weight.
+//! Most indicators have the weight zero. They are shown by
+//! `warden inspect` and add nothing to the score, for one of three
+//! reasons: clean files show them as often as malicious ones; or they say
+//! nothing that the scored indicators do not already say, as the name of a
+//! packer's section does next to a writable code section with high
+//! entropy; or they are left out on purpose, as the missing signature is.
+//! The list is longer than the scored part because what was measured and
+//! found useless is worth knowing too.
 
 use serde::Serialize;
 
@@ -57,9 +63,10 @@ pub struct Indicator {
     /// Why that matters, and which clean software does the same.
     pub rationale: &'static str,
     /// How much a hit adds to the score, in decibans: ten times the
-    /// base-ten logarithm of how much more likely the indicator is in a
-    /// malicious file than in a clean one. Zero for an indicator that is
-    /// shown and not scored.
+    /// base-ten logarithm of the factor by which the indicator multiplies
+    /// the odds that a file is malicious, next to all the other
+    /// indicators. Ten is tenfold. Zero for an indicator that is shown and
+    /// not scored.
     pub weight: u8,
 }
 
@@ -271,7 +278,7 @@ static DEFINITIONS: &[Definition] = definitions![
     "Packers such as UPX, ASPack, Themida and VMProtect compress or encrypt a program and name the sections they create. Malware is packed to hide from scanners. Clean software is packed too, to save space or to protect against copying, though far less often.",
     |facts, _| sections_where(facts, |section| PACKER_SECTION_NAMES.contains(&lower(&section.name).as_str()));
 
-    "sections.writable_and_executable", Packing, 0,
+    "sections.writable_and_executable", Packing, 10,
     "A section is both writable and executable",
     "Code that rewrites itself needs memory that can be written and run. Linkers keep code read-only, so this is the mark of a packer's unpacking stub or of code that patches itself. Some older compilers and a few game protections produce it too.",
     |facts, _| sections_where(facts, |section| section.is_writable() && section.is_executable());
@@ -281,7 +288,7 @@ static DEFINITIONS: &[Definition] = definitions![
     "The section is empty until the program fills it when it runs. That is where a packer unpacks the real program to.",
     |facts, _| sections_where(facts, |section| section.is_executable() && section.raw_size == 0 && section.virtual_size > 0);
 
-    "sections.code_mostly_in_memory", Packing, 0,
+    "sections.code_mostly_in_memory", Packing, 4,
     "An executable section is several times larger in memory than in the file",
     "The section grows when the program is loaded, and the extra room is filled when it runs. A linker writes code out in full, so room like this is where a packer unpacks to.",
     |facts, _| {
@@ -292,7 +299,7 @@ static DEFINITIONS: &[Definition] = definitions![
         })
     };
 
-    "sections.high_entropy_code", Packing, 0,
+    "sections.high_entropy_code", Packing, 9,
     "An executable section looks compressed or encrypted",
     "Compiled code has an entropy around 6 bits per byte. Above 7, the bytes are too evenly spread to be instructions: the section holds packed or encrypted content.",
     |facts, _| {
@@ -305,7 +312,7 @@ static DEFINITIONS: &[Definition] = definitions![
             .map(|section| format!("section {:?} has an entropy of {:.2} bits per byte", section.name, section.entropy))
     };
 
-    "sections.high_entropy_data", Packing, 0,
+    "sections.high_entropy_data", Packing, 8,
     "A data section looks compressed or encrypted",
     "A large block of evenly spread bytes in a data section is compressed or encrypted content, such as a payload that is decrypted when the program runs. Programs that embed compressed files have it too. The resource section is not counted, because icons and images are compressed.",
     |facts, _| {
@@ -338,7 +345,7 @@ static DEFINITIONS: &[Definition] = definitions![
             .then(|| format!("the whole file has an entropy of {:.2} bits per byte", facts.file_entropy))
     };
 
-    "overlay.large_unsigned", Packing, 0,
+    "overlay.large_unsigned", Packing, 5,
     "A quarter of the file or more sits after the last section",
     "Windows does not load what follows the last section. Installers and self-extracting archives keep their payload there, and so do droppers. An embedded signature is not counted.",
     |facts, _| {
@@ -356,7 +363,7 @@ static DEFINITIONS: &[Definition] = definitions![
     };
 
     // ---- Layout ----------------------------------------------------------
-    "entry.outside_sections", Layout, 0,
+    "entry.outside_sections", Layout, 10,
     "The entry point is in none of the sections",
     "Execution starts in the headers or outside the image. A linker cannot produce that; it is done by hand, to confuse tools that analyse the file.",
     |facts, _| {
@@ -400,7 +407,7 @@ static DEFINITIONS: &[Definition] = definitions![
             .map(|section| format!("the entry point is in section {:?}, which is writable", section.name))
     };
 
-    "entry.in_non_executable_section", Layout, 0,
+    "entry.in_non_executable_section", Layout, 7,
     "The entry point is in a section that is not marked executable",
     "Windows refuses to run code in such a section unless data execution prevention is switched off for the program. A linker marks the section that holds the entry point as executable.",
     |facts, _| {
@@ -410,7 +417,7 @@ static DEFINITIONS: &[Definition] = definitions![
             .map(|section| format!("the entry point is in section {:?}, which is not executable", section.name))
     };
 
-    "header.pe_header_in_dos_header", Layout, 0,
+    "header.pe_header_in_dos_header", Layout, 18,
     "The PE header starts inside the DOS header",
     "The two headers overlap. Linkers never do that; it is the mark of a file that was built by hand to be as small or as confusing as possible.",
     |facts, _| (facts.pe_header_offset < 0x40).then(|| format!("the PE header starts at offset {:#x}", facts.pe_header_offset));
@@ -431,7 +438,7 @@ static DEFINITIONS: &[Definition] = definitions![
     };
 
     // ---- Imports ---------------------------------------------------------
-    "imports.none", Imports, 0,
+    "imports.none", Imports, 8,
     "The program imports nothing",
     "A program has to ask Windows for everything it does. One that imports no function at all finds them by itself when it runs, which is what packed programs and shellcode loaders do.",
     |facts, _| (runs_native_code(facts) && facts.import_count() == 0).then(|| "the import table is empty or missing".to_owned());
@@ -475,7 +482,7 @@ static DEFINITIONS: &[Definition] = definitions![
             .flatten()
     };
 
-    "imports.remote_memory", Imports, 0,
+    "imports.remote_memory", Imports, 6,
     "The imports allow writing into the memory of another process",
     "Allocating memory in another process and writing to it is the first half of code injection. Debuggers, profilers and game trainers do it as well.",
     |facts, _| runs_native_code(facts).then(|| imports_one_of_each(facts, &[REMOTE_ALLOCATION, REMOTE_WRITE])).flatten();
@@ -490,7 +497,7 @@ static DEFINITIONS: &[Definition] = definitions![
     "CheckRemoteDebuggerPresent is used to notice analysis and behave differently under it. Copy protection uses it too.",
     |facts, _| runs_native_code(facts).then(|| imports_one_of_each(facts, &[&["CheckRemoteDebuggerPresent"]])).flatten();
 
-    "imports.download_to_file", Imports, 0,
+    "imports.download_to_file", Imports, 5,
     "The program can download a file with a single call",
     "URLDownloadToFile fetches a file from the internet and stores it on disk. It is the shortest way to write a downloader, and rare in other software.",
     |facts, _| runs_native_code(facts).then(|| imports_one_of_each(facts, &[DOWNLOAD_TO_FILE])).flatten();
@@ -555,7 +562,7 @@ static DEFINITIONS: &[Definition] = definitions![
             .then(|| format!("the header gives {} seconds since 1970 as the link time", facts.timestamp))
     };
 
-    "header.no_checksum", Header, 0,
+    "header.no_checksum", Header, 5,
     "The header holds no checksum",
     "Windows checks the field only for drivers, and most linkers leave it empty unless asked. Software from large vendors usually has it.",
     |facts, _| (facts.checksum == 0).then(|| "the checksum field is zero".to_owned());
@@ -565,7 +572,7 @@ static DEFINITIONS: &[Definition] = definitions![
     "Microsoft's linker records the tools that built a file in an undocumented header. A file without it was built with another toolchain, such as MinGW, Go, Rust or Delphi, or the header was removed.",
     |facts, _| (!facts.is_dotnet() && !facts.has_rich_header).then(|| "no Rich header between the DOS program and the PE header".to_owned());
 
-    "tables.no_resources", Header, 0,
+    "tables.no_resources", Header, 4,
     "The program has no resources",
     "Icons, version information and the manifest are resources, and a program built for users has them. Command-line tools often do not, and neither does malware that is never meant to be looked at.",
     |facts, _| (!facts.is_dll && !facts.has_directory(Directory::Resource)).then(|| "the header points to no resource table".to_owned());

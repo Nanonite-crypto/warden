@@ -309,6 +309,21 @@ impl Fixture {
         }
     }
 
+    /// A fixture that the heuristics count as suspicious: the layout of
+    /// [`Fixture::packed_looking`] with no import table at all and with as
+    /// many evenly spread bytes again after the last section, the way a
+    /// packed loader carries a payload.
+    ///
+    /// Packed alone is not suspicious, because a lot of clean software is
+    /// packed. This one is for showing and testing what is.
+    #[must_use]
+    pub fn suspicious_looking() -> Self {
+        let mut fixture = Self::packed_looking();
+        fixture.imports = Vec::new();
+        fixture.overlay = Filler::new(3).packed(0x4000);
+        fixture
+    }
+
     /// The bytes of the file this fixture describes.
     ///
     /// # Panics

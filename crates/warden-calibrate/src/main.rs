@@ -1,4 +1,4 @@
-//! Measures Warden's heuristic indicators on the EMBER2024 dataset.
+//! Measures Warden's heuristic indicators and fits their weights.
 //!
 //! This is a development tool. It is not part of the scanner and nothing
 //! in it runs when a file is scanned. It exists so that the weight of every
@@ -7,16 +7,23 @@
 //!
 //! ```text
 //! warden-calibrate collect Win64_test.zip --out win64-test.json
-//! warden-calibrate report win64-test.json other.json
+//! warden-calibrate collect-files --as system C:\Windows\System32 --out system.json
+//! warden-calibrate report win64-test.json system.json
 //! ```
 //!
-//! `collect` reads dataset files (the `.zip` archives as published, or
-//! `.jsonl` files) and writes counts. `report` adds counts up and prints
-//! what follows from them. The dataset holds features and labels only; no
-//! file content, and no malware, is involved at any point.
+//! `collect` reads files of the EMBER2024 dataset (the `.zip` archives as
+//! published, or `.jsonl` files) and writes counts. The dataset holds
+//! features and labels only; no file content, and no malware, is involved
+//! at any point. `collect-files` counts the same things on the executables
+//! in folders of a machine that is taken to be clean. `report` adds counts
+//! up, fits the weights to the training part of the dataset, derives the
+//! threshold, and prints what the score does with them: on the weeks the
+//! fit has not seen, and on the files of the machine.
 
 mod collect;
 mod ember;
+mod fit;
+mod installed;
 mod report;
 
 use std::fs;
@@ -24,14 +31,14 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::Context as _;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::collect::Collected;
+use crate::collect::{Collected, Subset};
 
 #[derive(Parser)]
 #[command(
     name = "warden-calibrate",
-    about = "Measures Warden's heuristic indicators on the EMBER2024 dataset",
+    about = "Measures Warden's heuristic indicators and fits their weights",
     long_about = None
 )]
 struct Cli {
@@ -64,6 +71,29 @@ enum Command {
         sample: bool,
     },
 
+    /// Count which indicators apply to the executables in folders of this
+    /// machine, which is taken to be clean
+    ///
+    /// Files are read and not changed. The counts hold nothing about a
+    /// single file.
+    CollectFiles {
+        /// Folders to read, with everything below them
+        #[arg(required = true, value_name = "FOLDER")]
+        folders: Vec<PathBuf>,
+
+        /// What the folders hold
+        #[arg(long = "as", value_name = "PART", value_enum)]
+        part: Part,
+
+        /// Where to write the counts
+        #[arg(long, value_name = "FILE")]
+        out: PathBuf,
+
+        /// Number of threads; by default one per processor
+        #[arg(long, value_name = "N")]
+        threads: Option<usize>,
+    },
+
     /// Add up the counts of several runs into one file
     Merge {
         /// Files written by `collect`
@@ -85,7 +115,25 @@ enum Command {
         /// Also write the report as JSON
         #[arg(long, value_name = "FILE")]
         json: Option<PathBuf>,
+
+        /// Offer the fit every indicator, also those the scanner leaves
+        /// out on purpose, to see what they would do
+        #[arg(long)]
+        offer_all: bool,
     },
+}
+
+/// What a folder of this machine holds.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Part {
+    /// The system files of a Windows installation
+    System,
+    /// Installed software
+    Software,
+}
+
+fn default_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
 }
 
 fn main() -> ExitCode {
@@ -99,14 +147,10 @@ fn main() -> ExitCode {
 }
 
 fn read_counts(paths: &[PathBuf]) -> anyhow::Result<Collected> {
-    let mut parts = Vec::with_capacity(paths.len());
-    for path in paths {
-        let text =
-            fs::read_to_string(path).with_context(|| format!("cannot read {}", path.display()))?;
-        let part: Collected = serde_json::from_str(&text)
-            .with_context(|| format!("{} does not hold counts", path.display()))?;
-        parts.push(part);
-    }
+    let parts = paths
+        .iter()
+        .map(|path| Collected::read(path))
+        .collect::<anyhow::Result<Vec<_>>>()?;
     collect::merge(parts)
 }
 
@@ -124,17 +168,16 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             threads,
             sample,
         } => {
-            let threads = threads.unwrap_or_else(|| {
-                std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
-            });
+            let threads = threads.unwrap_or_else(default_threads);
             let started = std::time::Instant::now();
             let (collected, outline) = collect::collect(&inputs, threads)?;
             for input in &collected.inputs {
                 println!(
-                    "{}: {} records, {} counted, {} of other kinds, {} not parsed as an executable, {} without a label, {} unreadable lines",
+                    "{}: {} records, {} counted, {} repeats of a file already counted, {} of other kinds, {} not parsed as an executable, {} without a label, {} unreadable lines",
                     input.name,
                     input.records,
                     input.counted,
+                    input.duplicates,
                     input.other_kinds,
                     input.not_parsed_as_pe,
                     input.unlabelled,
@@ -159,18 +202,56 @@ fn run(cli: Cli) -> anyhow::Result<()> {
             }
             write_json(&out, &collected)
         }
+        Command::CollectFiles {
+            folders,
+            part,
+            out,
+            threads,
+        } => {
+            let threads = threads.unwrap_or_else(default_threads);
+            let subset = match part {
+                Part::System => Subset::System,
+                Part::Software => Subset::Software,
+            };
+            let started = std::time::Instant::now();
+            let (collected, unlisted) = installed::collect_files(&folders, subset, threads)?;
+            for input in &collected.inputs {
+                println!(
+                    "{}: {} files, {} executables counted, {} other files, {} that start like an executable and are not one, {} unreadable or too large",
+                    input.name,
+                    input.records,
+                    input.counted,
+                    input.other_kinds,
+                    input.not_parsed_as_pe,
+                    input.unreadable
+                );
+            }
+            if unlisted > 0 {
+                println!("{unlisted} folders could not be listed");
+            }
+            println!(
+                "{} combinations of indicators, in {:.1} s on {threads} threads",
+                collected.groups.len(),
+                started.elapsed().as_secs_f64()
+            );
+            write_json(&out, &collected)
+        }
         Command::Merge { counts, out } => {
             let merged = read_counts(&counts)?;
             println!(
-                "{} dataset files, {} combinations of indicators",
+                "{} inputs, {} combinations of indicators",
                 merged.inputs.len(),
                 merged.groups.len()
             );
             write_json(&out, &merged)
         }
-        Command::Report { counts, json } => {
+        Command::Report {
+            counts,
+            json,
+            offer_all,
+        } => {
             let merged = read_counts(&counts)?;
-            let report = report::report(&merged)?;
+            let report = report::report(&merged, report::Options { offer_all })?;
             print!("{}", report::render_text(&merged, &report));
             if let Some(path) = json {
                 write_json(&path, &report)?;

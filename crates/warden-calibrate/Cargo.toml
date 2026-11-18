@@ -1,6 +1,6 @@
 [package]
 name = "warden-calibrate"
-description = "Development tool: measures Warden's heuristic indicators on the EMBER2024 dataset. Not part of the scanner."
+description = "Development tool: measures Warden's heuristic indicators on the EMBER2024 dataset and fits their weights. Not part of the scanner."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,6 +18,7 @@ anyhow.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
