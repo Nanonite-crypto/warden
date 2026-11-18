@@ -1,0 +1,88 @@
+name: Fuzz
+
+# Runs the fuzz targets in fuzz/ for a short time each. A fuzzer feeds a
+# function millions of inputs, steering by which code each one reaches, and
+# reports any input that makes the function panic, read out of bounds, run
+# out of memory or take too long. The targets are the parts of Warden that
+# read files someone else wrote.
+#
+# A minute per target on every pull request is a smoke test: it catches a
+# mistake that is easy to reach. Started by hand, the run can be given hours.
+
+on:
+  pull_request:
+    paths:
+      - "crates/warden-pe/**"
+      - "crates/warden-engine/**"
+      - "crates/warden-sigdb/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds to run each target
+        default: "60"
+  push:
+    branches: ["fuzz-run/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SECONDS_PER_TARGET: ${{ inputs.seconds || '60' }}
+
+jobs:
+  fuzz:
+    name: Fuzz targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      # cargo-fuzz needs compiler flags that only a nightly toolchain has.
+      # Everything else in this repository builds with the pinned stable one.
+      - name: Install a nightly toolchain
+        run: rustup toolchain install nightly --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            fuzz -> target
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      # Fuzzers get further when they start from valid files. The seeds for
+      # the executable reader are the inert fixtures of the test suite,
+      # written fresh so that no executable sits in the repository.
+      - name: Write the seeds
+        run: |
+          set -euo pipefail
+          mkdir -p fuzz/corpus/pe_read fuzz/corpus/scan_bytes
+          cargo run --quiet --locked -p warden-pe --example fixtures -- fuzz/corpus/pe_read
+          cp fuzz/corpus/pe_read/* fuzz/corpus/scan_bytes/
+          (cd fuzz/corpus/pe_read && zip --quiet ../scan_bytes/fixtures.zip ./*)
+          (cd fuzz/corpus/scan_bytes && zip --quiet nested.zip fixtures.zip)
+
+      - name: Run each target
+        run: |
+          set -euo pipefail
+          cd fuzz
+          for target in pe_read scan_bytes sigdb; do
+            echo "::group::$target for $SECONDS_PER_TARGET seconds"
+            cargo +nightly fuzz run "$target" -- \
+              -max_total_time="$SECONDS_PER_TARGET" -max_len=131072 -timeout=30 -rss_limit_mb=4096 \
+              -print_final_stats=1
+            echo "::endgroup::"
+          done
+
+      - name: Keep the inputs that made a target fail
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts
+          if-no-files-found: ignore

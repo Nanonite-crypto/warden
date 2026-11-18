@@ -1,0 +1,48 @@
+# Fuzz targets for the parts of Warden that read hostile input.
+#
+# Run with cargo-fuzz, which needs a nightly toolchain:
+#
+#     cargo install cargo-fuzz
+#     cargo +nightly fuzz run pe_read
+#
+# This crate is not part of the workspace: it needs compiler flags that only
+# nightly has, and the workspace builds on stable.
+
+[package]
+name = "warden-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+warden-engine = { path = "../crates/warden-engine" }
+warden-pe = { path = "../crates/warden-pe" }
+warden-sigdb = { path = "../crates/warden-sigdb" }
+
+[[bin]]
+name = "pe_read"
+path = "fuzz_targets/pe_read.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scan_bytes"
+path = "fuzz_targets/scan_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sigdb"
+path = "fuzz_targets/sigdb.rs"
+test = false
+doc = false
+bench = false
