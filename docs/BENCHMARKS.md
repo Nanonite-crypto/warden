@@ -305,10 +305,17 @@ Raw results:
 
 ## False positives
 
+Two rounds of runs. The first used every rule of the rule package and found
+two rules that flag clean files. Those two went onto the
+[exclusion list](RULES.md#rules-that-are-left-out), and the second round
+measured what is left.
+
+### With every rule of the package
+
 The rule set is the YARA Forge core package, release 20261018, with
 Warden's built-in rule: 5,138 rules. A match of 205 of them leads to the
 verdict malicious, a match of any of the other 4,933 to suspicious. The
-tables count files with either verdict.
+table counts files with either verdict.
 
 | Files expected to be clean | Files | Data | Files inside archives | Malicious | Suspicious |
 |---|---|---|---|---|---|
@@ -340,9 +347,9 @@ What follows from this:
   and it stayed at zero. A suspicious file is shown to the user and nothing
   else happens to it.
 - Both cases have the same root: Warden takes a rule's score at face
-  value. What a match of a medium-score rule should mean is an open
-  decision in the [roadmap](ROADMAP.md#open-decisions), to be settled
-  with the heuristics of phase 3.
+  value. The answer chosen for now is to leave out a rule that is shown to
+  flag clean files, with the evidence written down. The next section has
+  the result.
 - Zero flagged files in a folder says that the rules are quiet there. It
   says nothing about what they catch, which is not measured here.
 - A hosted runner is a server image with developer tools on it, and of
@@ -369,3 +376,45 @@ Raw results:
 [software](benchmarks/2026-11-18-github-windows-runner-software-false-positives.json),
 [machine](benchmarks/2026-11-18-github-windows-runner-false-positives-machine.json),
 [`/usr`](benchmarks/2026-11-18-dev-container-usr-false-positives.json).
+
+### With the exclusion list
+
+[`rules/exclusions.toml`](../rules/exclusions.toml) names the two rules,
+each with the files above as evidence. A bundle built with it has 5,136
+rules: 205 lead to the verdict malicious, 4,931 to suspicious. The runs on
+the GitHub-hosted runner were repeated with that bundle on the same day.
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged with every rule | Flagged with the exclusion list |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,792 | 4.78 GB | 193 | 1 of 21,804 | 0 |
+| Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 20 | 0 |
+
+How far the two rounds can be compared:
+
+- **The software folders held the same files both times**: the same number
+  of files, of bytes (14,416,680,921) and of files inside archives. The 20
+  copies of `singlefilehost.exe` were scanned again and are no longer
+  flagged.
+- **The System32 runs are less alike.** Every run gets a fresh virtual
+  machine. The first had an AMD processor and the second an Intel one, and
+  the second run scanned 12 files fewer, 18 MB less. It did not record
+  whether `vulkan-1.dll` was among the files it scanned.
+- **The desktop has not been scanned again yet**, so `liblouis.dll` has
+  only the first result.
+- **`/usr` was not scanned again.** It had no flagged file with every rule,
+  and a bundle with fewer rules cannot flag more.
+
+Nothing else surfaced: in 109,499 files, the 5,136 remaining rules flagged
+none. As before, that says the rules are quiet in these folders and nothing
+about what they catch.
+
+In System32, 38 files could not be read and 2 were checked in part; in the
+software folders 7 were checked in part, as before. The second runner: Intel Xeon Platinum 8370C, 2 logical processors, 8 GB RAM, Windows
+Server 2025, Microsoft Defender real-time protection off. The runs took
+4 min 37 s and 13 min 16 s, again reading every file for the first time
+from the disk.
+
+Raw results:
+[System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-exclusions.json),
+[software](benchmarks/2026-11-18-github-windows-runner-software-false-positives-with-exclusions.json),
+[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-exclusions-machine.json).

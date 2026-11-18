@@ -206,8 +206,10 @@ produced. In short, as of phase 2:
   800 MB/s with hash matching alone and at 52 MB/s with those rules.
 - **False positives** with those 5,138 rules: no clean file was reported
   as malicious. 22 of 137,155 files on two Windows machines were reported
-  as suspicious, and none of 140,383 files in the Linux tree. The document
-  names the two rules responsible.
+  as suspicious, and none of 140,383 files in the Linux tree. Two rules
+  were responsible for all 22. They are now on the
+  [exclusion list](rules/exclusions.toml), and when the runs on the GitHub
+  runner were repeated, none of 109,499 files was flagged.
 - **Detection rate on live malware:** not measured, by design.
 
 ## Roadmap
