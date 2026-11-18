@@ -21,10 +21,15 @@ See [TESTING.md](TESTING.md).
 
 - **Throughput** is measured by `warden bench <folder> --runs N`, which runs
   complete scans of a real folder and reports each run. MB means 10^6 bytes.
-- **Cold versus warm.** The first run reads whatever the operating system
-  had not cached; later runs are served from the file cache and measure the
-  engine itself. Both are shown. A rigorous cold-cache figure, taken after a
-  reboot, is planned for the portfolio checkpoint.
+- **First run versus repeat runs.** The first run of a benchmark reads
+  whatever the operating system had not cached yet; repeat runs are served
+  from the file cache and measure the engine itself. `warden bench` marks
+  the first run and takes its median over the repeat runs only. Both are
+  shown here. A rigorous cold-cache figure, taken after a reboot, is planned
+  for the portfolio checkpoint.
+- Result files marked `"schema": 1` were written before that split, so
+  their median fields include the first run. The tables below are built
+  from the individual runs.
 - **Micro-benchmarks** use Criterion (`cargo bench`) and report the
   estimate with its confidence interval.
 - **Hardware is always stated.** Numbers from a shared CI runner or a cloud
@@ -95,13 +100,37 @@ dominates on a tree whose average file is 51 kB. Lookups are not a factor:
 at 28 ns per miss, 140,383 of them add up to about 4 ms, which matches the
 scan with a million signatures being no slower.
 
-### Windows
+### GitHub-hosted Windows runner (indicative)
 
-Not yet measured on a Windows desktop. `scripts\win\phase1-check.cmd`
-produces these numbers by scanning the System32 folder and writes them to
-`target\phase1\bench.json`, next to a description of the machine in
-`system.json`. They will be added here from that run.
+AMD EPYC 9V74, 2 logical processors, 8 GB RAM, Windows Server 2025
+(10.0.26100), Microsoft Defender real-time protection off. This is the
+shared virtual machine that ran CI for the phase 1 pull request, so these
+figures are indicative only.
 
-CI also runs the same script on a GitHub-hosted Windows runner on every
-push and attaches the results to the workflow run. Those come from shared
-hardware and are indicative only.
+**Scan throughput** over `C:\Windows\System32`: 21,783 files, 4.71 GB, with
+44 files skipped because they could not be read.
+`warden bench C:\Windows\System32 --runs 2`, run by
+`scripts\win\phase1-check.cmd`
+
+| Threads | Run | Time | Files/s | MB/s | Cache |
+|---|---|---|---|---|---|
+| 2 | 1 | 6 min 26 s | 56 | 12.2 | First read |
+| 2 | 2 | 4.53 s | 4,814 | 1,057.1 | Warm |
+
+The first run read at 12 MB/s. The same scan from the file cache took
+4.5 seconds, so the first run was waiting for the runner's virtual disk,
+not for the engine. Raw results:
+[2026-11-18-github-windows-runner-system32.json](benchmarks/2026-11-18-github-windows-runner-system32.json),
+machine:
+[2026-11-18-github-windows-runner-machine.json](benchmarks/2026-11-18-github-windows-runner-machine.json).
+
+Since that run, CI points the benchmark at a smaller folder, so that a
+slow first read does not add minutes to every pull request. The results
+are attached to each workflow run.
+
+### Windows desktop
+
+Not yet measured. `scripts\win\phase1-check.cmd` produces these numbers by
+scanning the System32 folder with the machine's antivirus running, and
+writes them to `target\phase1\bench.json`, next to a description of the
+machine in `system.json`. They will be added here from that run.

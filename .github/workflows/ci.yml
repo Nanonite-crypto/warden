@@ -76,11 +76,12 @@ jobs:
       # The same script a developer double-clicks on their own machine, run
       # through the same launcher and Windows PowerShell. It builds the
       # release binary, checks EICAR detection and measures scan throughput.
-      # The tests already ran in the job above. Benchmark numbers from shared
-      # CI hardware are indicative only.
+      # The tests already ran in the job above. The benchmark is pointed at
+      # a small folder: a hosted runner's disk is slow on first read, and
+      # numbers from shared CI hardware are indicative only.
       - name: Phase 1 acceptance check
         shell: cmd
-        run: call scripts\win\phase1-check.cmd -SkipTests -BenchRuns 2 -RequireEicar
+        run: call scripts\win\phase1-check.cmd -SkipTests -RequireEicar -BenchPath %SystemRoot%\System32\drivers
         env:
           WARDEN_NO_PAUSE: "1"
       - name: Show the results

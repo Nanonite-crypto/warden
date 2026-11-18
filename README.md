@@ -13,25 +13,26 @@ the scan engine, a clean architecture and measured results.
 
 ## What works today
 
-```
-$ warden scan downloads
+`warden scan` on a folder that holds the EICAR test file:
 
+```
 Warden 0.1.0
 
-Scanned     4 files, 270.1 kB in 0.4 ms
-Speed       9,141 files/s, 617.2 MB/s on 2 threads
+Scanned     1 file, 68 B in 0.5 ms
+Speed       1,900 files/s, 0.1 MB/s on 2 threads
 Signatures  1 built-in
 
 1 detection
 
   MALICIOUS   EICAR-Test-File
-    /tmp/wreadme/downloads/zone/eicar.com
+    D:\a\warden\warden\testdata\eicar-zone\eicar.com
     sha256 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f (68 bytes)
     hash [test file]: SHA-256 matches the EICAR antivirus test file, a harmless file that every scanner detects on purpose
 ```
 
-That is unedited output from the Linux container the engine is developed
-in. Screenshots from Windows arrive with the desktop app.
+That is unedited output from Windows: the CI run for phase 1, in which the
+acceptance script wrote the test file and scanned it. Screenshots arrive
+with the desktop app.
 
 | Command | What it does |
 |---|---|
