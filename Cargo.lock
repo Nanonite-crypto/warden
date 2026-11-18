@@ -2716,6 +2716,8 @@ dependencies = [
  "time",
  "warden-engine",
  "warden-sigdb",
+ "warden-yara",
+ "zip",
 ]
 
 [[package]]

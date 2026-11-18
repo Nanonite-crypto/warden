@@ -9,10 +9,13 @@
 #![forbid(unsafe_code)]
 
 mod bench;
+mod fp;
 mod misc;
 mod render;
+mod rules;
 mod scan;
 mod sigdb;
+mod system;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -30,9 +33,10 @@ const EXIT_ERROR: u8 = 2;
     version,
     about = "Warden anti-malware scanner",
     long_about = "Warden anti-malware scanner.\n\n\
-        Scans files and folders for known threats. Without a signature database it \
-        knows one signature: the harmless EICAR antivirus test file, which is enough \
-        to check that everything works."
+        Scans files and folders, and the files inside zip archives, for known threats: \
+        by hash against a signature database, and by content against YARA rules. \
+        Without a database or a rule bundle it knows the harmless EICAR antivirus \
+        test file, which is enough to check that everything works."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -48,8 +52,16 @@ enum Command {
     #[command(subcommand)]
     Sigdb(sigdb::SigdbCommand),
 
+    /// Build and inspect YARA rule bundles
+    #[command(subcommand)]
+    Rules(rules::RulesCommand),
+
     /// Measure scan throughput on a folder
     Bench(bench::BenchArgs),
+
+    /// Scan files that are known to be clean and report what was flagged
+    #[command(name = "false-positives", visible_alias = "fp")]
+    FalsePositives(fp::FpArgs),
 
     /// Print the SHA-256 of files
     Hash {
@@ -68,7 +80,9 @@ fn main() -> ExitCode {
     let outcome = match cli.command {
         Command::Scan(args) => scan::run(&args),
         Command::Sigdb(command) => sigdb::run(command),
+        Command::Rules(command) => rules::run(command),
         Command::Bench(args) => bench::run(&args),
+        Command::FalsePositives(args) => fp::run(&args),
         Command::Hash { files } => misc::hash(&files),
         Command::Eicar(command) => misc::eicar(&command),
     };

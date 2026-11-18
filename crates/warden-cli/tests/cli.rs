@@ -13,6 +13,7 @@ fn warden() -> Command {
     // Keep the developer's own configuration out of the tests.
     command
         .env_remove("WARDEN_SIGDB")
+        .env_remove("WARDEN_RULES")
         .env_remove("SOURCE_DATE_EPOCH");
     command
 }
@@ -319,7 +320,8 @@ fn hash_prints_published_test_vectors() {
         .code(2);
 }
 
-/// The demo flow: write the EICAR test file, scan it, see it detected.
+/// The demo flow: write the EICAR test file in its three forms, scan them,
+/// and see each one detected by the layer that is meant to catch it.
 ///
 /// Like the engine's on-disk test, this only touches the disk where that is
 /// safe to do without setting off a resident antivirus: in the folder named
@@ -327,7 +329,7 @@ fn hash_prints_published_test_vectors() {
 /// folder. `WARDEN_REQUIRE_EICAR=1` turns a run that was skipped or blocked
 /// into a failure.
 #[test]
-fn eicar_write_then_scan_detects_it() {
+fn eicar_write_then_scan_detects_every_form() {
     let strict = std::env::var_os("WARDEN_REQUIRE_EICAR").is_some_and(|value| value == "1");
     let not_exercised = |why: &str| {
         let note = format!("EICAR demo flow not exercised: {why}. See docs/TESTING.md.");
@@ -348,11 +350,16 @@ fn eicar_write_then_scan_detects_it() {
         None => temp.path().join("zone"),
     };
 
-    let write = warden().args(["eicar", "write"]).arg(&dir).assert();
+    let write = warden()
+        .args(["eicar", "write", "--kind", "all"])
+        .arg(&dir)
+        .assert();
     let written = write.get_output().status.success();
     let scan = warden().arg("scan").arg(&dir).arg("--json").assert();
     let output = scan.get_output().clone();
-    let _ = fs::remove_file(dir.join("eicar.com"));
+    for name in ["eicar.com", "eicar-padded.com", "eicar.zip"] {
+        let _ = fs::remove_file(dir.join(name));
+    }
     let _ = fs::remove_dir(&dir);
 
     let report: Option<serde_json::Value> = serde_json::from_slice(&output.stdout).ok();
@@ -360,22 +367,66 @@ fn eicar_write_then_scan_detects_it() {
         .as_ref()
         .and_then(|json| json["stats"]["files_scanned"].as_u64())
         .unwrap_or(0);
-    if !written || scanned == 0 {
-        not_exercised("the test file could not be written, or was removed before the scan");
+    if !written || scanned < 3 {
+        not_exercised("the test files could not be written, or were removed before the scan");
         return;
     }
     let report = report.unwrap();
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        report["detections"][0]["findings"][0]["name"],
-        "EICAR-Test-File"
+    assert_eq!(report["stats"]["detections"], 3);
+    assert_eq!(report["stats"]["archives_unpacked"], 1);
+
+    // Detections are sorted by path: eicar-padded.com, eicar.com, eicar.zip.
+    let detections = report["detections"].as_array().unwrap();
+    let detectors = |index: usize| -> Vec<&str> {
+        detections[index]["findings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|finding| finding["detector"].as_str().unwrap())
+            .collect()
+    };
+    for detection in detections {
+        assert_eq!(detection["verdict"], "malicious");
+        assert_eq!(detection["findings"][0]["name"], "EICAR-Test-File");
+        assert_eq!(detection["findings"][0]["category"], "test_file");
+    }
+
+    // A line break changes the hash, so only the rule catches the padded form.
+    assert!(
+        detections[0]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("eicar-padded.com")
     );
-    assert_eq!(
-        report["detections"][0]["findings"][0]["category"],
-        "test_file"
+    assert_eq!(detectors(0), ["yara"]);
+
+    // The plain form is known to both layers.
+    assert!(
+        detections[1]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("eicar.com")
     );
+    assert_eq!(detectors(1), ["hash", "yara"]);
     assert_eq!(
-        report["detections"][0]["sha256"],
+        detections[1]["sha256"],
+        "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+    );
+
+    // Inside the zip, the finding names the member.
+    assert!(
+        detections[2]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("eicar.zip")
+    );
+    assert_eq!(detectors(2), ["hash", "yara"]);
+    let member = &detections[2]["findings"][0]["member"];
+    assert_eq!(member["path"], serde_json::json!(["eicar.com"]));
+    assert_eq!(member["size"], 68);
+    assert_eq!(
+        member["sha256"],
         "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
     );
 }
@@ -452,4 +503,352 @@ fn bench_reports_every_run_as_json_and_text() {
         .args(["--runs", "0"])
         .assert()
         .code(2);
+}
+
+/// Harmless rules for the tests below: they match marker strings.
+const MARKER_RULES: &str = r#"
+rule Test_Marker_High
+{
+    meta:
+        description = "contains the high marker"
+        score = 90
+        license_url = "https://example.test/LICENSE"
+    strings:
+        $marker = "WARDEN-CLI-HIGH"
+    condition:
+        $marker
+}
+
+rule Test_Marker_Medium
+{
+    meta:
+        score = 70
+    strings:
+        $marker = "WARDEN-CLI-MEDIUM"
+    condition:
+        $marker
+}
+
+rule Test_Broken
+{
+    condition:
+        this_identifier_does_not_exist
+}
+"#;
+
+/// Writes the marker rules and compiles them into a bundle.
+fn marker_bundle(dir: &Path) -> PathBuf {
+    let rules = dir.join("markers.yar");
+    fs::write(&rules, MARKER_RULES).unwrap();
+    let bundle = dir.join("markers.wrb");
+    warden()
+        .args(["rules", "build", "--created", "1800000000", "--out"])
+        .arg(&bundle)
+        .arg(&rules)
+        .assert()
+        .success();
+    bundle
+}
+
+#[test]
+fn rules_build_and_info_describe_a_bundle() {
+    let dir = tempfile::tempdir().unwrap();
+    let rules = dir.path().join("markers.yar");
+    fs::write(&rules, MARKER_RULES).unwrap();
+    let bundle = dir.path().join("markers.wrb");
+
+    warden()
+        .args([
+            "rules",
+            "build",
+            "--created",
+            "1800000000",
+            "--show-skipped",
+            "--out",
+        ])
+        .arg(&bundle)
+        .arg(&rules)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Compiled 3 rules from 2 files")
+                .and(predicate::str::contains("warden/builtin.yar: 1 rule"))
+                .and(predicate::str::contains("markers.yar: 2 rules, 1 left out"))
+                .and(predicate::str::contains(
+                    "Left out 1 rule that did not compile.",
+                ))
+                .and(predicate::str::contains("Test_Broken: "))
+                .and(predicate::str::contains("this_identifier_does_not_exist"))
+                .and(predicate::str::contains("markers.wrb")),
+        );
+
+    warden()
+        .args(["rules", "info"])
+        .arg(&bundle)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Rules        3")
+                .and(predicate::str::contains(
+                    "Built        2027-01-15T08:00:00Z",
+                ))
+                .and(predicate::str::contains("Engine       yara-x "))
+                .and(predicate::str::contains("malicious      for 2 rules"))
+                .and(predicate::str::contains("suspicious     for 1 rule "))
+                .and(predicate::str::contains("https://example.test/LICENSE"))
+                .and(predicate::str::contains("(none named)")),
+        );
+
+    let json: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden().args(["rules", "info", "--json"]).arg(&bundle),
+    ))
+    .unwrap();
+    assert_eq!(json["rules"], 3);
+    assert_eq!(json["created_unix_secs"], 1_800_000_000u64);
+    assert_eq!(json["sources"][1]["name"], "markers.yar");
+    assert_eq!(json["sources"][1]["rules"], 2);
+    assert_eq!(json["sources"][1]["skipped"], 1);
+    assert_eq!(json["scores"]["malicious"], 2);
+    assert_eq!(json["scores"]["suspicious"], 1);
+    assert_eq!(json["digest"].as_str().unwrap().len(), 64);
+
+    // A file that is not a bundle is refused with a clear message.
+    warden()
+        .args(["rules", "info"])
+        .arg(&rules)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("not a Warden rule bundle"));
+    // So is a build with nothing to compile.
+    warden()
+        .args(["rules", "build", "--no-builtin", "--out"])
+        .arg(dir.path().join("empty.wrb"))
+        .arg(dir.path().join("does-not-exist.yar"))
+        .assert()
+        .code(2);
+}
+
+#[test]
+fn a_rule_bundle_adds_detections_and_scores_decide_the_verdict() {
+    let dir = tempfile::tempdir().unwrap();
+    let bundle = marker_bundle(dir.path());
+    let tree = dir.path().join("tree");
+    fs::create_dir_all(&tree).unwrap();
+    fs::write(tree.join("high.txt"), "text with WARDEN-CLI-HIGH in it").unwrap();
+    fs::write(tree.join("medium.txt"), "text with WARDEN-CLI-MEDIUM in it").unwrap();
+    fs::write(tree.join("clean.txt"), "text with nothing in it").unwrap();
+
+    // Without the bundle the markers mean nothing.
+    warden().arg("scan").arg(&tree).assert().success();
+
+    warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .assert()
+        .code(1)
+        .stdout(
+            predicate::str::contains("Rules       3 YARA rules from 2 files")
+                .and(predicate::str::contains("2 detections"))
+                .and(predicate::str::contains("MALICIOUS   Test_Marker_High"))
+                .and(predicate::str::contains("SUSPICIOUS  Test_Marker_Medium"))
+                .and(predicate::str::contains(
+                    "yara [malware]: YARA rule Test_Marker_High matched: contains the high marker",
+                ))
+                .and(predicate::str::contains(
+                    "Patterns found: $marker at offset 0xa",
+                )),
+        );
+
+    // The bundle can come from the environment, and YARA can be switched off.
+    warden()
+        .env("WARDEN_RULES", &bundle)
+        .arg("scan")
+        .arg(&tree)
+        .assert()
+        .code(1);
+    warden()
+        .env("WARDEN_RULES", &bundle)
+        .arg("scan")
+        .arg(&tree)
+        .arg("--no-yara")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Rules ").not());
+}
+
+/// A zip with one member that the fixture database calls a threat, one
+/// password-protected member and one clean member.
+fn fixture_zip(threat: &[u8]) -> Vec<u8> {
+    use std::io::Write as _;
+    use zip::unstable::write::FileOptionsExt as _;
+    use zip::write::SimpleFileOptions;
+
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let plain = SimpleFileOptions::default();
+    writer.start_file("docs/readme.txt", plain).unwrap();
+    writer.write_all(b"nothing to see here").unwrap();
+    writer.start_file("bin/fixture.bin", plain).unwrap();
+    writer.write_all(threat).unwrap();
+    writer
+        .start_file(
+            "locked/secret.bin",
+            plain.with_deprecated_encryption(b"password").unwrap(),
+        )
+        .unwrap();
+    writer
+        .write_all(b"cannot be read without the password")
+        .unwrap();
+    writer.finish().unwrap().into_inner()
+}
+
+#[test]
+fn threats_inside_zip_archives_are_found_and_shown_with_their_place() {
+    let fixture = fixture();
+    let threat = fs::read(&fixture.threat).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("bundle.zip"), fixture_zip(&threat)).unwrap();
+
+    warden()
+        .arg("scan")
+        .arg(dir.path())
+        .arg("--sigdb")
+        .arg(&fixture.database)
+        .arg("--show-skipped")
+        .assert()
+        .code(1)
+        .stdout(
+            predicate::str::contains("Archives    1 unpacked, 2 files inside")
+                .and(predicate::str::contains(
+                    "In part     1 file not checked in full (encrypted_archive: 1)",
+                ))
+                .and(predicate::str::contains("MALICIOUS   Test.Fixture"))
+                .and(predicate::str::contains("bundle.zip"))
+                .and(predicate::str::contains(
+                    "inside: bin/fixture.bin (52 bytes, sha256 ",
+                ))
+                .and(predicate::str::contains("Files not checked in full"))
+                .and(predicate::str::contains(
+                    "locked/secret.bin is password-protected",
+                )),
+        );
+
+    // With archives switched off the zip is only a file, and it is clean.
+    warden()
+        .arg("scan")
+        .arg(dir.path())
+        .arg("--sigdb")
+        .arg(&fixture.database)
+        .arg("--no-archives")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Archives ").not());
+}
+
+#[test]
+fn false_positives_reports_what_was_flagged_in_clean_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let bundle = marker_bundle(dir.path());
+    let tree = dir.path().join("clean-files");
+    fs::create_dir_all(&tree).unwrap();
+    for index in 0..8 {
+        fs::write(
+            tree.join(format!("file-{index}.txt")),
+            format!("clean file {index}"),
+        )
+        .unwrap();
+    }
+
+    // Nothing flagged: exit code 0 and a rate of zero.
+    let results = dir.path().join("fp.json");
+    warden()
+        .arg("false-positives")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .args(["--label", "unit test", "--no-progress", "--output"])
+        .arg(&results)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("false-positive check").and(predicate::str::contains(
+                "Flagged     0 of 8 files (0.000 %)",
+            )),
+        );
+    let json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&results).unwrap()).unwrap();
+    assert_eq!(json["schema"], 1);
+    assert_eq!(json["label"], "unit test");
+    assert_eq!(json["files_scanned"], 8);
+    assert_eq!(json["flagged_malicious"], 0);
+    assert_eq!(json["flagged"], serde_json::json!([]));
+    assert!(json["system"]["logical_cpus"].as_u64().unwrap() >= 1);
+
+    // Two files that the rules flag although they are "clean" by decree.
+    fs::write(tree.join("oops-1.txt"), "WARDEN-CLI-MEDIUM").unwrap();
+    fs::write(
+        tree.join("oops-2.txt"),
+        "WARDEN-CLI-MEDIUM and WARDEN-CLI-HIGH",
+    )
+    .unwrap();
+    let output = warden()
+        .arg("fp")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .arg("--json")
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["files_scanned"], 10);
+    assert_eq!(json["flagged_malicious"], 1);
+    assert_eq!(json["flagged_suspicious"], 1);
+    assert_eq!(json["flagged_percent"], 20.0);
+    assert_eq!(json["by_name"][0]["name"], "Test_Marker_Medium");
+    assert_eq!(json["by_name"][0]["files"], 2);
+    assert_eq!(json["by_name"][1]["name"], "Test_Marker_High");
+    assert_eq!(json["flagged"].as_array().unwrap().len(), 2);
+    assert_eq!(json["flagged"][1]["verdict"], "malicious");
+    assert_eq!(
+        json["flagged"][1]["names"],
+        serde_json::json!(["Test_Marker_High", "Test_Marker_Medium"])
+    );
+}
+
+/// A file name can hold characters that would rewrite the terminal. The
+/// text report must not pass them through. (Windows does not allow such
+/// names, so this can only be tried elsewhere.)
+#[cfg(unix)]
+#[test]
+fn control_characters_in_file_names_do_not_reach_the_terminal() {
+    let fixture = fixture();
+    let threat = fs::read(&fixture.threat).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("evil\u{1b}[2Jname.bin"), threat).unwrap();
+
+    let text = stdout_of(
+        warden()
+            .arg("scan")
+            .arg(dir.path())
+            .arg("--sigdb")
+            .arg(&fixture.database),
+    );
+    assert!(text.contains("MALICIOUS   Test.Fixture"));
+    assert!(text.contains("evil\u{fffd}[2Jname.bin"));
+    assert!(!text.contains('\u{1b}'));
+
+    // The JSON report keeps the real name, escaped as JSON requires.
+    let json = stdout_of(
+        warden()
+            .arg("scan")
+            .arg(dir.path())
+            .arg("--sigdb")
+            .arg(&fixture.database)
+            .arg("--json"),
+    );
+    assert!(json.contains("evil\\u001b[2Jname.bin"));
 }

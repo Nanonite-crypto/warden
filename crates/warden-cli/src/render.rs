@@ -6,9 +6,27 @@ use std::time::Duration;
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+use warden_engine::text::printable;
 use warden_engine::{
-    DetectorInfo, InfoValue, Progress, ScanObserver, ScanReport, ThreatCategory, Verdict,
+    DetectorInfo, Finding, InfoValue, Member, Progress, ScanObserver, ScanReport, ThreatCategory,
+    Verdict,
 };
+
+/// Longest path or message printed on one line.
+const MAX_LINE_CHARS: usize = 2000;
+/// How many detection names are shown in the heading of one detection.
+const NAMES_SHOWN: usize = 4;
+
+/// Makes text that comes from the scanned system safe to print: file names
+/// can hold control characters that would rewrite the terminal.
+pub fn shown(text: &str) -> String {
+    printable(text, MAX_LINE_CHARS)
+}
+
+/// A path, made safe to print.
+pub fn shown_path(path: &std::path::Path) -> String {
+    shown(&path.to_string_lossy())
+}
 
 /// Formats an integer with thousands separators: `1234567` becomes `1,234,567`.
 pub fn group_digits(value: u64) -> String {
@@ -72,6 +90,38 @@ fn count(details: &DetectorInfo, key: &str) -> Option<u64> {
     }
 }
 
+fn text<'a>(details: &'a DetectorInfo, key: &str) -> Option<&'a str> {
+    match details.details.get(key) {
+        Some(InfoValue::Text(value)) => Some(value),
+        _ => None,
+    }
+}
+
+/// One line describing which YARA rules a scan used, if it used any.
+pub fn rule_summary(detectors: &[DetectorInfo]) -> Option<String> {
+    let yara = detectors.iter().find(|detector| detector.id == "yara")?;
+    let rules = count(yara, "rules").unwrap_or(0);
+    if text(yara, "origin") == Some("built-in rules") {
+        return Some(format!(
+            "{} built-in YARA {}",
+            group_digits(rules),
+            plural(rules, "rule", "rules")
+        ));
+    }
+    let files = count(yara, "rule_files").unwrap_or(0);
+    let mut line = format!(
+        "{} YARA {} from {} {}",
+        group_digits(rules),
+        plural(rules, "rule", "rules"),
+        group_digits(files),
+        plural(files, "file", "files")
+    );
+    if let Some(created) = count(yara, "bundle_created_unix_secs") {
+        let _ = write!(line, " (bundle built {})", human_timestamp(created));
+    }
+    Some(line)
+}
+
 /// One line describing which signatures a scan used.
 pub fn signature_summary(detectors: &[DetectorInfo]) -> String {
     let Some(hash) = detectors.iter().find(|detector| detector.id == "hash") else {
@@ -90,6 +140,43 @@ pub fn signature_summary(detectors: &[DetectorInfo]) -> String {
 
 fn plural(count: u64, singular: &'static str, plural: &'static str) -> &'static str {
     if count == 1 { singular } else { plural }
+}
+
+fn category_label(category: ThreatCategory) -> &'static str {
+    match category {
+        ThreatCategory::Malware => "malware",
+        ThreatCategory::TestFile => "test file",
+        ThreatCategory::PotentiallyUnwanted => "potentially unwanted",
+    }
+}
+
+/// The names of the findings, each once, in the order they were found.
+fn detection_names(findings: &[Finding]) -> String {
+    let mut names: Vec<&str> = Vec::new();
+    for finding in findings {
+        if !names.contains(&finding.name.as_str()) {
+            names.push(&finding.name);
+        }
+    }
+    let mut line = names
+        .iter()
+        .take(NAMES_SHOWN)
+        .map(|name| shown(name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if names.len() > NAMES_SHOWN {
+        let _ = write!(line, ", and {} more", names.len() - NAMES_SHOWN);
+    }
+    line
+}
+
+fn member_line(member: &Member) -> String {
+    format!(
+        "inside: {} ({} bytes, sha256 {})",
+        shown(&member.path.join(" > ")),
+        group_digits(member.size),
+        member.sha256
+    )
 }
 
 /// Renders a scan report as plain text.
@@ -115,6 +202,19 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
         plural(report.threads as u64, "thread", "threads"),
     );
     let _ = writeln!(out, "Signatures  {}", signature_summary(&report.detectors));
+    if let Some(rules) = rule_summary(&report.detectors) {
+        let _ = writeln!(out, "Rules       {rules}");
+    }
+    if stats.archives_unpacked > 0 {
+        let _ = writeln!(
+            out,
+            "Archives    {} unpacked, {} {} inside ({})",
+            group_digits(stats.archives_unpacked),
+            group_digits(stats.archive_members_scanned),
+            plural(stats.archive_members_scanned, "file", "files"),
+            human_bytes(stats.archive_member_bytes),
+        );
+    }
     if stats.files_skipped > 0 {
         let reasons: Vec<String> = stats
             .skipped_by_reason
@@ -127,16 +227,6 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
             group_digits(stats.files_skipped),
             reasons.join(", ")
         );
-    }
-    if stats.links_not_followed > 0 {
-        let _ = writeln!(
-            out,
-            "Links       {} not followed",
-            group_digits(stats.links_not_followed)
-        );
-    }
-    if stats.excluded > 0 {
-        let _ = writeln!(out, "Excluded    {}", group_digits(stats.excluded));
     }
     if stats.files_partially_scanned > 0 {
         let reasons: Vec<String> = stats
@@ -151,6 +241,16 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
             plural(stats.files_partially_scanned, "file", "files"),
             reasons.join(", ")
         );
+    }
+    if stats.links_not_followed > 0 {
+        let _ = writeln!(
+            out,
+            "Links       {} not followed",
+            group_digits(stats.links_not_followed)
+        );
+    }
+    if stats.excluded > 0 {
+        let _ = writeln!(out, "Excluded    {}", group_digits(stats.excluded));
     }
     if report.cancelled {
         let _ = writeln!(out);
@@ -173,53 +273,87 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
                 Verdict::Suspicious => "SUSPICIOUS",
                 Verdict::Clean => "CLEAN     ",
             };
-            let names: Vec<&str> = detection
-                .findings
-                .iter()
-                .map(|finding| finding.name.as_str())
-                .collect();
             let _ = writeln!(out);
-            let _ = writeln!(out, "  {verdict}  {}", names.join(", "));
-            let _ = writeln!(out, "    {}", detection.path.display());
+            let _ = writeln!(out, "  {verdict}  {}", detection_names(&detection.findings));
+            let _ = writeln!(out, "    {}", shown_path(&detection.path));
             let _ = writeln!(
                 out,
                 "    sha256 {} ({} bytes)",
                 detection.sha256,
                 group_digits(detection.size)
             );
+            // Findings about the same archive member follow one another,
+            // so the member is named once, above them.
+            let mut current: Option<&Member> = None;
             for finding in &detection.findings {
-                let category = match finding.category {
-                    ThreatCategory::Malware => "malware",
-                    ThreatCategory::TestFile => "test file",
-                    ThreatCategory::PotentiallyUnwanted => "potentially unwanted",
-                };
-                for reason in &finding.reasons {
-                    let _ = writeln!(out, "    {} [{category}]: {reason}", finding.detector);
+                let member = finding.member.as_ref();
+                if member != current {
+                    if let Some(member) = member {
+                        let _ = writeln!(out, "    {}", member_line(member));
+                    }
+                    current = member;
                 }
+                let indent = if member.is_some() { "      " } else { "    " };
+                let category = category_label(finding.category);
+                for reason in &finding.reasons {
+                    let _ = writeln!(
+                        out,
+                        "{indent}{} [{category}]: {}",
+                        finding.detector,
+                        shown(reason)
+                    );
+                }
+            }
+            if detection.findings_omitted > 0 {
+                let _ = writeln!(
+                    out,
+                    "    ... and {} more {}",
+                    group_digits(detection.findings_omitted),
+                    plural(detection.findings_omitted, "finding", "findings")
+                );
             }
         }
     }
 
-    if show_skipped && !report.skipped.is_empty() {
-        let _ = writeln!(out);
-        let _ = writeln!(out, "Skipped files");
-        for skipped in &report.skipped {
-            let _ = writeln!(
-                out,
-                "  {}  {}  ({})",
-                skipped.reason.as_str(),
-                skipped.path.display(),
-                skipped.detail
-            );
+    let anything_to_list = stats.files_skipped > 0 || stats.files_partially_scanned > 0;
+    if show_skipped {
+        if !report.skipped.is_empty() {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "Skipped files");
+            for skipped in &report.skipped {
+                let _ = writeln!(
+                    out,
+                    "  {}  {}  ({})",
+                    skipped.reason.as_str(),
+                    shown_path(&skipped.path),
+                    shown(&skipped.detail)
+                );
+            }
+            if report.skipped_truncated {
+                let _ = writeln!(out, "  ... and more; the list was cut short.");
+            }
         }
-        if report.skipped_truncated {
-            let _ = writeln!(out, "  ... and more; the list was cut short.");
+        if !report.partially_scanned.is_empty() {
+            let _ = writeln!(out);
+            let _ = writeln!(out, "Files not checked in full");
+            for partial in &report.partially_scanned {
+                let _ = writeln!(
+                    out,
+                    "  {}  {}  ({})",
+                    partial.reason.as_str(),
+                    shown_path(&partial.path),
+                    shown(&partial.detail)
+                );
+            }
+            if report.partially_scanned_truncated {
+                let _ = writeln!(out, "  ... and more; the list was cut short.");
+            }
         }
-    } else if stats.files_skipped > 0 {
+    } else if anything_to_list {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "Run again with --show-skipped to list the skipped files."
+            "Run again with --show-skipped to list the files that were skipped or not checked in full."
         );
     }
     out
