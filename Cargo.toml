@@ -5,6 +5,7 @@ members = [
     "crates/warden-engine",
     "crates/warden-yara",
     "crates/warden-pe",
+    "crates/warden-quarantine",
     "crates/warden-cli",
     "crates/warden-calibrate",
 ]
@@ -22,12 +23,21 @@ warden-engine = { path = "crates/warden-engine" }
 warden-pe = { path = "crates/warden-pe" }
 warden-yara = { path = "crates/warden-yara" }
 warden-sigdb = { path = "crates/warden-sigdb" }
+warden-quarantine = { path = "crates/warden-quarantine" }
 
 anyhow = "1.0.104"
+# The stream cipher that makes a quarantined file unusable as it lies on
+# disk. From the RustCrypto project, and already part of the build: the
+# random number generator that yara-x pulls in is made of it. Using it as
+# a cipher adds two small crates of the same project, `cipher` and `inout`.
+chacha20 = "0.10.2"
 clap = { version = "4.6.8", features = ["derive"] }
 crossbeam-channel = "0.5.17"
 memchr = "2.7"
 ctrlc = "3.5.2"
+# Random bytes from the operating system, for the key and the name of a
+# quarantine entry. Already part of the build through yara-x.
+getrandom = "0.4.3"
 memmap2 = "0.9.12"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
