@@ -365,8 +365,17 @@ archives included, flagged none of 109,500 files. Neither did a scan of
 ([BENCHMARKS.md](BENCHMARKS.md#with-the-heuristic-layer)).
 
 All of that is system folders and a tidy server image. The harder test is
-the rest of a desktop that people use: games, installers and small packed
-utilities. That has not been scanned with this layer yet.
+the installed programs of a desktop that people use, because that is where
+packed and protected software is. It was run on the same desktop:
+310,849 files in `C:\Program Files` and `C:\Program Files (x86)`, 74.5 GB,
+and 345,010 more files inside archives. None reached the threshold. (The
+YARA rules flagged 13 of those files; that is a matter for the
+[exclusion list](RULES.md#rules-that-are-left-out).)
+
+In all, the layer has flagged none of 447,994 files that were expected to
+be clean. Only the Windows executables among them can be flagged at all:
+on the runner that is about half of the files, on the desktop they were not
+counted. And it is two machines, not a promise about a third.
 
 ### What it costs
 

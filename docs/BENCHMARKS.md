@@ -546,34 +546,63 @@ Raw results:
 The runs on the GitHub-hosted runner were repeated once more with all three
 layers: the built-in signature, the 5,136 rules that the exclusion list
 leaves, and the heuristics with 13 scored indicators and a threshold of 32.
-The system folder of the desktop was scanned again the same way.
+The system folder of the desktop was scanned again the same way, and after
+it the two folders that hold the desktop's installed programs.
 
-| Files expected to be clean | Files | Data | Files inside archives | Flagged by any layer |
-|---|---|---|---|---|
-| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,793 | 4.78 GB | 193 | 0 |
-| Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 0 |
-| `C:\Windows\System32` on a Windows 11 desktop | 27,645 | 10.28 GB | 194 | 0 |
+| Files expected to be clean | Files | Data | Files inside archives | Flagged by the heuristics | Flagged by rules |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,793 | 4.78 GB | 193 | 0 | 0 |
+| Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 0 | 0 |
+| `C:\Windows\System32` on a Windows 11 desktop | 27,645 | 10.28 GB | 194 | 0 | 0 |
+| `C:\Program Files` and `C:\Program Files (x86)` on that desktop | 310,849 | 74.50 GB | 345,010 | 0 | 13 |
 
-None of 137,145 files was flagged. Of the runner's 109,500 files, about
-54,000 are Windows executables, which is what the heuristic layer judges;
-it also judges the executables among the files inside archives. How many
-of the desktop's files are executables was not counted.
+**The heuristic layer flagged none of 447,994 files.** The last row is the
+test it was most likely to fail: the installed programs of a machine in
+daily use, which is where packed and protected software is. Of the runner's
+109,500 files, about 54,000 are Windows executables, which is what the
+layer judges; it also judges the executables among the files inside
+archives. How many of the desktop's files are executables was not counted.
 
-What these runs do not cover is the rest of a machine that people use. The
-runner is a tidy server image with developer tools, where two thirds of the
-files belong to .NET, and on the desktop only the system folder was
-scanned. Games, installers in a downloads folder and the small utilities
-that are packed to save space were in none of the runs, and that is where a
-layer like this one is most likely to be wrong.
+**The rules flagged 13 files among the installed programs**, all as
+suspicious and none as malicious. Eight rules account for them:
+
+| Rule | Files | What the rule is |
+|---|---|---|
+| `MALPEDIA_Win_Bqtlock_Auto` | 2 | Generated automatically from samples of one malware family, like the rule that flagged `liblouis.dll` in the first round |
+| `MALPEDIA_Win_Mystic_Stealer_Auto` | 2 | The same kind |
+| `MALPEDIA_Win_Yokai_Auto` | 2 | The same kind |
+| `DITEKSHEN_INDICATOR_TOOL_UAC_NSISUAC` | 2 | Recognises a plug-in of the NSIS installer builder |
+| `COD3NYM_SUSP_OBF_NET_Reactor_Indicators_Jan24` | 2 | Recognises a commercial obfuscator for .NET programs |
+| `CAPE_Obfuscar` | 1 | Recognises an open-source obfuscator for .NET programs |
+| `COD3NYM_SUSP_NET_Shellcode_Loader_Indicators_Jan24` | 1 | Asks for three of six names of Windows memory and thread functions in a .NET program |
+| `SECUINFRA_SUSP_Powershell_Download_Temp_Rundll_1` | 1 | Asks for three short strings anywhere in a file of any kind and size |
+
+Of the 5,137 rules in the package, 1,622 are generated automatically in
+the way of the first three. Four of those have now flagged clean files, in
+about 448,000 Windows files on two machines. Every further machine is
+likely to find more: that is what public rules are like, and what the
+[exclusion list](RULES.md#rules-that-are-left-out) is for.
+
+At the time of writing these eight rules are not on the list, and the
+files they flagged are not named here or kept as a raw result: the names
+show which programs are installed on a private machine.
+
+What the runs still do not cover: the folders of a user, such as downloads
+and application data, programs on other drives, and other people's
+machines. The runner is a tidy server image with developer tools, where two
+thirds of the files belong to .NET, and the desktop is one desktop.
 
 In System32 on the runner, 38 files could not be read and 2 were checked in
 part; in its software folders 7 were checked in part, as in the rounds
 before. The runner: AMD EPYC 7763, 2 logical processors, 8 GB RAM, Windows
 Server 2025, Microsoft Defender real-time protection off. Its runs took
 5 min 28 s and 12 min 31 s, reading every file for the first time from the
-disk. On the desktop, 34 files could not be read and 6 were checked in
-part, also as before; the machine is described
-[above](#windows-desktop-2), and its run took 23 s from the file cache.
+disk. The desktop is described [above](#windows-desktop-2). In its
+System32, 34 files could not be read and 6 were checked in part, also as
+before, and the run took 23 s from the file cache. Among its installed
+programs, 2 files could not be read and 1,069 were checked in part. That
+run took 7 min 59 s, at 155 MB/s: these folders were read from the disk,
+not from the file cache.
 
 Raw results:
 [System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-heuristics.json),
