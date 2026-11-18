@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "label": "cloud dev container, 2 vCPU",
+  "path": "/usr",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "linux",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 1,
+      "runs": [
+        {
+          "duration_ms": 50819.50595,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 2762.3841943311927,
+          "megabytes_per_second": 140.70839732356745
+        },
+        {
+          "duration_ms": 15245.100274,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 9208.401222484474,
+          "megabytes_per_second": 469.0511119297345
+        },
+        {
+          "duration_ms": 15182.601697,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 9246.307240460566,
+          "megabytes_per_second": 470.98194220644973
+        }
+      ],
+      "median_files_per_second": 9208.401222484474,
+      "median_megabytes_per_second": 469.0511119297345
+    },
+    {
+      "threads": 2,
+      "runs": [
+        {
+          "duration_ms": 9089.802056,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 15444.010676485077,
+          "megabytes_per_second": 786.6762324356605
+        },
+        {
+          "duration_ms": 8570.073528,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 16380.606250499839,
+          "megabytes_per_second": 834.3838838298472
+        },
+        {
+          "duration_ms": 9413.302290000001,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 14913.257396305286,
+          "megabytes_per_second": 759.6410924353731
+        }
+      ],
+      "median_files_per_second": 15444.010676485077,
+      "median_megabytes_per_second": 786.6762324356605
+    }
+  ]
+}

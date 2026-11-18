@@ -1,0 +1,177 @@
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use serde::{Serialize, Serializer};
+use time::OffsetDateTime;
+
+use crate::detector::DetectorInfo;
+use crate::finding::{Finding, Verdict};
+
+/// Why a file was not scanned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    /// The operating system refused access.
+    AccessDenied,
+    /// Another program holds the file open exclusively.
+    InUse,
+    /// The file disappeared between being listed and being opened.
+    NotFound,
+    /// Not a regular file: a device, pipe, socket or similar.
+    SpecialFile,
+    /// A cloud placeholder whose content is not on this disk.
+    CloudPlaceholder,
+    /// The file could be opened but reading it failed.
+    ReadError,
+    /// A directory could not be listed.
+    WalkError,
+    /// A bug in Warden: a detector panicked on this file.
+    InternalError,
+}
+
+impl SkipReason {
+    /// Stable lowercase identifier, as used in JSON reports.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AccessDenied => "access_denied",
+            Self::InUse => "in_use",
+            Self::NotFound => "not_found",
+            Self::SpecialFile => "special_file",
+            Self::CloudPlaceholder => "cloud_placeholder",
+            Self::ReadError => "read_error",
+            Self::WalkError => "walk_error",
+            Self::InternalError => "internal_error",
+        }
+    }
+}
+
+/// A file or directory that could not be scanned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Skipped {
+    /// The path that was skipped.
+    #[serde(serialize_with = "lossy_path")]
+    pub path: PathBuf,
+    /// Why it was skipped.
+    pub reason: SkipReason,
+    /// The underlying error message, when there is one.
+    pub detail: String,
+}
+
+/// A file whose verdict is not clean.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Detection {
+    /// Where the file is.
+    #[serde(serialize_with = "lossy_path")]
+    pub path: PathBuf,
+    /// Number of bytes read.
+    pub size: u64,
+    /// SHA-256 of the file, in lowercase hexadecimal.
+    pub sha256: String,
+    /// The decision about the file.
+    pub verdict: Verdict,
+    /// What the detectors found, with reasons.
+    pub findings: Vec<Finding>,
+}
+
+/// A detector that failed on a file. The file still counts as scanned by the
+/// other detectors.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DetectorFailure {
+    /// The file the detector failed on.
+    #[serde(serialize_with = "lossy_path")]
+    pub path: PathBuf,
+    /// The detector and its error message.
+    pub message: String,
+}
+
+/// Counters for a whole scan.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct ScanStats {
+    /// Files read and checked.
+    pub files_scanned: u64,
+    /// Bytes read.
+    pub bytes_scanned: u64,
+    /// Files whose verdict is not clean.
+    pub detections: u64,
+    /// Files and directories that could not be scanned.
+    pub files_skipped: u64,
+    /// The same, broken down by reason.
+    pub skipped_by_reason: BTreeMap<SkipReason, u64>,
+    /// Symbolic links and junctions that were not followed. Their targets
+    /// are scanned if they lie inside the scan roots themselves.
+    pub links_not_followed: u64,
+    /// Files and directories left out by an exclusion.
+    pub excluded: u64,
+    /// Files too large for content detectors. They were still hashed.
+    pub content_scans_skipped: u64,
+    /// Times a detector failed on a file.
+    pub detector_errors: u64,
+    /// Throughput in files per second over the whole scan.
+    pub files_per_second: f64,
+    /// Throughput in megabytes (10^6 bytes) per second over the whole scan.
+    pub megabytes_per_second: f64,
+}
+
+/// The result of a scan.
+#[derive(Debug, Clone, Serialize)]
+pub struct ScanReport {
+    /// Version of this layout, see [`REPORT_SCHEMA`](crate::REPORT_SCHEMA).
+    pub schema: u32,
+    /// Version of the engine that produced the report.
+    pub engine_version: &'static str,
+    /// When the scan started.
+    #[serde(with = "time::serde::rfc3339")]
+    pub started_at: OffsetDateTime,
+    /// When the scan finished.
+    #[serde(with = "time::serde::rfc3339")]
+    pub finished_at: OffsetDateTime,
+    /// How long the scan took.
+    #[serde(rename = "duration_ms", serialize_with = "duration_as_millis")]
+    pub duration: Duration,
+    /// Whether the scan was stopped before it covered everything.
+    pub cancelled: bool,
+    /// The paths that were scanned, made absolute.
+    #[serde(serialize_with = "lossy_paths")]
+    pub roots: Vec<PathBuf>,
+    /// Number of worker threads used.
+    pub threads: usize,
+    /// The detectors that ran, with their signature counts.
+    pub detectors: Vec<DetectorInfo>,
+    /// Counters.
+    pub stats: ScanStats,
+    /// Every file whose verdict is not clean, sorted by path.
+    pub detections: Vec<Detection>,
+    /// Files and directories that could not be scanned, sorted by path.
+    pub skipped: Vec<Skipped>,
+    /// Whether `skipped` was cut short. The counters are always complete.
+    pub skipped_truncated: bool,
+    /// Detector failures, sorted by path.
+    pub detector_failures: Vec<DetectorFailure>,
+}
+
+impl ScanReport {
+    /// Whether no file received a verdict other than clean.
+    #[must_use]
+    pub fn is_clean(&self) -> bool {
+        self.detections.is_empty()
+    }
+}
+
+fn lossy_path<S: Serializer>(path: &Path, serializer: S) -> Result<S::Ok, S::Error> {
+    // File names are not guaranteed to be valid Unicode on any platform. A
+    // report must still be writable, so unrepresentable parts are replaced.
+    serializer.serialize_str(&path.to_string_lossy())
+}
+
+fn lossy_paths<S: Serializer>(paths: &[PathBuf], serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq(paths.iter().map(|path| path.to_string_lossy()))
+}
+
+fn duration_as_millis<S: Serializer>(
+    duration: &Duration,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_u64(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
+}
