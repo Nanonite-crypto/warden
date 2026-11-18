@@ -7,6 +7,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::Args;
 use warden_engine::{ArchiveOptions, CancelToken, HashDetector, ScanOptions, Scanner};
+use warden_pe::PeDetector;
 use warden_sigdb::SigDb;
 use warden_yara::{RuleBundle, YaraDetector};
 
@@ -27,6 +28,10 @@ pub struct LayerArgs {
     /// Do not run YARA rules, not even the built-in ones
     #[arg(long)]
     pub no_yara: bool,
+
+    /// Do not judge Windows executables by their structure
+    #[arg(long)]
+    pub no_heuristics: bool,
 
     /// Do not look inside zip archives
     #[arg(long)]
@@ -69,7 +74,8 @@ pub struct ScanArgs {
 }
 
 /// Builds a scanner with the layers the options ask for: hash matching
-/// always, YARA rules unless switched off.
+/// always, YARA rules and the heuristics unless switched off. The layers
+/// run in this order, the most certain first.
 pub fn build_scanner(
     layers: &LayerArgs,
     threads: Option<usize>,
@@ -95,6 +101,9 @@ pub fn build_scanner(
             None => YaraDetector::builtin().context("the built-in YARA rules are broken")?,
         };
         builder = builder.detector(yara);
+    }
+    if !layers.no_heuristics {
+        builder = builder.detector(PeDetector::new());
     }
     Ok(builder.build())
 }

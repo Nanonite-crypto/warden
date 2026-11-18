@@ -423,7 +423,7 @@ if ($Rules) {
     }
     $steps.rules = 'passed'
 
-    Write-Heading "False positives: $BenchPath with the rule bundle (read-only)"
+    Write-Heading "False positives: $BenchPath with the rule bundle and the heuristics (read-only)"
     $fpReport = Join-Path $out 'fp.json'
     Remove-Item -LiteralPath $fpReport -Force -ErrorAction SilentlyContinue
     & $warden false-positives $BenchPath --rules $bundle --label 'local machine' --no-progress --output $fpReport

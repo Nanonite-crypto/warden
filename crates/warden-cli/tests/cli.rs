@@ -1194,6 +1194,122 @@ fn inspect_calls_a_file_suspicious_when_its_score_reaches_the_threshold() {
     assert_eq!(sum, 41);
 }
 
+/// The heuristic layer in a scan. The files are inert fixtures, but two of
+/// them look packed, so they are written only where the EICAR test file may
+/// be written: see `eicar_write_then_scan_detects_every_form`.
+#[test]
+fn scan_reports_a_suspicious_structure_and_says_what_it_is_made_of() {
+    use warden_pe::fixture::Fixture;
+
+    let strict = std::env::var_os("WARDEN_REQUIRE_EICAR").is_some_and(|value| value == "1");
+    let configured = std::env::var_os("WARDEN_EICAR_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if cfg!(windows) && configured.is_none() {
+        let note = "heuristic scan not exercised: WARDEN_EICAR_DIR is not set to an antivirus-excluded folder. See docs/TESTING.md.";
+        assert!(!strict, "{note}");
+        eprintln!("note: {note}");
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let dir = match &configured {
+        Some(base) => base.join(format!("heuristic-{}", std::process::id())),
+        None => temp.path().join("zone"),
+    };
+    fs::create_dir_all(&dir).unwrap();
+    let files = [
+        ("plain.exe", Fixture::plain().build()),
+        ("packed-looking.exe", Fixture::packed_looking().build()),
+        (
+            "suspicious-looking.exe",
+            Fixture::suspicious_looking().build(),
+        ),
+        // The same file inside an archive.
+        (
+            "bundle.zip",
+            fixture_zip(&Fixture::suspicious_looking().build()),
+        ),
+    ];
+    for (name, content) in &files {
+        fs::write(dir.join(name), content).unwrap();
+    }
+
+    let json = warden().arg("scan").arg(&dir).arg("--json").assert();
+    let json = json.get_output().clone();
+    let text = warden().arg("scan").arg(&dir).assert();
+    let text = text.get_output().clone();
+    let without = warden()
+        .arg("scan")
+        .arg(&dir)
+        .arg("--no-heuristics")
+        .assert();
+    let without = without.get_output().clone();
+    for (name, _) in &files {
+        let _ = fs::remove_file(dir.join(name));
+    }
+    let _ = fs::remove_dir(&dir);
+
+    assert_eq!(json.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(report["stats"]["files_scanned"], 4);
+    let detections = report["detections"].as_array().unwrap();
+    // Sorted by path: bundle.zip, suspicious-looking.exe. The plain and the
+    // packed-looking file are not among them.
+    assert_eq!(detections.len(), 2, "{report:#}");
+    for (detection, name) in detections
+        .iter()
+        .zip(["bundle.zip", "suspicious-looking.exe"])
+    {
+        assert!(detection["path"].as_str().unwrap().ends_with(name));
+        assert_eq!(detection["verdict"], "suspicious");
+        let finding = &detection["findings"][0];
+        assert_eq!(finding["detector"], "heuristic");
+        assert_eq!(finding["name"], "Heuristic.SuspiciousExecutable");
+        assert_eq!(finding["confidence"], "medium");
+        assert_eq!(
+            finding["reasons"][0],
+            "The structure of the file scores 41; a file counts as suspicious from 32"
+        );
+        assert_eq!(
+            finding["reasons"][1],
+            "+10 A section is both writable and executable: sections \"UPX0\", \"UPX1\""
+        );
+    }
+    assert_eq!(
+        detections[0]["findings"][0]["member"]["path"],
+        serde_json::json!(["bin/fixture.bin"])
+    );
+    assert_eq!(
+        detections[1]["findings"][0]["member"],
+        serde_json::Value::Null
+    );
+    let heuristic = report["detectors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|detector| detector["id"] == "heuristic")
+        .unwrap();
+    assert_eq!(heuristic["details"]["suspicious_from"], 32);
+
+    assert_eq!(text.status.code(), Some(1));
+    let text = String::from_utf8(text.stdout).unwrap();
+    for expected in [
+        "Heuristics  13 scored indicators of a Windows executable's structure, suspicious from a score of 32",
+        "2 detections",
+        "SUSPICIOUS  Heuristic.SuspiciousExecutable",
+        "+8 The program imports nothing: the import table is empty or missing",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+    assert!(!text.contains("MALICIOUS"), "{text}");
+
+    // Without the layer nothing is left to report.
+    assert_eq!(without.status.code(), Some(0));
+    let without = String::from_utf8(without.stdout).unwrap();
+    assert!(without.contains("No threats found."), "{without}");
+    assert!(!without.contains("Heuristics"), "{without}");
+}
+
 #[test]
 fn inspect_finds_little_in_an_ordinary_program() {
     let plain = warden_pe::fixture::Fixture::plain().build();
