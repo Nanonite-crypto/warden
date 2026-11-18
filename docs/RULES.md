@@ -107,7 +107,9 @@ Remove-MpPreference -ExclusionPath "$PWD\rules\vendor"
 ```
 
 The scripts never do this for you. When the package is blocked, the Windows
-fetch script says so and prints these two commands with the full path.
+fetch script says so and prints these two commands with the full path. With
+the folder excluded, the download, the build of the bundle and a scan of
+System32 with it ran through on the same machine.
 
 Whether Defender also objects to a compiled bundle outside that folder has
 not been tried.

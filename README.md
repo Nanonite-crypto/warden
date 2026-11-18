@@ -194,15 +194,15 @@ feature space on the EMBER2024 dataset. See [docs/TESTING.md](docs/TESTING.md).
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the numbers and how they were
 produced. In short, as of phase 2:
 
-- **Speed.** On two cores of a cloud container, a 7 GB Linux system tree is
-  scanned from the file cache at 800 MB/s with hash matching alone, at
-  640 MB/s with archives unpacked as well, and at 52 MB/s with 5,138 YARA
-  rules on top.
-- **False positives** with those 5,138 rules: none among 140,383
-  files of the Linux tree. On a Windows CI machine, 1 of 21,804 files in
-  System32 and 20 of 87,707 files of installed software were reported as
-  suspicious, and none as malicious. The document names the two rules
-  responsible.
+- **Speed.** A 16-thread desktop with Microsoft Defender running scans its
+  System32 folder (27,644 files, 10 GB) from the file cache in 8 seconds
+  with the default layers, and in 19 seconds with 5,138 YARA rules. On two
+  cores of a cloud container, a 7 GB Linux tree of small files runs at
+  800 MB/s with hash matching alone and at 52 MB/s with those rules.
+- **False positives** with those 5,138 rules: no clean file was reported
+  as malicious. 22 of 137,155 files on two Windows machines were reported
+  as suspicious, and none of 140,383 files in the Linux tree. The document
+  names the two rules responsible.
 - **Detection rate on live malware:** not measured, by design.
 
 ## Roadmap

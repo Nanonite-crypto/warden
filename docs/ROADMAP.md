@@ -43,10 +43,10 @@ systems depth.
 
 - **Licence.** None chosen yet; needed before the repository goes public.
 - **What a match of a medium-score rule means.** In the first
-  false-positive run, two public rules with score 75 flagged 21 clean
+  false-positive runs, two public rules with score 75 flagged 22 clean
   Windows files as suspicious: one rule generated automatically from
-  malware code, and one that only recognises how .NET programs are
-  packaged. Options: leave it (a suspicious verdict is shown, never acted
+  malware code, which hit a different system file on each of two machines,
+  and one that only recognises how .NET programs are packaged. Options: leave it (a suspicious verdict is shown, never acted
   on); keep a short list of rules to leave out of the bundle, each with the
   evidence; or let the verdict policy ask for a second sign, such as a
   heuristic finding or a missing publisher signature, before a
