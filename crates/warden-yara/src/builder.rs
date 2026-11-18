@@ -1,12 +1,14 @@
 //! Compiling rule files into a [`RuleBundle`].
 
-use std::collections::BTreeMap;
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Read;
 use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::bundle::{BundleError, ENGINE, Manifest, RuleBundle, SourceInfo};
+use crate::bundle::{BundleError, ENGINE, ExclusionInfo, Manifest, RuleBundle, SourceInfo};
+use crate::exclusions::{EXCLUSION_MODULE, ExclusionList, stub_out};
 
 /// Name under which the built-in rules appear in a bundle.
 pub const BUILTIN_SOURCE: &str = "warden/builtin.yar";
@@ -39,6 +41,7 @@ pub struct BundleBuilder {
     sources: Vec<Source>,
     builtin: bool,
     created_unix_secs: Option<u64>,
+    exclusions: Option<ExclusionList>,
 }
 
 impl Default for BundleBuilder {
@@ -47,13 +50,22 @@ impl Default for BundleBuilder {
     }
 }
 
-/// A rule that was left out of a bundle.
+/// A rule that was left out of a bundle because it could not be used.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkippedRule {
     /// The rule's name.
     pub rule: String,
     /// Why it could not be compiled.
     pub reason: String,
+}
+
+/// A rule that was left out of a bundle because the exclusion list names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExcludedRuleMatch {
+    /// The rule's name.
+    pub rule: String,
+    /// The rule file it was found in.
+    pub source: String,
 }
 
 /// What happened to one rule file.
@@ -65,8 +77,10 @@ pub struct SourceReport {
     pub bytes: u64,
     /// Rules that were compiled.
     pub rules: u64,
-    /// Rules that were left out.
+    /// Rules that were left out because they could not be used.
     pub skipped: u64,
+    /// Rules that were left out because they are on the exclusion list.
+    pub excluded: u64,
     /// Whether the file held bytes that are not valid UTF-8, which were
     /// replaced before compiling.
     pub replaced_invalid_text: bool,
@@ -79,17 +93,26 @@ pub struct BuildReport {
     pub sources: Vec<SourceReport>,
     /// Rules in the bundle.
     pub rules: u64,
-    /// Rules that were left out. The list is cut after the first 500;
-    /// `skipped_total` is complete.
+    /// Rules that were left out because they could not be used: they did
+    /// not compile, need a module this build lacks, or depend on a rule that
+    /// was left out. The list is cut after the first 500; `skipped_total` is
+    /// complete.
     pub skipped: Vec<SkippedRule>,
-    /// Number of rules that were left out.
+    /// Number of rules that were left out because they could not be used.
     pub skipped_total: u64,
+    /// Rules that were left out because the exclusion list names them. A
+    /// name appears once for every rule file that declares it.
+    pub excluded: Vec<ExcludedRuleMatch>,
+    /// Names on the exclusion list that no rule file declares. An entry
+    /// ends up here when a rule set renames or drops a rule, or when the
+    /// name is misspelt.
+    pub unused_exclusions: Vec<String>,
     /// The first line of each compile error. Cut after the first 500;
     /// `error_total` is complete.
     pub errors: Vec<String>,
     /// Number of compile errors.
     pub error_total: u64,
-    /// Number of warnings the compiler issued.
+    /// Number of warnings the compiler issued about the rule files.
     pub warnings: u64,
     /// How long compiling took.
     pub compile_time: Duration,
@@ -114,6 +137,7 @@ impl BundleBuilder {
             sources: Vec::new(),
             builtin: true,
             created_unix_secs: None,
+            exclusions: None,
         }
     }
 
@@ -129,6 +153,17 @@ impl BundleBuilder {
     #[must_use]
     pub fn created_unix_secs(mut self, seconds: u64) -> Self {
         self.created_unix_secs = Some(seconds);
+        self
+    }
+
+    /// Leaves the rules on an exclusion list out of the bundle.
+    ///
+    /// A rule is found by its name, in every rule file. Rules that use a
+    /// rule that was left out cannot work without it: they are left out as
+    /// well, and the report lists them among the skipped rules.
+    #[must_use]
+    pub fn exclusions(mut self, list: ExclusionList) -> Self {
+        self.exclusions = Some(list);
         self
     }
 
@@ -282,7 +317,8 @@ impl BundleBuilder {
     ///
     /// # Errors
     ///
-    /// Fails if not a single rule could be compiled.
+    /// Fails if not a single rule could be compiled, or if the exclusion
+    /// list names a rule that must stay: a built-in rule or a global rule.
     pub fn build(self) -> Result<Built, BundleError> {
         let mut sources = Vec::with_capacity(self.sources.len() + 1);
         if self.builtin {
@@ -294,6 +330,13 @@ impl BundleBuilder {
         }
         sources.extend(self.sources);
 
+        let listed: BTreeSet<&str> = self
+            .exclusions
+            .iter()
+            .flat_map(ExclusionList::rules)
+            .map(|rule| rule.name.as_str())
+            .collect();
+
         let started = Instant::now();
         let mut compiler = yara_x::Compiler::new();
         // Many public rules were written for the original YARA, which
@@ -302,28 +345,84 @@ impl BundleBuilder {
         for module in MODULES_NOT_BUILT {
             compiler.ignore_module(module);
         }
+        if !listed.is_empty() {
+            // Rules on the exclusion list are replaced by stubs that use
+            // this module, see `stub_out`. The compiler leaves out every
+            // rule that uses an ignored module, and every rule that depends
+            // on such a rule.
+            compiler.ignore_module(EXCLUSION_MODULE);
+        }
 
-        let mut skipped_per_source = Vec::with_capacity(sources.len());
+        // Per rule file: rules that could not be used, and rules that were
+        // left out because they are listed.
+        let mut left_out_per_source = Vec::with_capacity(sources.len());
+        let mut skipped = Vec::new();
+        let mut skipped_total = 0u64;
+        let mut excluded = Vec::new();
         for source in &sources {
-            let skipped_before = compiler.ignored_rules().len();
+            let mut text = Cow::Borrowed(source.text.as_str());
+            let mut stubbed = Vec::new();
+            match stub_out(&source.text, &listed) {
+                Ok(None) => {}
+                Ok(Some(rewritten)) if source.name == BUILTIN_SOURCE => {
+                    return Err(BundleError::Exclusion(format!(
+                        "{} is built into Warden and must stay; a bundle can be built without the built-in rules instead",
+                        rewritten.rules.join(", ")
+                    )));
+                }
+                Ok(Some(rewritten)) => {
+                    text = Cow::Owned(rewritten.text);
+                    stubbed = rewritten.rules;
+                }
+                Err(refused) => {
+                    return Err(BundleError::Exclusion(format!(
+                        "{} in {} must stay: {}",
+                        refused.rule, source.name, refused.reason
+                    )));
+                }
+            }
+
+            let ignored_before = compiler.ignored_rules().len();
             compiler.new_namespace(&source.name);
             // An error here means that some rule in the file did not
             // compile. The compiler keeps the rules that did and remembers
             // the error, which is read back below.
-            let code = yara_x::SourceCode::from(source.text.as_str()).with_origin(&source.name);
+            let code = yara_x::SourceCode::from(text.as_ref()).with_origin(&source.name);
             let _ = compiler.add_source(code);
-            skipped_per_source.push((compiler.ignored_rules().len() - skipped_before) as u64);
+
+            let mut skipped_here = 0u64;
+            let mut stubs_left_out = 0usize;
+            for (rule, reason) in compiler.ignored_rules().skip(ignored_before) {
+                if is_stub(&reason) && stubbed.iter().any(|name| name == rule) {
+                    stubs_left_out += 1;
+                    continue;
+                }
+                skipped_here += 1;
+                if skipped.len() < MAX_LISTED {
+                    skipped.push(SkippedRule {
+                        rule: rule.to_owned(),
+                        reason: describe(&reason),
+                    });
+                }
+            }
+            // The replaced rules are gone from the text whatever happens
+            // here. This guards the numbers in the report: if the compiler
+            // ever stops treating the stubs as expected, the build says so.
+            if stubs_left_out != stubbed.len() {
+                return Err(BundleError::Exclusion(format!(
+                    "{} rules were taken out of {}, but the compiler accounts for {stubs_left_out}; this is a fault in Warden",
+                    stubbed.len(),
+                    source.name
+                )));
+            }
+            skipped_total += skipped_here;
+            left_out_per_source.push((skipped_here, stubbed.len() as u64));
+            excluded.extend(stubbed.into_iter().map(|rule| ExcludedRuleMatch {
+                rule,
+                source: source.name.clone(),
+            }));
         }
 
-        let skipped_total = compiler.ignored_rules().len() as u64;
-        let skipped = compiler
-            .ignored_rules()
-            .take(MAX_LISTED)
-            .map(|(rule, reason)| SkippedRule {
-                rule: rule.to_owned(),
-                reason: describe(&reason),
-            })
-            .collect();
         let error_total = compiler.errors().len() as u64;
         let errors = compiler
             .errors()
@@ -331,7 +430,13 @@ impl BundleBuilder {
             .take(MAX_LISTED)
             .map(|error| first_line(&error.to_string()))
             .collect();
-        let warnings = compiler.warnings().len() as u64;
+        // The stubs make the compiler warn that their module is missing.
+        // Those warnings say nothing about the rule files.
+        let warnings = compiler
+            .warnings()
+            .iter()
+            .filter(|warning| excluded.is_empty() || !warning.title().contains(EXCLUSION_MODULE))
+            .count() as u64;
 
         let rules = compiler.build();
         let compile_time = started.elapsed();
@@ -343,28 +448,53 @@ impl BundleBuilder {
         for rule in rules.iter() {
             *compiled_per_source.entry(rule.namespace()).or_insert(0) += 1;
         }
+        let unused_exclusions: Vec<String> = {
+            let found: BTreeSet<&str> = excluded.iter().map(|entry| entry.rule.as_str()).collect();
+            listed
+                .iter()
+                .filter(|name| !found.contains(*name))
+                .map(|name| (*name).to_owned())
+                .collect()
+        };
         let mut manifest = Manifest {
             engine: ENGINE.to_owned(),
             sources: Vec::with_capacity(sources.len()),
+            exclusions: self.exclusions.as_ref().map(|list| {
+                // Each name once, in the order the rules were found.
+                let mut rules: Vec<String> = Vec::new();
+                for entry in &excluded {
+                    if !rules.contains(&entry.rule) {
+                        rules.push(entry.rule.clone());
+                    }
+                }
+                ExclusionInfo {
+                    sha256: list.digest().to_owned(),
+                    rules,
+                }
+            }),
         };
         let mut reports = Vec::with_capacity(sources.len());
-        for (source, skipped) in sources.iter().zip(skipped_per_source) {
+        for (source, (skipped_here, excluded_here)) in sources.iter().zip(left_out_per_source) {
             let compiled = compiled_per_source
                 .get(source.name.as_str())
                 .copied()
                 .unwrap_or(0);
+            // The record describes the file as it was given, not the text
+            // with the listed rules taken out.
             manifest.sources.push(SourceInfo {
                 name: source.name.clone(),
                 sha256: warden_sigdb::hex::encode(&warden_engine::sha256(source.text.as_bytes())),
                 bytes: source.text.len() as u64,
                 rules: compiled,
-                skipped,
+                skipped: skipped_here,
+                excluded: excluded_here,
             });
             reports.push(SourceReport {
                 name: source.name.clone(),
                 bytes: source.text.len() as u64,
                 rules: compiled,
-                skipped,
+                skipped: skipped_here,
+                excluded: excluded_here,
                 replaced_invalid_text: source.replaced_invalid_text,
             });
         }
@@ -385,6 +515,8 @@ impl BundleBuilder {
                 rules: rule_total,
                 skipped,
                 skipped_total,
+                excluded,
+                unused_exclusions,
                 errors,
                 error_total,
                 warnings,
@@ -392,6 +524,12 @@ impl BundleBuilder {
             },
         })
     }
+}
+
+/// True if the compiler left a rule out for the reason that applies to the
+/// stubs: it uses the module that stands for the exclusion list.
+fn is_stub(reason: &yara_x::IgnoredRuleReason<'_>) -> bool {
+    matches!(reason, yara_x::IgnoredRuleReason::IgnoredModule(module) if *module == EXCLUSION_MODULE)
 }
 
 fn describe(reason: &yara_x::IgnoredRuleReason<'_>) -> String {

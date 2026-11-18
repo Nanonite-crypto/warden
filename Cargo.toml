@@ -31,6 +31,8 @@ serde_json = "1.0.154"
 sha2 = "0.11.1"
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["formatting", "serde"] }
+# Reads the rule exclusion list. Parsing only: Warden never writes TOML.
+toml = { version = "1.2.1", default-features = false, features = ["std", "parse", "serde"] }
 walkdir = "2.5.0"
 # Only the modules that rules in the wild use are built, and the protocol
 # buffer code that ships with yara-x is used as it is, which keeps the build
@@ -55,6 +57,10 @@ yara-x = { version = "1.23.0", default-features = false, features = [
 # 0.10.0 moved the PKCS#1 v1.5 types behind a feature that yara-x does not
 # ask for, so Warden asks for it. To be removed when yara-x does.
 rsa = { version = "0.10.0", features = ["pkcs1v15"] }
+# The parser yara-x itself uses, at the same version. It finds where a rule
+# starts and ends in a rule file, which is how a rule on the exclusion list
+# is taken out. yara-x already depends on it, so nothing new is built.
+yara-x-parser = "=1.23.0"
 # Pinned exactly: Warden walks archives with the reader in `zip::unstable`,
 # which keeps memory use independent of the number of members and may change
 # in any release. Only the two deflate variants are built; members packed any

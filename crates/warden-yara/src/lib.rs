@@ -44,10 +44,14 @@
 mod builder;
 mod bundle;
 mod detector;
+mod exclusions;
 
-pub use builder::{BUILTIN_SOURCE, BuildReport, Built, BundleBuilder, SkippedRule, SourceReport};
+pub use builder::{
+    BUILTIN_SOURCE, BuildReport, Built, BundleBuilder, ExcludedRuleMatch, SkippedRule, SourceReport,
+};
 pub use bundle::{
-    BundleError, ENGINE, FORMAT_VERSION, HEADER_LEN, MAGIC, Manifest, RuleBundle, SourceInfo,
-    write_bundle,
+    BundleError, ENGINE, ExclusionInfo, FORMAT_VERSION, HEADER_LEN, MAGIC, Manifest, RuleBundle,
+    SourceInfo, write_bundle,
 };
 pub use detector::{RuleStats, YaraDetector, YaraOptions};
+pub use exclusions::{Evidence, ExcludedRule, ExclusionError, ExclusionList};
