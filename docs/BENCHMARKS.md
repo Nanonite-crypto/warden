@@ -428,11 +428,13 @@ the later run:
 
 ## False positives
 
-Three rounds of runs. The first used every rule of the rule package and
+Four rounds of runs. The first used every rule of the rule package and
 found two rules that flag clean files. Those two went onto the
 [exclusion list](RULES.md#rules-that-are-left-out), and the second round
 measured what is left. The third round has the heuristic layer switched on
-as well.
+as well, and took in the installed programs of a desktop, where eight more
+rules flagged clean files. The fourth measured what is left with those on
+the list too.
 
 ### With every rule of the package
 
@@ -597,9 +599,9 @@ exclusion list is for.
 
 **All eight went onto the exclusion list the same day**, each with its
 evidence. A bundle built with the list now has 5,128 rules: 205 lead to the
-verdict malicious and 4,923 to suspicious. The scan of the installed
-programs has not been repeated with that bundle yet, so what the longer
-list does there is not measured.
+verdict malicious and 4,923 to suspicious. Both scans of the desktop were
+repeated with that bundle: that is
+[the fourth round](#with-ten-rules-on-the-list).
 
 Three of the 13 files are not named, here or in the raw result: their names
 would show which programs are installed on a private machine. They are
@@ -633,20 +635,42 @@ Raw results:
 
 The check on the desktop was run again with the bundle that the longer list
 gives: 5,128 rules, of which 205 lead to the verdict malicious and 4,923 to
-suspicious.
+suspicious. After it, the two folders with the installed programs were
+scanned again with the same bundle.
 
 | Files expected to be clean | Files | Data | Files inside archives | Flagged by the heuristics | Flagged by rules |
 |---|---|---|---|---|---|
 | `C:\Windows\System32` on the Windows 11 desktop | 27,642 | 10.12 GB | 194 | 0 | 0 |
+| `C:\Program Files` and `C:\Program Files (x86)` on that desktop | 310,853 | 74.63 GB | 345,010 | 0 | 0 |
 
-That shows two things: a bundle with ten exclusions builds and runs on this
-machine, and nothing new surfaced in its system folder. It does not show
-what the eight new entries do, because none of those rules had flagged
-anything in System32. The folders in which they had, the installed
-programs, have not been scanned again yet.
+**No file among the installed programs is flagged any more**: 0 of 310,853,
+where the bundle with two exclusions had flagged 13 of 310,849. That row is
+the one that shows what the eight new entries do. The first row cannot,
+because none of those rules had flagged anything in System32. What the
+first row shows is that a bundle with ten exclusions builds and runs on
+this machine, and that nothing new surfaced in its system folder.
 
-37 files could not be read and 5 were checked in part; the run took 21 s
-from the file cache.
+What that zero is worth, and what it is not:
+
+- **It was measured on the files the list was written from.** The eight
+  entries exist because of 13 files in these folders. That the same folders
+  come out clean afterwards says the list does what it was written to do.
+  It says nothing about the next machine, which is likely to find rules of
+  its own.
+- **The folders had changed a little.** They belong to a machine in use,
+  and an hour and forty minutes lay between the two scans: the second found
+  four files and 0.13 GB more.
+- **A result lists what is flagged, not what passes.** That the 13 files
+  were scanned again follows from the folders being the same ones, not from
+  the result.
+
+In System32, 37 files could not be read and 5 were checked in part, and the
+run took 21 s from the file cache. Among the installed programs, 2 files
+could not be read and 1,069 were checked in part, as in the first scan.
+That run took 6 min 6 s, at 204 MB/s, where the first had taken 7 min 59 s.
+The folders had been read once by then; how much of them the file cache
+still held was not measured.
 
 Raw results:
-[System32](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32-false-positives.json).
+[System32](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32-false-positives.json),
+[installed programs](benchmarks/2026-11-18-windows-desktop-phase3-repeat-programs-false-positives.json).

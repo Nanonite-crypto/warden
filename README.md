@@ -247,8 +247,10 @@ produced. In short, as of phase 3:
   flagged 22 clean files were put on the
   [exclusion list](rules/exclusions.toml), each with its evidence. In the
   desktop's installed programs, eight more rules flagged 13 of 310,849
-  files and went onto the list as well. The run that shows the effect of
-  the longer list there is still to be repeated.
+  files and went onto the list as well. Scanned again with the longer
+  list, those folders have no flagged file. The list was written from
+  these very files, so that is what it should give; another machine is
+  likely to find rules of its own.
 - **The heuristic score on EMBER2024**, on the twelve weeks it was not
   fitted to: it flags 24.6 % of the malicious Windows executables and
   0.0056 % of the benign ones (15 of 269,813). Among programs it is 29.6 %;
