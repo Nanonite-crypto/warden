@@ -268,6 +268,37 @@ Raw results:
 [the run with rules](benchmarks/2026-11-18-github-windows-runner-phase2-drivers-false-positives.json),
 [machine](benchmarks/2026-11-18-github-windows-runner-phase2-machine.json).
 
+### Windows desktop
+
+The machine described under phase 1: AMD Ryzen 7 5800X, 16 threads, 32 GB
+RAM, Windows 11 Home, Microsoft Defender real-time protection on. Run with
+administrator rights.
+
+**Scan throughput** over `C:\Windows\System32`: 27,641 files, 10.12 GB, with
+37 files that could not be read. Default layers: hash, the built-in rule,
+archives.
+`warden bench C:\Windows\System32 --runs 3`, run by `scripts\win\check.cmd`
+
+| Threads | Run | Time | Files/s | MB/s | Cache |
+|---|---|---|---|---|---|
+| 16 | 1 | 30.59 s | 904 | 330.7 | First of this run |
+| 16 | 2 | 7.45 s | 3,712 | 1,358.7 | Warm |
+| 16 | 3 | 7.52 s | 3,678 | 1,346.0 | Warm |
+
+The warm passes are faster than those of the phase 1 build on the same
+folder an hour earlier (8.3 s), although this build does more: it runs a
+rule and looks for archives. Two runs an hour apart on a desktop that is
+in use are not a controlled comparison, so read the difference as noise,
+not as a speed-up.
+
+**With 5,138 rules:** not measured on this machine yet. Defender blocked
+the download of the rule package, as [RULES.md](RULES.md#rule-files-and-your-antivirus)
+describes, so the bundle was not built.
+
+Raw results:
+[benchmark](benchmarks/2026-11-18-windows-desktop-phase2-system32.json),
+[machine](benchmarks/2026-11-18-windows-desktop-phase2-machine.json).
+
 ## False positives
 
 The rule set is the YARA Forge core package, release 20261018, with

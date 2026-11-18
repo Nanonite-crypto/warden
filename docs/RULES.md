@@ -64,7 +64,7 @@ or slow.
 ```
 scripts\win\check.cmd -Rules                                  (Windows: fetch, build and test)
 bash scripts/fetch-rules.sh                                   (Linux)
-warden rules build rules/vendor/yara-forge-rules-core.zip --out rules.wrb
+warden rules build rules/vendor/yara-forge-rules-core.zip --out rules/vendor/rules.wrb
 ```
 
 The fetch scripts refuse a download that does not match the pinned
@@ -83,15 +83,34 @@ name, so you can see what you are running. For the pinned release:
 
 ### Rule files and your antivirus
 
-A rule file is full of the byte patterns of malware; that is what it is
-for. Some antivirus products take such a file for the real thing. If the
-downloaded package or a bundle disappears on your machine, or cannot be
-read, this is the likely reason, and the Windows fetch script says so.
+A rule file is full of the byte patterns of the malware it describes; that
+is what it is for. Microsoft Defender takes the YARA Forge package for the
+real thing. On a Windows 11 desktop with real-time protection on, the
+download was blocked the moment it was written, with the message "the file
+contains a virus or potentially unwanted software". The hosted CI machines
+run without real-time protection, so the package arrives there.
 
-The remedy is the one described for the EICAR test folder in
-[TESTING.md](TESTING.md#eicar-and-your-antivirus): exclude the one folder
-that holds the rules (`rules\vendor`, and wherever you keep the bundle),
-knowingly, and nothing more.
+The remedy is the one used for the EICAR test folder: exclude one dedicated
+folder, knowingly, and nothing more. That folder is `rules\vendor`. The
+scripts keep the downloaded package and the bundle built from it there, so
+one exclusion covers both, and the folder holds nothing else. From a
+PowerShell window opened as administrator, in the repository:
+
+```powershell
+Add-MpPreference -ExclusionPath "$PWD\rules\vendor"
+```
+
+To undo it:
+
+```powershell
+Remove-MpPreference -ExclusionPath "$PWD\rules\vendor"
+```
+
+The scripts never do this for you. When the package is blocked, the Windows
+fetch script says so and prints these two commands with the full path.
+
+Whether Defender also objects to a compiled bundle outside that folder has
+not been tried.
 
 ## From a match to a verdict
 

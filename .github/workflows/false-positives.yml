@@ -55,7 +55,7 @@ jobs:
           $present = @($wanted | Where-Object { Test-Path -LiteralPath $_ })
           Write-Host "Scanning: $($present -join ', ')"
           & target\release\warden.exe false-positives @present `
-            --rules target\check\rules.wrb `
+            --rules rules\vendor\rules.wrb `
             --label 'GitHub-hosted Windows runner, common software' `
             --no-progress `
             --output target\check\fp-software.json

@@ -10,7 +10,8 @@
 
     What it touches:
     - It writes its results and the test files inside this repository only:
-      target\check\, testdata\ and, with -Rules, rules\vendor\.
+      target\check\, testdata\ and, with -Rules, rules\vendor\ (the
+      downloaded rule package and the rule bundle built from it).
     - Cargo and rustup do what they do on any first build: they download the
       Rust toolchain pinned in rust-toolchain.toml and the dependencies, and
       put the build output in cargo's target folder (target\ here, unless
@@ -386,7 +387,10 @@ if ($SkipBench) {
 # --- 6. Rule bundle and false positives ------------------------------------------------------
 if ($Rules) {
     Write-Heading 'Rule bundle from YARA Forge'
-    $bundle = Join-Path $out 'rules.wrb'
+    # The bundle is kept next to the package it is built from. Microsoft
+    # Defender blocks that package, so whoever works with rules excludes
+    # that one folder, and the bundle is then covered as well.
+    $bundle = Join-Path $repo 'rules\vendor\rules.wrb'
     $package = $null
     try {
         # The fetch script writes the path of the package as its last output.

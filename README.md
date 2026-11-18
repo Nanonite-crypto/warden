@@ -114,14 +114,20 @@ collected from 35 public repositories, and check its SHA-256.
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\win\fetch-rules.ps1
-warden rules build rules\vendor\yara-forge-rules-core.zip --out rules.wrb
-warden scan C:\some\folder --rules rules.wrb
+warden rules build rules\vendor\yara-forge-rules-core.zip --out rules\vendor\rules.wrb
+warden scan C:\some\folder --rules rules\vendor\rules.wrb
 ```
 
 On Linux the first line is `scripts/fetch-rules.sh`. On Windows,
 `scripts\win\check.cmd -Rules` does all of this and then counts false
 positives in the System32 folder. [docs/RULES.md](docs/RULES.md) explains
 how a rule's score becomes a verdict.
+
+Microsoft Defender blocks that package: a rule file is full of the byte
+patterns it describes, and Defender takes it for the real thing. The fetch
+script then names the one folder to exclude, `rules\vendor`, and
+[docs/RULES.md](docs/RULES.md#rule-files-and-your-antivirus) has the
+details.
 
 ## How detection works
 

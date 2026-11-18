@@ -174,6 +174,11 @@ Windows system files are scanned on a GitHub-hosted runner by the
 runs when started by hand or when a branch named `fp-run/...` is pushed,
 not on every change.
 
+On your own Windows machine, `scripts\win\check.cmd -Rules` does the same
+for the System32 folder. Microsoft Defender blocks the rule package it
+downloads; [RULES.md](RULES.md#rule-files-and-your-antivirus) explains why,
+and the one folder exclusion that this needs.
+
 ## Benchmarks
 
 ```
