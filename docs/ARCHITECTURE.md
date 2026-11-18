@@ -3,8 +3,8 @@
 This document describes the design Warden is being built towards and marks
 what exists today. The phases are in [ROADMAP.md](ROADMAP.md).
 
-**Implemented so far (phase 1):** the engine library, the signature
-database, the hash-matching detector and the command-line tool.
+**Implemented so far (phases 1 and 2):** the engine library, the signature
+database, hash matching, YARA rules, zip scanning and the command-line tool.
 
 ## Scope
 
@@ -84,20 +84,29 @@ elevated caller.
 3. **Nothing is destroyed.** Quarantine is journaled and reversible, and a
    guard refuses to quarantine signed Windows system files, because a false
    positive there can stop Windows from booting.
-4. **Files are hostile input.** Parsers get size limits and fuzz targets. A
-   file that cannot be read is reported as skipped with a reason, never
-   silently dropped. A detector that panics costs one file, not the scan.
+4. **Files are hostile input.** Parsers get limits, and fuzz targets from
+   phase 3 on. A file that cannot be read is reported as skipped with a
+   reason, and a file that could only be checked in part is reported as
+   such, with what was left out. Neither is ever silently dropped. A
+   detector that panics costs one file, not the scan.
 
 ## Workspace layout
 
 ```
 crates/
   warden-sigdb/     signature database: format, builder, reader, importers
-  warden-engine/    detectors, verdict policy, the parallel scan pipeline
+  warden-engine/    detector interface, verdict policy, the parallel scan
+                    pipeline, zip unpacking, the hash detector
+  warden-yara/      YARA layer: rule bundles and the detector that runs them
   warden-cli/       the `warden` command-line tool
-docs/               this document, the roadmap, format spec, testing, benchmarks
-scripts/win/        Windows helper scripts
+docs/               this document, the roadmap, format specs, testing, benchmarks
+rules/              which public rule release the rule bundle is built from
+scripts/            fetch and check scripts, for Linux and Windows
 ```
+
+The YARA layer is a crate of its own because its rule engine is a large
+dependency. The engine crate stays small and builds in seconds; only what
+needs YARA pays for it.
 
 Crates planned for later phases: `quarantine`, `remediation`, `realtime`,
 `ipc`, `service`, and the Tauri app.
@@ -121,13 +130,19 @@ flowchart LR
 2. **Worker** threads take paths from a bounded queue. Each file is opened
    without blocking other programs and read exactly once. Its SHA-256 is
    computed on the way.
-3. If no detector needs content, the file is hashed in a streaming fashion
-   with constant memory. If one does, files up to a size limit are buffered
-   once and shared by all detectors; larger files are still hashed and still
-   checked by hash, and the report counts them.
-4. Each **detector** inspects the file and returns findings.
-5. The **verdict policy** decides clean, suspicious or malicious.
-6. The **calling thread** collects outcomes, so an observer (a progress
+3. Files up to a size limit are buffered once and shared by all detectors.
+   Larger files are still hashed, in a streaming fashion with constant
+   memory, and still checked by hash; the report lists them as checked in
+   part.
+4. Each **detector** inspects the file and returns findings. A detector is
+   shared and read-only: signatures, compiled rules. What a thread needs to
+   itself, such as a YARA scanner, lives in a **session** that the detector
+   hands out once per worker thread.
+5. If the file is a zip archive, its members are unpacked in memory and go
+   through the same detectors, see [Archives](#archives).
+6. The **verdict policy** decides clean, suspicious or malicious from all
+   findings for the file, its members included.
+7. The **calling thread** collects outcomes, so an observer (a progress
    line today, the service's event stream later) needs no locking.
 
 Both queues are bounded, which gives back-pressure: the walker cannot run
@@ -139,12 +154,61 @@ at any time and still returns a report of what it covered.
 | Layer | Phase | What it catches | Its weakness |
 |---|---|---|---|
 | Hash match | 1, done | Exact copies of known files | One changed byte evades it |
-| YARA rules | 2 | Byte patterns and structure shared by a family | Packing and encryption hide the patterns |
+| YARA rules | 2, done | Byte patterns and structure shared by a family | Packing and encryption hide the patterns |
 | PE heuristics | 3 | Signs of packing, injection and evasion in executables | Legitimate software can look suspicious |
 | ML classifier | 11, optional | Statistical resemblance to known malware | Opaque, and only as good as its training data |
 
 A valid Authenticode signature will be able to lower a heuristic score. It
 never cancels a hash or YARA hit.
+
+How a rule match becomes a verdict, where rules come from and what a rule
+bundle looks like on disk is in [RULES.md](RULES.md).
+
+### Archives
+
+Implemented in `warden-engine`, for zip archives. That covers plain zips
+and everything built on the format: Office documents, Java archives,
+installers that carry a zip behind a program.
+
+- **In memory, never to disk.** A member is unpacked into a buffer, hashed,
+  handed to the detectors and dropped. Nothing is written anywhere, so a
+  member named `..\..\evil.exe` is only a name.
+- **A finding says where.** The detection is the file on disk, because that
+  is what can be quarantined. The finding carries the path inside it, for
+  example `inner.zip > tools/setup.exe`, with the member's own size and
+  hash.
+- **Every limit is reported.** An archive is hostile input: a few kilobytes
+  can claim to unpack to petabytes. When a limit stops the unpacking, the
+  file is listed as checked in part, with the limit that stopped it.
+
+| Limit | Default | Guards against |
+|---|---|---|
+| Nesting depth | 3 archives | Archives inside archives without end |
+| Members per scanned file, all levels together | 10,000 | Millions of tiny members |
+| Size of one member, unpacked | 64 MiB | One member that fills memory |
+| Unpacked total per scanned file | 512 MiB | Many members that add up |
+| Compression ratio of one member | 250 to 1, for members above 1 MiB | A small member that explodes |
+
+The member limit matches the default of ClamAV's `MaxFiles`. A member is
+never trusted about its own size: unpacking stops at the limit, whatever
+the archive's directory says.
+
+Also reported instead of silently skipped: members that are
+password-protected, members packed with a method that this build does not
+unpack (it unpacks stored, deflate and deflate64), and archives that are
+damaged. A damaged member is still checked as far as it unpacks, so a
+deliberately broken tail is not a way past the scanner.
+
+Known gaps, by decision:
+
+- Archives larger than the content limit (128 MiB) are not unpacked, and
+  other formats (7z, rar, cab, iso) are not unpacked at all.
+- Warden reads an archive the way Windows Explorer and 7-Zip do, through
+  its central directory. A file crafted so that other tools see different
+  members than that directory lists is not detected as such.
+- The most compact zip bombs list the same packed data under many directory
+  entries. That overlap is not detected as such either: each entry is
+  unpacked as a member of its own, and the limits above end it.
 
 ## Signature database
 

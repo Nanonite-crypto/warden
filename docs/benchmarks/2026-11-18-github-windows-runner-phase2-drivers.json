@@ -1,0 +1,70 @@
+{
+  "schema": 2,
+  "label": "local machine",
+  "path": "C:\\Windows\\System32\\drivers",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel64 Family 6 Model 173 Stepping 1, GenuineIntel"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1794989897,
+        "bundle_digest": "e02f91310bddde020abe84b54594a002aa76c3087dd86022c84a23bc98479294",
+        "engine": "yara-x 1.23.0",
+        "origin": "built-in rules",
+        "rule_files": 1,
+        "rules": 1
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 2,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 2375.7099999999996,
+          "files_scanned": 613,
+          "bytes_scanned": 157053515,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 258.02812632855023,
+          "megabytes_per_second": 66.10803296698671
+        },
+        {
+          "first": false,
+          "duration_ms": 113.5959,
+          "files_scanned": 613,
+          "bytes_scanned": 157053515,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 5396.321522167614,
+          "megabytes_per_second": 1382.5632351167603
+        },
+        {
+          "first": false,
+          "duration_ms": 91.4098,
+          "files_scanned": 613,
+          "bytes_scanned": 157053515,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 6706.064338834567,
+          "megabytes_per_second": 1718.1255729692002
+        }
+      ],
+      "repeat_median_files_per_second": 6051.192930501091,
+      "repeat_median_megabytes_per_second": 1550.3444040429804
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+Development container, 2026-11-18. Release build, 2 virtual CPUs.
+
+warden rules build yara-forge-rules-core.zip --out core.wrb
+  Compiled 5,138 rules from 2 files in 2.15 s (an earlier run: 2.19 s)
+  Bundle size: 8,721,736 bytes
+
+Wall-clock time of the whole process, 30 runs each, in milliseconds.
+The folder holds the three EICAR test files (324 bytes in total).
+
+                                             median     min     max
+warden --version                                2.3     1.7     3.2
+warden scan <folder> --no-yara                  3.0     2.4     3.5
+warden scan <folder>                            7.3     6.5    10.0
+warden scan <folder> --rules core.wrb         731.5   658.2   954.3

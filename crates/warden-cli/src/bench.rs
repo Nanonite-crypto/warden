@@ -8,8 +8,9 @@ use clap::Args;
 use serde::Serialize;
 use warden_engine::{DetectorInfo, ENGINE_VERSION, NoObserver, ScanReport};
 
-use crate::render::{group_digits, human_bytes, human_duration, signature_summary};
-use crate::scan::{build_scanner, cancel_on_ctrl_c};
+use crate::render::{group_digits, human_bytes, human_duration, rule_summary, signature_summary};
+use crate::scan::{LayerArgs, build_scanner, cancel_on_ctrl_c};
+use crate::system::{SystemInfo, system_info};
 
 #[derive(Debug, Args)]
 pub struct BenchArgs {
@@ -25,9 +26,8 @@ pub struct BenchArgs {
     #[arg(long, value_delimiter = ',', value_name = "N,N,...")]
     threads: Vec<usize>,
 
-    /// Signature database to use on top of the built-in signatures
-    #[arg(long, value_name = "FILE", env = "WARDEN_SIGDB")]
-    sigdb: Option<PathBuf>,
+    #[command(flatten)]
+    layers: LayerArgs,
 
     /// Print the results as JSON on standard output
     #[arg(long)]
@@ -82,14 +82,6 @@ struct Configuration {
 }
 
 #[derive(Debug, Serialize)]
-struct SystemInfo {
-    os: &'static str,
-    arch: &'static str,
-    logical_cpus: usize,
-    cpu: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
 struct BenchReport {
     schema: u32,
     label: Option<String>,
@@ -119,34 +111,6 @@ fn repeat_median(runs: &[Run], figure: impl Fn(&Run) -> f64) -> Option<f64> {
     (!repeats.is_empty()).then(|| median(repeats))
 }
 
-fn cpu_name() -> Option<String> {
-    #[cfg(target_os = "linux")]
-    {
-        let info = std::fs::read_to_string("/proc/cpuinfo").ok()?;
-        info.lines()
-            .find(|line| line.starts_with("model name"))
-            .and_then(|line| line.split_once(':'))
-            .map(|(_, name)| name.trim().to_owned())
-    }
-    #[cfg(windows)]
-    {
-        std::env::var("PROCESSOR_IDENTIFIER").ok()
-    }
-    #[cfg(not(any(target_os = "linux", windows)))]
-    {
-        None
-    }
-}
-
-fn system_info() -> SystemInfo {
-    SystemInfo {
-        os: std::env::consts::OS,
-        arch: std::env::consts::ARCH,
-        logical_cpus: std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get),
-        cpu: cpu_name(),
-    }
-}
-
 pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
     if args.runs == 0 {
         bail!("--runs must be at least 1");
@@ -163,7 +127,7 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
     let mut configurations = Vec::new();
     let mut first = true;
     for threads in thread_counts {
-        let scanner = build_scanner(args.sigdb.as_ref(), threads, Vec::new())?;
+        let scanner = build_scanner(&args.layers, threads, Vec::new())?;
         let mut runs = Vec::new();
         let mut used_threads = 0;
         for number in 1..=args.runs {
@@ -228,20 +192,11 @@ fn text(report: &BenchReport) -> String {
         let _ = writeln!(out, "Label       {label}");
     }
     let _ = writeln!(out, "Path        {}", report.path);
-    let _ = writeln!(
-        out,
-        "System      {} {}, {} logical CPUs{}",
-        report.system.os,
-        report.system.arch,
-        report.system.logical_cpus,
-        report
-            .system
-            .cpu
-            .as_ref()
-            .map(|cpu| format!(", {cpu}"))
-            .unwrap_or_default()
-    );
+    let _ = writeln!(out, "System      {}", report.system.line());
     let _ = writeln!(out, "Signatures  {}", signature_summary(&report.detectors));
+    if let Some(rules) = rule_summary(&report.detectors) {
+        let _ = writeln!(out, "Rules       {rules}");
+    }
     let _ = writeln!(out);
     let _ = writeln!(
         out,

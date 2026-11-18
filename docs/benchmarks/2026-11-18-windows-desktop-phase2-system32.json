@@ -1,0 +1,70 @@
+{
+  "schema": 2,
+  "label": "local machine",
+  "path": "C:\\WINDOWS\\System32",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1794995041,
+        "bundle_digest": "61c94da4fab4e2448f37fddb5bbc59d41b1e0e4fcbabde4ca5f43b9018de789c",
+        "engine": "yara-x 1.23.0",
+        "origin": "built-in rules",
+        "rule_files": 1,
+        "rules": 1
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 16,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 16693.4262,
+          "files_scanned": 27644,
+          "bytes_scanned": 10277780713,
+          "files_skipped": 34,
+          "detections": 0,
+          "files_per_second": 1655.9812029480202,
+          "megabytes_per_second": 615.6783268973268
+        },
+        {
+          "first": false,
+          "duration_ms": 7607.9082,
+          "files_scanned": 27644,
+          "bytes_scanned": 10277780713,
+          "files_skipped": 34,
+          "detections": 0,
+          "files_per_second": 3633.587482036127,
+          "megabytes_per_second": 1350.933849727577
+        },
+        {
+          "first": false,
+          "duration_ms": 8068.336199999999,
+          "files_scanned": 27644,
+          "bytes_scanned": 10277780713,
+          "files_skipped": 34,
+          "detections": 0,
+          "files_per_second": 3426.233031786653,
+          "megabytes_per_second": 1273.8414040059463
+        }
+      ],
+      "repeat_median_files_per_second": 3529.91025691139,
+      "repeat_median_megabytes_per_second": 1312.3876268667616
+    }
+  ]
+}

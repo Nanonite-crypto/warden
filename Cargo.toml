@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/warden-sigdb", "crates/warden-engine", "crates/warden-cli"]
+members = [
+    "crates/warden-sigdb",
+    "crates/warden-engine",
+    "crates/warden-yara",
+    "crates/warden-cli",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -12,11 +17,13 @@ publish = false
 
 [workspace.dependencies]
 warden-engine = { path = "crates/warden-engine" }
+warden-yara = { path = "crates/warden-yara" }
 warden-sigdb = { path = "crates/warden-sigdb" }
 
 anyhow = "1.0.104"
 clap = { version = "4.6.8", features = ["derive"] }
 crossbeam-channel = "0.5.17"
+memchr = "2.7"
 ctrlc = "3.5.2"
 memmap2 = "0.9.12"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -25,6 +32,34 @@ sha2 = "0.11.1"
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["formatting", "serde"] }
 walkdir = "2.5.0"
+# Only the modules that rules in the wild use are built, and the protocol
+# buffer code that ships with yara-x is used as it is, which keeps the build
+# shorter. Rules that need a module that is not built are skipped and
+# counted when a bundle is made.
+yara-x = { version = "1.23.0", default-features = false, features = [
+    "constant-folding",
+    "exact-atoms",
+    "fast-regexp",
+    "console-module",
+    "dotnet-module",
+    "elf-module",
+    "hash-module",
+    "lnk-module",
+    "macho-module",
+    "math-module",
+    "pe-module",
+    "string-module",
+    "time-module",
+] }
+# yara-x 1.23.0 was released against a pre-release of rsa. The final rsa
+# 0.10.0 moved the PKCS#1 v1.5 types behind a feature that yara-x does not
+# ask for, so Warden asks for it. To be removed when yara-x does.
+rsa = { version = "0.10.0", features = ["pkcs1v15"] }
+# Pinned exactly: Warden walks archives with the reader in `zip::unstable`,
+# which keeps memory use independent of the number of members and may change
+# in any release. Only the two deflate variants are built; members packed any
+# other way are reported, not unpacked.
+zip = { version = "=9.7.0", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64"] }
 
 # Test and benchmark only.
 assert_cmd = "2.2.2"

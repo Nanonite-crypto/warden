@@ -47,6 +47,68 @@ impl SkipReason {
     }
 }
 
+/// Why part of a file was not examined.
+///
+/// A file in this state was read and checked as far as possible; what the
+/// reason names is the part that was not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PartialReason {
+    /// Larger than the content limit: checked by hash, but detectors that
+    /// read content did not run and archives were not unpacked.
+    TooLarge,
+    /// A detector failed on the file or on one of its members.
+    DetectorError,
+    /// A detector ran out of time on the file or on one of its members.
+    Timeout,
+    /// An archive holds password-protected members, which cannot be read.
+    EncryptedArchive,
+    /// An unpacking limit was reached: nesting depth, member count,
+    /// unpacked size or compression ratio.
+    ArchiveLimit,
+    /// The file is an archive that could not be read in full.
+    DamagedArchive,
+    /// An archive member is packed with a method Warden cannot unpack.
+    UnsupportedCompression,
+}
+
+impl PartialReason {
+    /// Stable lowercase identifier, as used in JSON reports.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::TooLarge => "too_large",
+            Self::DetectorError => "detector_error",
+            Self::Timeout => "timeout",
+            Self::EncryptedArchive => "encrypted_archive",
+            Self::ArchiveLimit => "archive_limit",
+            Self::DamagedArchive => "damaged_archive",
+            Self::UnsupportedCompression => "unsupported_compression",
+        }
+    }
+}
+
+/// One reason a file was scanned only in part.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Partial {
+    /// What kept the scan from being complete.
+    pub reason: PartialReason,
+    /// The specifics, written for a person.
+    pub detail: String,
+}
+
+/// A file that was scanned only in part, as listed in a report.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PartialScan {
+    /// The file.
+    #[serde(serialize_with = "lossy_path")]
+    pub path: PathBuf,
+    /// What kept the scan from being complete.
+    pub reason: PartialReason,
+    /// The specifics, written for a person.
+    pub detail: String,
+}
+
 /// A file or directory that could not be scanned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Skipped {
@@ -71,19 +133,13 @@ pub struct Detection {
     pub sha256: String,
     /// The decision about the file.
     pub verdict: Verdict,
-    /// What the detectors found, with reasons.
+    /// What the detectors found, with reasons. A finding about a file
+    /// inside an archive says which member it is about. At most 100 are
+    /// listed; when there are more, the strongest stay.
     pub findings: Vec<Finding>,
-}
-
-/// A detector that failed on a file. The file still counts as scanned by the
-/// other detectors.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct DetectorFailure {
-    /// The file the detector failed on.
-    #[serde(serialize_with = "lossy_path")]
-    pub path: PathBuf,
-    /// The detector and its error message.
-    pub message: String,
+    /// Findings left out because there were more than 100.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub findings_omitted: u64,
 }
 
 /// Counters for a whole scan.
@@ -104,10 +160,18 @@ pub struct ScanStats {
     pub links_not_followed: u64,
     /// Files and directories left out by an exclusion.
     pub excluded: u64,
-    /// Files too large for content detectors. They were still hashed.
-    pub content_scans_skipped: u64,
-    /// Times a detector failed on a file.
-    pub detector_errors: u64,
+    /// Files that were scanned only in part.
+    pub files_partially_scanned: u64,
+    /// How often each reason for a partial scan occurred. A file with two
+    /// reasons counts under both.
+    pub partial_by_reason: BTreeMap<PartialReason, u64>,
+    /// Files that were unpacked as archives.
+    pub archives_unpacked: u64,
+    /// Archive members that were unpacked and checked, at every nesting
+    /// level.
+    pub archive_members_scanned: u64,
+    /// Total size of those members after unpacking, in bytes.
+    pub archive_member_bytes: u64,
     /// Throughput in files per second over the whole scan.
     pub files_per_second: f64,
     /// Throughput in megabytes (10^6 bytes) per second over the whole scan.
@@ -147,8 +211,12 @@ pub struct ScanReport {
     pub skipped: Vec<Skipped>,
     /// Whether `skipped` was cut short. The counters are always complete.
     pub skipped_truncated: bool,
-    /// Detector failures, sorted by path.
-    pub detector_failures: Vec<DetectorFailure>,
+    /// Files that were scanned only in part, sorted by path. A file appears
+    /// once per reason.
+    pub partially_scanned: Vec<PartialScan>,
+    /// Whether `partially_scanned` was cut short. The counters are always
+    /// complete.
+    pub partially_scanned_truncated: bool,
 }
 
 impl ScanReport {
@@ -157,6 +225,11 @@ impl ScanReport {
     pub fn is_clean(&self) -> bool {
         self.detections.is_empty()
     }
+}
+
+// Serde hands the field over by reference.
+fn is_zero(count: &u64) -> bool {
+    *count == 0
 }
 
 fn lossy_path<S: Serializer>(path: &Path, serializer: S) -> Result<S::Ok, S::Error> {

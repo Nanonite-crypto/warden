@@ -6,3 +6,6 @@
 *.log
 .DS_Store
 .idea/
+
+# Rule packages fetched by scripts/fetch-rules.sh and scripts\win\fetch-rules.ps1.
+/rules/vendor/

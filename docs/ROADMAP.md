@@ -6,7 +6,7 @@ and tested, and no phase starts before the previous one is accepted.
 | # | Phase | Ends with | Status |
 |---|---|---|---|
 | 1 | Engine core + hash matching | `warden scan <folder>` finds EICAR by hash and prints a report; tests pass in CI; first files/sec and MB/sec numbers | Built, awaiting acceptance |
-| 2 | YARA layer + zip scanning | The same command catches an EICAR variant whose hash is not in the database, and EICAR inside a zip; the rule bundle builds from YARA Forge; first false-positive run over System32 | |
+| 2 | YARA layer + zip scanning | The same command catches an EICAR variant whose hash is not in the database, and EICAR inside a zip; the rule bundle builds from YARA Forge; first false-positive run over System32 | Built, awaiting acceptance |
 | 3 | PE heuristics | `warden inspect <file>` explains a score indicator by indicator; calibration report against EMBER2024; fuzzers running | |
 | 4 | Quarantine | `warden quarantine add / list / restore / delete` round-trips a test file with hash, timestamps and permissions intact, including a simulated crash mid-operation | |
 | 5 | Persistence remediation | In a VM: a harmless dummy program registered as a test threat, with a Run key, task, service and startup shortcut pointing at it. One command removes all four; restore brings them back | |
@@ -34,10 +34,29 @@ systems depth.
 | 2026-11-18 | In scope beyond the original brief: zip scanning with limits on nesting depth, unpacked size, member count and compression ratio (phase 2); scheduled scans (phases 6 and 7); ClamAV as a benchmark reference (phase 8); an alert on new autostart entries (phase 9); an AMSI provider as the last optional phase. |
 | 2026-11-18 | The repository is private until the portfolio checkpoint (phase 8). |
 | 2026-11-18 | Real-time protection starts in user mode. A kernel minifilter is a late, optional, VM-only phase, because distributing a driver needs Microsoft's signature. |
+| 2026-11-18 | The rule engine is YARA-X, VirusTotal's rewrite of YARA in Rust. It needs no C toolchain, which keeps the Windows build to `cargo build`, and the original YARA has been in maintenance mode since YARA-X 1.0 came out in June 2025. |
+| 2026-11-18 | Third-party rules are not stored in this repository. A script downloads one pinned YARA Forge release and checks its SHA-256; `warden rules build` compiles it into a bundle. The rules keep their authors' licences. Warden itself ships one rule, for the EICAR test file. |
+| 2026-11-18 | A rule's `score` decides the verdict: 80 and above is malicious, 60 to 79 suspicious, below 60 recorded only. A rule without a score counts as 75. The ranges are those of the YARA style guide that YARA Forge follows. |
+| 2026-11-18 | Zip archives are unpacked in memory, never to disk, with limits on depth (3), members (10,000), member size (64 MiB), total size (512 MiB) and compression ratio (250 to 1). Reaching a limit is reported per file; it is not a detection. |
 
 ## Open decisions
 
 - **Licence.** None chosen yet; needed before the repository goes public.
+- **What a match of a medium-score rule means.** In the first
+  false-positive runs, two public rules with score 75 flagged 22 clean
+  Windows files as suspicious: one rule generated automatically from
+  malware code, which hit a different system file on each of two machines,
+  and one that only recognises how .NET programs are packaged. Options: leave it (a suspicious verdict is shown, never acted
+  on); keep a short list of rules to leave out of the bundle, each with the
+  evidence; or let the verdict policy ask for a second sign, such as a
+  heuristic finding or a missing publisher signature, before a
+  medium-score match alone makes a file suspicious. To be settled with
+  phase 3. See [BENCHMARKS.md](BENCHMARKS.md#false-positives).
+- **Which rules a release ships.** Of the 5,137 rules in YARA Forge's core
+  package, 2,055 name no licence. Building a bundle for one's own use is
+  one thing; putting those rules into an installer is another. To be
+  settled before the portfolio checkpoint (phase 8), when the first
+  installer is built.
 - **MalwareBazaar import with family names.** The plain hash-list import
   exists. Importing the CSV export, which carries malware family names,
   waits until it can be tested against a real export, which needs a free

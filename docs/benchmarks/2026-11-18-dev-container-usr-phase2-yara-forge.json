@@ -1,0 +1,60 @@
+{
+  "schema": 2,
+  "label": "development container, YARA Forge core",
+  "path": "/usr",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "linux",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1794987371,
+        "bundle_digest": "3fd64c7d22e575a892682fd5793bfbd2f24bdfcd142567a94ee20c56425dc1d4",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5138
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 2,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 138029.535269,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 1017.0504430549116,
+          "megabytes_per_second": 51.80580533770717
+        },
+        {
+          "first": false,
+          "duration_ms": 138269.316282,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 1015.2867156274147,
+          "megabytes_per_second": 51.715965821484914
+        }
+      ],
+      "repeat_median_files_per_second": 1015.2867156274147,
+      "repeat_median_megabytes_per_second": 51.715965821484914
+    }
+  ]
+}

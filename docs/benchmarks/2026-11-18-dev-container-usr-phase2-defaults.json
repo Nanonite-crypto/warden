@@ -1,0 +1,70 @@
+{
+  "schema": 2,
+  "label": "development container, defaults",
+  "path": "/usr",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "linux",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1794987813,
+        "bundle_digest": "b4d3e4c478b42cd6dcc59aab9c9290cbbcec346e65ed90b7d6aa316f16ecc97d",
+        "engine": "yara-x 1.23.0",
+        "origin": "built-in rules",
+        "rule_files": 1,
+        "rules": 1
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 2,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 11329.268814000001,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 12391.179193005244,
+          "megabytes_per_second": 631.1732338951632
+        },
+        {
+          "first": false,
+          "duration_ms": 10914.283664999999,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 12862.319168978645,
+          "megabytes_per_second": 655.1718330293187
+        },
+        {
+          "first": false,
+          "duration_ms": 11456.107193,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 12253.987993912795,
+          "megabytes_per_second": 624.1850843861951
+        }
+      ],
+      "repeat_median_files_per_second": 12558.15358144572,
+      "repeat_median_megabytes_per_second": 639.6784587077568
+    }
+  ]
+}

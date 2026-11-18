@@ -22,11 +22,11 @@ jobs:
   lint:
     name: Format, lint, docs
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - name: Install the pinned toolchain
-        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt --no-self-update
       - uses: Swatinem/rust-cache@v2
       - name: Formatting
         run: cargo fmt --all -- --check
@@ -36,11 +36,15 @@ jobs:
         run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+      # Checks that the pinned rule package still exists and still has the
+      # recorded checksum, and that the fetch script works.
+      - name: Fetch the pinned rule package
+        run: bash scripts/fetch-rules.sh
 
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -49,7 +53,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install the pinned toolchain
         shell: bash
-        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt --no-self-update
       - uses: Swatinem/rust-cache@v2
       - name: Run the test suite
         shell: bash
@@ -66,31 +70,34 @@ jobs:
   windows-acceptance:
     name: Windows acceptance check
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
       - name: Install the pinned toolchain
         shell: bash
-        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt --no-self-update
       - uses: Swatinem/rust-cache@v2
       # The same script a developer double-clicks on their own machine, run
       # through the same launcher and Windows PowerShell. It builds the
-      # release binary, checks EICAR detection and measures scan throughput.
-      # The tests already ran in the job above. The benchmark is pointed at
-      # a small folder: a hosted runner's disk is slow on first read, and
-      # numbers from shared CI hardware are indicative only.
-      - name: Phase 1 acceptance check
+      # release binary, checks EICAR detection in all three forms, measures
+      # scan throughput, builds the rule bundle from the pinned YARA Forge
+      # package and counts false positives. The tests already ran in the job
+      # above. Everything is pointed at a small folder: a hosted runner's
+      # disk is slow on first read, and numbers from shared CI hardware are
+      # indicative only. The false-positive run over all of System32 has a
+      # workflow of its own.
+      - name: Acceptance check
         shell: cmd
-        run: call scripts\win\phase1-check.cmd -SkipTests -RequireEicar -BenchPath %SystemRoot%\System32\drivers
+        run: call scripts\win\check.cmd -SkipTests -RequireEicar -Rules -BenchPath %SystemRoot%\System32\drivers
         env:
           WARDEN_NO_PAUSE: "1"
       - name: Show the results
         if: always()
         shell: bash
         run: |
-          for file in summary.json system.json bench.json; do
+          for file in summary.json system.json bench.json fp.json; do
             echo "::group::$file"
-            cat "target/phase1/$file" 2>/dev/null || echo "(not written)"
+            cat "target/check/$file" 2>/dev/null || echo "(not written)"
             echo
             echo "::endgroup::"
           done
@@ -100,5 +107,5 @@ jobs:
           name: warden-windows-x64
           path: |
             target/release/warden.exe
-            target/phase1/
+            target/check/
           if-no-files-found: warn
