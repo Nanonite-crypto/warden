@@ -242,8 +242,10 @@ if ((Invoke-Logged 'build' 'cargo build --release --locked') -ne 0) {
         Write-Host 'The Microsoft C++ linker is missing. Rust on Windows needs the Visual Studio Build' -ForegroundColor Yellow
         Write-Host 'Tools with the "Desktop development with C++" workload.' -ForegroundColor Yellow
         Write-Host ''
-        Write-Host 'If the Build Tools are not installed yet:' -ForegroundColor Yellow
-        Write-Host '  winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"' -ForegroundColor Yellow
+        Write-Host 'If the Build Tools are not installed yet, close the Visual Studio Installer window if' -ForegroundColor Yellow
+        Write-Host 'one is open (with it open, the command below reports success and installs nothing), then:' -ForegroundColor Yellow
+        Write-Host '  winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --override "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"' -ForegroundColor Yellow
+        Write-Host 'Without --norestart the installer restarts Windows by itself if it needs to.' -ForegroundColor Yellow
         Write-Host 'If they are installed without that workload: open "Visual Studio Installer" from the' -ForegroundColor Yellow
         Write-Host 'Start menu, choose Modify on the Build Tools, and tick "Desktop development with C++".' -ForegroundColor Yellow
         Write-Host ''
