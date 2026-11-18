@@ -22,6 +22,11 @@ fn stdout_of(command: &mut Command) -> String {
     String::from_utf8(command.assert().get_output().stdout.clone()).unwrap()
 }
 
+/// SHA-256 of bytes, in lowercase hexadecimal.
+fn sha256_hex(bytes: &[u8]) -> String {
+    warden_sigdb::hex::encode(&warden_engine::sha256(bytes))
+}
+
 /// SHA-256 of a file, as printed by `warden hash`.
 fn hash_of(path: &Path) -> String {
     let output = stdout_of(warden().arg("hash").arg(path));
@@ -1059,6 +1064,147 @@ fn an_exclusion_list_that_cannot_be_used_stops_the_build() {
         .stderr(predicate::str::contains("built into Warden"));
 
     assert!(!out.exists());
+}
+
+/// `warden inspect` shows what the heuristics see. The executables are
+/// inert fixtures, handed over on standard input so that nothing that looks
+/// packed is ever written to disk on a machine with an antivirus.
+#[test]
+fn inspect_shows_the_structure_and_every_indicator_that_applies() {
+    let packed = warden_pe::fixture::Fixture::packed_looking().build();
+    let output = warden()
+        .args(["inspect", "-"])
+        .write_stdin(packed.clone())
+        .assert()
+        .get_output()
+        .clone();
+    let text = String::from_utf8(output.stdout).unwrap();
+    for expected in [
+        "File        (standard input)",
+        "Size        17,408 bytes",
+        "Kind        Windows program, 32-bit, x86, console",
+        "Linked      the header gives no time",
+        "Entry point 0xdf00, in section \"UPX1\"",
+        "  UPX0                   0        36,864  rwx-     0.00",
+        "  UPX1              16,384        16,384  rwx-     7.99",
+        "Imports     3 functions from 1 library",
+        "  KERNEL32.DLL (3): LoadLibraryA, GetProcAddress, ExitProcess",
+        "Tables      imports",
+        "Rich header absent",
+        "Signature   none embedded",
+        "After the last section: nothing",
+        "A section has a name that a packer or protector writes: sections \"UPX0\", \"UPX1\", \"UPX2\"",
+        "An executable section looks compressed or encrypted: section \"UPX1\" has an entropy of 7.99 bits per byte",
+        "The imports are little more than what is needed to load other functions: imports LoadLibraryA and GetProcAddress",
+        "Score       ",
+        "Verdict     ",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+    assert!(text.contains(&sha256_hex(&packed)), "{text}");
+
+    // The same as JSON: the facts and the assessment in full.
+    let json: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden()
+            .args(["inspect", "-", "--json"])
+            .write_stdin(packed),
+    ))
+    .unwrap();
+    assert_eq!(json["schema"], 1);
+    assert_eq!(json["windows_executable"], true);
+    assert_eq!(json["size_bytes"], 17_408);
+    assert_eq!(json["facts"]["format"], "pe32");
+    assert_eq!(json["facts"]["sections"][1]["name"], "UPX1");
+    assert_eq!(
+        json["facts"]["imports"][0]["functions"][1],
+        "GetProcAddress"
+    );
+    let hits: Vec<&str> = json["assessment"]["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|hit| hit["indicator"]["id"].as_str().unwrap())
+        .collect();
+    assert!(hits.contains(&"sections.packer_name"), "{hits:?}");
+    assert!(
+        hits.contains(&"sections.writable_and_executable"),
+        "{hits:?}"
+    );
+    let first = &json["assessment"]["hits"][0];
+    assert!(first["indicator"]["rationale"].as_str().unwrap().len() > 60);
+    assert!(first["detail"].as_str().unwrap().contains("UPX0"));
+    assert!(json["assessment"]["score"].is_u64());
+    assert!(json["thresholds"]["suspicious"].is_u64());
+}
+
+#[test]
+fn inspect_finds_little_in_an_ordinary_program() {
+    let plain = warden_pe::fixture::Fixture::plain().build();
+    let text = stdout_of(warden().args(["inspect", "-"]).write_stdin(plain.clone()));
+    for expected in [
+        "Kind        Windows program, 64-bit, x64, console",
+        "Linked      2025-01-01T00:00:00Z, as the header claims",
+        "Entry point 0x1000, in section \".text\"",
+        "  .text             12,288        12,288  r-xc     6.46",
+        "Imports     27 functions from 2 libraries",
+        "GetCommandLineW, GetModuleHandleW, GetStdHandle, WriteFile, CreateFileW, ReadFile, CloseHandle, GetLastError, and 16 more",
+        "Tables      imports, resources, exception handling, relocations, debug, load configuration",
+        "Rich header present",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+    assert!(!text.contains("packer"), "{text}");
+    // --all lists every import.
+    let text = stdout_of(warden().args(["inspect", "-", "--all"]).write_stdin(plain));
+    assert!(text.contains("RtlVirtualUnwind"), "{text}");
+    assert!(!text.contains("more"), "{text}");
+}
+
+#[test]
+fn inspect_says_so_when_a_file_is_not_a_windows_executable() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("notes.txt");
+    fs::write(&path, "MZ is how this text file happens to start, and then it goes on for more than sixty-four bytes.").unwrap();
+    warden()
+        .arg("inspect")
+        .arg(&path)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("notes.txt")
+                .and(predicate::str::contains(
+                    "Kind        not a Windows executable: there is no PE header where the DOS header points",
+                ))
+                .and(predicate::str::contains("have nothing to say")),
+        );
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout_of(warden().arg("inspect").arg(&path).arg("--json"))).unwrap();
+    assert_eq!(json["windows_executable"], false);
+    assert_eq!(
+        json["not_an_executable_because"],
+        "there is no PE header where the DOS header points"
+    );
+    assert_eq!(json["facts"], serde_json::Value::Null);
+    assert_eq!(json["sha256"], hash_of(&path).as_str());
+
+    warden()
+        .arg("inspect")
+        .arg(dir.path().join("missing.exe"))
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot open"));
+}
+
+/// Section names and import names come from the file. A file that puts
+/// terminal control codes there must not get them printed.
+#[test]
+fn inspect_does_not_pass_on_control_characters_from_the_file() {
+    let mut fixture = warden_pe::fixture::Fixture::plain();
+    fixture.sections[1].name = "\u{1b}[2J\u{7}".to_owned();
+    let text = stdout_of(warden().args(["inspect", "-"]).write_stdin(fixture.build()));
+    assert!(!text.contains('\u{1b}'), "{text:?}");
+    assert!(!text.contains('\u{7}'), "{text:?}");
+    assert!(text.contains("\u{fffd}[2J\u{fffd}"), "{text}");
 }
 
 /// A file name can hold characters that would rewrite the terminal. The

@@ -2758,6 +2758,7 @@ dependencies = [
  "tempfile",
  "time",
  "warden-engine",
+ "warden-pe",
  "warden-sigdb",
  "warden-yara",
  "zip",
