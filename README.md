@@ -246,8 +246,9 @@ produced. In short, as of phase 3:
   of both machines and in the runner's software, once two rules that had
   flagged 22 clean files were put on the
   [exclusion list](rules/exclusions.toml), each with its evidence. In the
-  desktop's installed programs, eight more rules flagged 13 files; they are
-  the next entries to be decided.
+  desktop's installed programs, eight more rules flagged 13 of 310,849
+  files and went onto the list as well. The run that shows the effect of
+  the longer list there is still to be repeated.
 - **The heuristic score on EMBER2024**, on the twelve weeks it was not
   fitted to: it flags 24.6 % of the malicious Windows executables and
   0.0056 % of the benign ones (15 of 269,813). Among programs it is 29.6 %;
@@ -259,7 +260,8 @@ produced. In short, as of phase 3:
 ## Roadmap
 
 [docs/ROADMAP.md](docs/ROADMAP.md) lists every phase with its exit
-criterion. Next: quarantine.
+criterion. Next, in phase 4: rules that a tool generated from malware
+samples get to count only together with a second sign, and then quarantine.
 
 ## Licence
 
