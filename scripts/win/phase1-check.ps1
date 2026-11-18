@@ -171,16 +171,19 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     $steps.toolchain = 'failed'
     Complete-Check
 }
-$toolchainCommand = 'rustc --version && cargo --version'
 if (Get-Command rustup -ErrorAction SilentlyContinue) {
-    # rust-toolchain.toml pins the compiler, and cargo would fetch it on its
-    # own. Doing it here first keeps that download out of the build log. It
-    # is a no-op when the toolchain is already installed.
+    # rust-toolchain.toml pins the compiler. Install it if it is missing, and
+    # nothing else: without --no-self-update, rustup would also try to update
+    # itself, which is not this script's business.
     $manifest = Get-Content (Join-Path $repo 'rust-toolchain.toml') -Raw
     $channel = [regex]::Match($manifest, 'channel\s*=\s*"([^"]+)"').Groups[1].Value
-    $toolchainCommand = "rustup toolchain install $channel --profile minimal --component clippy,rustfmt && $toolchainCommand"
+    $installed = @(cmd /c 'rustup toolchain list 2>nul') -match ('^' + [regex]::Escape($channel) + '-')
+    if (-not $installed) {
+        Invoke-Logged 'toolchain-install' "rustup toolchain install $channel --no-self-update --profile minimal" | Out-Null
+    }
 }
-if ((Invoke-Logged 'toolchain' $toolchainCommand) -ne 0) {
+# Whatever happened above, the step passes if the pinned compiler runs.
+if ((Invoke-Logged 'toolchain' 'rustc --version && cargo --version') -ne 0) {
     $steps.toolchain = 'failed'
     Complete-Check
 }
