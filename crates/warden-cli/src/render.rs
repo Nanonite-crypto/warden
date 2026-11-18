@@ -116,6 +116,9 @@ pub fn rule_summary(detectors: &[DetectorInfo]) -> Option<String> {
         group_digits(files),
         plural(files, "file", "files")
     );
+    if let Some(excluded) = count(yara, "rules_excluded").filter(|excluded| *excluded > 0) {
+        let _ = write!(line, ", {} excluded", group_digits(excluded));
+    }
     if let Some(created) = count(yara, "bundle_created_unix_secs") {
         let _ = write!(line, " (bundle built {})", human_timestamp(created));
     }

@@ -575,7 +575,7 @@ fn rules_build_and_info_describe_a_bundle() {
                 .and(predicate::str::contains("warden/builtin.yar: 1 rule"))
                 .and(predicate::str::contains("markers.yar: 2 rules, 1 left out"))
                 .and(predicate::str::contains(
-                    "Left out 1 rule that did not compile.",
+                    "Left out 1 rule that could not be used.",
                 ))
                 .and(predicate::str::contains("Test_Broken: "))
                 .and(predicate::str::contains("this_identifier_does_not_exist"))
@@ -817,6 +817,248 @@ fn false_positives_reports_what_was_flagged_in_clean_files() {
         json["flagged"][1]["names"],
         serde_json::json!(["Test_Marker_High", "Test_Marker_Medium"])
     );
+}
+
+/// The whole path of a false positive: a rule flags a clean file, the rule
+/// goes on the exclusion list with that file as evidence, and the next
+/// bundle no longer flags it.
+#[test]
+fn a_rule_that_flags_a_clean_file_can_be_excluded_with_evidence() {
+    let dir = tempfile::tempdir().unwrap();
+    let rules = dir.path().join("markers.yar");
+    fs::write(&rules, MARKER_RULES).unwrap();
+    let tree = dir.path().join("clean-files");
+    fs::create_dir_all(&tree).unwrap();
+    let innocent = tree.join("innocent.txt");
+    fs::write(&innocent, "a clean file that holds WARDEN-CLI-MEDIUM").unwrap();
+    fs::write(tree.join("other.txt"), "another clean file").unwrap();
+
+    // Before: the rule flags the clean file.
+    let before = marker_bundle(dir.path());
+    let output = warden()
+        .arg("false-positives")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&before)
+        .arg("--json")
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["by_name"][0]["name"], "Test_Marker_Medium");
+    let flagged_hash = json["flagged"][0]["sha256"].as_str().unwrap().to_owned();
+    assert_eq!(flagged_hash, hash_of(&innocent));
+
+    // The rule goes on the list, with the flagged file as evidence.
+    let list = dir.path().join("exclusions.toml");
+    fs::write(
+        &list,
+        format!(
+            "[[rule]]\n\
+             name = \"Test_Marker_Medium\"\n\
+             reason = \"Matches a marker that clean files hold too.\"\n\
+             \n\
+             [[rule.evidence]]\n\
+             file = '{}'\n\
+             sha256 = \"{flagged_hash}\"\n\
+             seen = 2026-11-18\n\
+             machine = \"test suite\"\n\
+             \n\
+             [[rule]]\n\
+             name = \"Test_Marker_Renamed_Since\"\n\
+             reason = \"No longer in the rule file.\"\n\
+             \n\
+             [[rule.evidence]]\n\
+             file = 'elsewhere.bin'\n\
+             sha256 = \"{flagged_hash}\"\n\
+             seen = 2026-11-18\n\
+             machine = \"test suite\"\n",
+            innocent.display()
+        ),
+    )
+    .unwrap();
+
+    let after = dir.path().join("after.wrb");
+    warden()
+        .args(["rules", "build", "--created", "1800000000", "--exclusions"])
+        .arg(&list)
+        .arg("--out")
+        .arg(&after)
+        .arg(&rules)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Compiled 2 rules from 2 files")
+                .and(predicate::str::contains(
+                    "markers.yar: 1 rule, 1 left out, 1 excluded",
+                ))
+                .and(predicate::str::contains("Excluded 1 rule, named in "))
+                .and(predicate::str::contains(
+                    "  Test_Marker_Medium (in markers.yar)",
+                ))
+                .and(predicate::str::contains(
+                    "The list also names 1 rule that no rule file declares:",
+                ))
+                .and(predicate::str::contains("  Test_Marker_Renamed_Since"))
+                .and(predicate::str::contains(
+                    "Left out 1 rule that could not be used.",
+                )),
+        );
+
+    // The bundle says what was left out, and by which list.
+    let list_hash = hash_of(&list);
+    warden()
+        .args(["rules", "info"])
+        .arg(&after)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("Rules        2")
+                .and(predicate::str::contains(
+                    "markers.yar: 1 rule, 1 left out, 1 excluded",
+                ))
+                .and(predicate::str::contains(
+                    "Excluded on purpose\n  Test_Marker_Medium\n",
+                ))
+                .and(predicate::str::contains(format!(
+                    "named by the exclusion list with sha256 {list_hash}"
+                ))),
+        );
+    let json: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden().args(["rules", "info", "--json"]).arg(&after),
+    ))
+    .unwrap();
+    assert_eq!(json["exclusions"]["sha256"], list_hash.as_str());
+    assert_eq!(
+        json["exclusions"]["rules"],
+        serde_json::json!(["Test_Marker_Medium"])
+    );
+    assert_eq!(json["sources"][1]["excluded"], 1);
+    // A bundle that was built without a list has no such record.
+    let json: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden().args(["rules", "info", "--json"]).arg(&before),
+    ))
+    .unwrap();
+    assert_eq!(json["exclusions"], serde_json::Value::Null);
+    warden()
+        .args(["rules", "info"])
+        .arg(&before)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Excluded").not());
+
+    // After: the clean file is no longer flagged, and the report shows
+    // that a rule was left out on purpose.
+    let output = warden()
+        .arg("false-positives")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&after)
+        .arg("--json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["files_scanned"], 2);
+    assert_eq!(json["flagged"], serde_json::json!([]));
+    let yara = json["detectors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|detector| detector["id"] == "yara")
+        .unwrap();
+    assert_eq!(yara["details"]["rules"], 2);
+    assert_eq!(yara["details"]["rules_excluded"], 1);
+    warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&after)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Rules       2 YARA rules from 2 files, 1 excluded",
+        ));
+    // The other rule of the file still works.
+    fs::write(tree.join("high.txt"), "WARDEN-CLI-HIGH").unwrap();
+    warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&after)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("MALICIOUS   Test_Marker_High"));
+}
+
+#[test]
+fn an_exclusion_list_that_cannot_be_used_stops_the_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let rules = dir.path().join("markers.yar");
+    fs::write(&rules, MARKER_RULES).unwrap();
+    let out = dir.path().join("never-written.wrb");
+    let build_with = |list: &Path| {
+        let mut command = warden();
+        command
+            .args(["rules", "build", "--exclusions"])
+            .arg(list)
+            .arg("--out")
+            .arg(&out)
+            .arg(&rules);
+        command
+    };
+    let entry = |name: &str, evidence: bool| {
+        let mut text = format!("[[rule]]\nname = \"{name}\"\nreason = \"For a test.\"\n");
+        if evidence {
+            text.push_str(&format!(
+                "[[rule.evidence]]\nfile = 'a.bin'\nsha256 = \"{}\"\nseen = 2026-11-18\nmachine = \"test suite\"\n",
+                "0".repeat(64)
+            ));
+        }
+        text
+    };
+    let list = dir.path().join("exclusions.toml");
+
+    // No list at that path.
+    build_with(&list)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("cannot use the exclusion list"));
+
+    // An entry that only claims a rule is noisy.
+    fs::write(&list, entry("Test_Marker_Medium", false)).unwrap();
+    build_with(&list)
+        .assert()
+        .code(2)
+        .stderr(
+            predicate::str::contains("exclusions.toml").and(predicate::str::contains(
+                "Test_Marker_Medium has no evidence",
+            )),
+        );
+
+    // A misspelt field.
+    fs::write(
+        &list,
+        entry("Test_Marker_Medium", true).replace("reason", "raeson"),
+    )
+    .unwrap();
+    build_with(&list)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("raeson"));
+
+    // A rule that must stay.
+    fs::write(&list, entry("Warden_EICAR_Test_File", true)).unwrap();
+    build_with(&list)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("built into Warden"));
+
+    assert!(!out.exists());
 }
 
 /// A file name can hold characters that would rewrite the terminal. The
