@@ -64,8 +64,8 @@ desktop app.
 | Command | What it does |
 |---|---|
 | `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report. |
-| `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. |
-| `warden rules info <file>` | Shows what a bundle holds: how many rules lead to which verdict, the rule files it was built from, the licences the rules name. |
+| `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. |
+| `warden rules info <file>` | Shows what a bundle holds: how many rules lead to which verdict, the rule files it was built from, the rules that were left out on purpose, the licences the rules name. |
 | `warden false-positives <path>...` | Scans files that are expected to be clean and lists every one that was flagged. |
 | `warden sigdb build` | Builds a signature database from lists of SHA-256 hashes. |
 | `warden sigdb info` / `lookup` | Inspects a database, or looks up one hash. |
@@ -114,7 +114,7 @@ collected from 35 public repositories, and check its SHA-256.
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\win\fetch-rules.ps1
-warden rules build rules\vendor\yara-forge-rules-core.zip --out rules\vendor\rules.wrb
+warden rules build rules\vendor\yara-forge-rules-core.zip --exclusions rules\exclusions.toml --out rules\vendor\rules.wrb
 warden scan C:\some\folder --rules rules\vendor\rules.wrb
 ```
 
@@ -122,6 +122,11 @@ On Linux the first line is `scripts/fetch-rules.sh`. On Windows,
 `scripts\win\check.cmd -Rules` does all of this and then counts false
 positives in the System32 folder. [docs/RULES.md](docs/RULES.md) explains
 how a rule's score becomes a verdict.
+
+Public rules flag clean files now and then.
+[`rules/exclusions.toml`](rules/exclusions.toml) names the rules that
+Warden leaves out for that reason, each with the evidence: the clean file
+it flagged, that file's SHA-256, the day and the machine.
 
 Microsoft Defender blocks that package: a rule file is full of the byte
 patterns it describes, and Defender takes it for the real thing. The fetch

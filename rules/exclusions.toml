@@ -1,0 +1,74 @@
+# Rules that Warden leaves out of its rule bundle, and why.
+#
+# Public YARA rule sets contain rules that flag clean files. A rule gets on
+# this list only with evidence: a clean file it flagged, that file's SHA-256,
+# the day, and the machine. `warden rules build --exclusions rules/exclusions.toml`
+# then leaves the rule out, and the bundle records that it did.
+#
+# How a rule gets here, and what "clean" rests on, is in docs/RULES.md under
+# "Rules that are left out". The measurements are in docs/BENCHMARKS.md.
+#
+# Fields of an entry:
+#   name      the rule's name, exactly as in the rule file
+#   reason    one or two sentences on why the rule is left out
+#   source    where the rule comes from (optional)
+#   note      anything else worth knowing (optional)
+#   evidence  one or more clean files the rule flagged:
+#     file    path of the file on the machine where it was seen
+#     sha256  SHA-256 of the file
+#     seen    the day, as a date
+#     machine the machine, in a few words
+#
+# An entry without evidence is refused, and so is a field that is not in this
+# list, so a misspelt field cannot be skipped unnoticed.
+
+[[rule]]
+name = "MALPEDIA_Win_Triback_Loader_Auto"
+reason = """\
+Generated automatically from samples of one malware family. It asks for seven \
+of its ten code sequences, and that many are also in clean libraries from two \
+unrelated projects: the Vulkan loader and the liblouis braille library."""
+source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
+note = "Each of the two files was the only file flagged in its Windows system folder."
+
+[[rule.evidence]]
+file = 'C:\Windows\System32\vulkan-1.dll'
+sha256 = "591d4c316a0a39f96792979ce5ebb1bb380f0015c30707ba7ac611b35ae01cfc"
+seen = 2026-11-18
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+
+[[rule.evidence]]
+file = 'C:\WINDOWS\System32\liblouis.dll'
+sha256 = "5f294b822e0311edb896e4783417fbf5eab69c48b2fee7347ab305a06c967db1"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+reason = """\
+Recognises a way of packaging .NET programs, not malware. Its author gave it \
+no score, the package fills in 75, and with that every copy of the single-file \
+host that ships with the .NET SDK is reported as suspicious."""
+source = "cod3nym/detection-rules, through the YARA Forge core package 20261018"
+note = """\
+Flagged 20 files, all of them singlefilehost.exe in the .NET SDK. Three are \
+listed here; all 20 are in \
+docs/benchmarks/2026-11-18-github-windows-runner-software-false-positives.json."""
+
+[[rule.evidence]]
+file = 'C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-x64\10.0.14\runtimes\win-x64\native\singlefilehost.exe'
+sha256 = "55b55ef1e98a4c4d1c8ef9d74042f69361a4bb5893ffd350f61042b59594ca8a"
+seen = 2026-11-18
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+
+[[rule.evidence]]
+file = 'C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-x86\10.0.14\runtimes\win-x86\native\singlefilehost.exe'
+sha256 = "af21060c5a882280f135fd307ed3fa3d6a0495d271ff5dff473244b2c0a72bc2"
+seen = 2026-11-18
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+
+[[rule.evidence]]
+file = 'C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-arm64\10.0.14\runtimes\win-arm64\native\singlefilehost.exe'
+sha256 = "a767db3c45bf7e75f2d662bd7c071d39e63aa7fb2178eb030d9edc2c2c1ba29f"
+seen = 2026-11-18
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"

@@ -8,6 +8,11 @@ name: False positives
 # change. Start it by hand, or push a branch named fp-run/<anything>.
 on:
   workflow_dispatch:
+    inputs:
+      all_rules:
+        description: Use every rule of the package and ignore rules/exclusions.toml (the "before" of a comparison)
+        type: boolean
+        default: false
   push:
     branches: ["fp-run/**"]
 
@@ -31,13 +36,16 @@ jobs:
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
       - uses: Swatinem/rust-cache@v2
       # Builds the release binary, checks EICAR detection, builds the rule
-      # bundle from the pinned YARA Forge package, and scans all of System32
-      # with it. Results go to target\check\fp.json.
+      # bundle from the pinned YARA Forge package without the rules named in
+      # rules\exclusions.toml, and scans all of System32 with it. Results go
+      # to target\check\fp.json.
       - name: Windows system files (System32)
         shell: cmd
-        run: call scripts\win\check.cmd -SkipTests -SkipBench -RequireEicar -Rules
+        run: call scripts\win\check.cmd -SkipTests -SkipBench -RequireEicar -Rules %ALL_RULES%
         env:
           WARDEN_NO_PAUSE: "1"
+          # Empty unless the run was started by hand with "all_rules" ticked.
+          ALL_RULES: ${{ inputs.all_rules && '-AllRules' || '' }}
       # Whatever of this list is installed on the runner. Exit code 1 means
       # that something was flagged, which is a result, not a failure.
       - name: Common software

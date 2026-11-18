@@ -6,6 +6,8 @@
 
 #![allow(clippy::unwrap_used)]
 
+use std::path::Path;
+
 use warden_engine::{Scanner, Verdict};
 use warden_yara::{
     BundleBuilder, BundleError, ExclusionError, ExclusionList, RuleBundle, YaraDetector,
@@ -304,4 +306,22 @@ fn a_list_is_read_from_a_file() {
     let list = ExclusionList::load(&path).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list.digest(), ExclusionList::parse(text).unwrap().digest());
+}
+
+/// The list in this repository is what the check scripts and CI build with.
+/// A mistake in it must fail here, not on someone's machine.
+#[test]
+fn the_list_in_the_repository_is_valid_and_documented() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let list = ExclusionList::load(&root.join("rules/exclusions.toml")).unwrap();
+    assert!(!list.is_empty());
+
+    let documentation = std::fs::read_to_string(root.join("docs/RULES.md")).unwrap();
+    for rule in list.rules() {
+        assert!(
+            documentation.contains(&rule.name),
+            "docs/RULES.md does not mention {}, which rules/exclusions.toml leaves out",
+            rule.name
+        );
+    }
 }

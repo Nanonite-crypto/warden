@@ -145,6 +145,11 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
   and the body, and bundles written for another version of the rule engine.
   A rule that does not compile is left out and named, and the rest of its
   file is kept.
+- The exclusion list is a file that people edit by hand, so the reader is
+  strict: an entry without evidence, a misspelt field, a hash of the wrong
+  length or a rule named twice stops the build. So does an entry that would
+  take out a rule that has to stay. A test loads the list in this
+  repository, so a mistake in it fails in CI.
 - A rule set that takes more than 30 seconds on one file is stopped, and
   the file is reported as checked in part.
 - In the scan pipeline, a detector that panics costs one file, which is
@@ -166,8 +171,17 @@ JSON.
 
 A count is only meaningful together with the rule set that produced it, so
 every result records the bundle's digest, and the bundle records which rule
-files it was built from. Results are in
-[BENCHMARKS.md](BENCHMARKS.md#false-positives).
+files it was built from and which rules were left out of it on purpose.
+Results are in [BENCHMARKS.md](BENCHMARKS.md#false-positives).
+
+A flagged file is not the end of a run but the start of a small
+investigation: what is the file, and what in it does the rule match? A rule
+that cannot tell a clean file from its target goes on the exclusion list,
+[`rules/exclusions.toml`](../rules/exclusions.toml), with that file as
+evidence, and the run is repeated. [RULES.md](RULES.md#rules-that-are-left-out)
+describes the list. The scripts and workflows below build the bundle with
+it; `scripts\win\check.cmd -Rules -AllRules` builds it without, which is
+how the numbers from before an entry can be measured again.
 
 Windows system files are scanned on a GitHub-hosted runner by the
 `False positives` workflow. It reads many gigabytes from a slow disk, so it

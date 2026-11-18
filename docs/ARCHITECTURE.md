@@ -100,7 +100,8 @@ crates/
   warden-yara/      YARA layer: rule bundles and the detector that runs them
   warden-cli/       the `warden` command-line tool
 docs/               this document, the roadmap, format specs, testing, benchmarks
-rules/              which public rule release the rule bundle is built from
+rules/              which public rule release the rule bundle is built from,
+                    and which of its rules are left out, with the evidence
 scripts/            fetch and check scripts, for Linux and Windows
 ```
 
@@ -161,8 +162,9 @@ at any time and still returns a report of what it covered.
 A valid Authenticode signature will be able to lower a heuristic score. It
 never cancels a hash or YARA hit.
 
-How a rule match becomes a verdict, where rules come from and what a rule
-bundle looks like on disk is in [RULES.md](RULES.md).
+How a rule match becomes a verdict, where rules come from, which rules are
+left out because they flag clean files, and what a rule bundle looks like on
+disk is in [RULES.md](RULES.md).
 
 ### Archives
 

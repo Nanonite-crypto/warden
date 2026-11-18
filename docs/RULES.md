@@ -1,8 +1,9 @@
 # YARA rules
 
 The second detection layer runs YARA rules over file content. This document
-covers what the layer does, where its rules come from, how a rule match
-becomes a verdict, and the rule bundle file format.
+covers what the layer does, where its rules come from, which rules are left
+out and why, how a rule match becomes a verdict, and the rule bundle file
+format.
 
 The engine underneath is [YARA-X](https://virustotal.github.io/yara-x/),
 VirusTotal's implementation of YARA in Rust. The layer lives in the
@@ -64,22 +65,25 @@ or slow.
 ```
 scripts\win\check.cmd -Rules                                  (Windows: fetch, build and test)
 bash scripts/fetch-rules.sh                                   (Linux)
-warden rules build rules/vendor/yara-forge-rules-core.zip --out rules/vendor/rules.wrb
+warden rules build rules/vendor/yara-forge-rules-core.zip --exclusions rules/exclusions.toml --out rules/vendor/rules.wrb
 ```
 
 The fetch scripts refuse a download that does not match the pinned
 checksum. `warden rules info` lists the licences that the rules in a bundle
-name, so you can see what you are running. For the pinned release:
+name, so you can see what you are running. For the pinned release, built
+with the exclusion list described below:
 
 | | |
 |---|---|
 | Release | 20261018 |
-| Rules in the bundle | 5,138: all 5,137 of the package compiled, plus the built-in rule |
+| Rules in the package | 5,137, all of which compile |
+| Left out by the exclusion list | 2 |
+| Rules in the bundle | 5,136: 5,135 from the package, plus the built-in rule |
 | Repositories the package draws on | 35 |
-| Rules that name a licence | 3,083 |
-| Rules that name none | 2,055 |
+| Rules that name a licence | 3,082 |
+| Rules that name none | 2,054 |
 | Reported as malicious (score 80 and above) | 205 |
-| Reported as suspicious (score 60 to 79) | 4,933 |
+| Reported as suspicious (score 60 to 79) | 4,931 |
 
 ### Rule files and your antivirus
 
@@ -113,6 +117,101 @@ System32 with it ran through on the same machine.
 
 Whether Defender also objects to a compiled bundle outside that folder has
 not been tried.
+
+## Rules that are left out
+
+Public rules flag clean files now and then. With all 5,137 rules of the
+pinned package, Warden reported 22 of 137,155 clean Windows files as
+suspicious, and two rules accounted for all 22
+([BENCHMARKS.md](BENCHMARKS.md) has the runs). A scanner that calls a
+system library suspicious teaches its user to ignore it, so those two rules
+are left out. Which rules, and on what evidence, is written down in one
+file: [`rules/exclusions.toml`](../rules/exclusions.toml).
+
+| Rule | What it flagged | Why it is left out |
+|---|---|---|
+| `MALPEDIA_Win_Triback_Loader_Auto` | `vulkan-1.dll` in System32 of a GitHub-hosted Windows runner, `liblouis.dll` in System32 of a Windows 11 desktop | Generated automatically from samples of one malware family. It asks for seven of its ten code sequences, and that many are also in these two libraries, which come from unrelated projects |
+| `COD3NYM_DOTNET_Singlefilehost_Bundled_App` | All 20 copies of `singlefilehost.exe` in the .NET SDK of a GitHub-hosted Windows runner | It recognises a way of packaging .NET programs, not malware. Its author gave it no score, the package fills in 75, and that makes every match suspicious |
+
+### What an entry holds
+
+```toml
+[[rule]]
+name = "MALPEDIA_Win_Triback_Loader_Auto"
+reason = "Generated automatically from samples of one malware family. ..."
+source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
+
+[[rule.evidence]]
+file = 'C:\Windows\System32\vulkan-1.dll'
+sha256 = "591d4c316a0a39f96792979ce5ebb1bb380f0015c30707ba7ac611b35ae01cfc"
+seen = 2026-11-18
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+```
+
+The rule's name, the reason, and at least one piece of evidence: a clean
+file the rule flagged, that file's SHA-256, the day, and the machine. An
+entry without evidence is refused, and so is a field the format does not
+know, so that a misspelt field is not skipped unnoticed. With the hash,
+anyone who has the same file can repeat the observation.
+
+### How a rule gets on the list
+
+1. A false-positive run flags a file in a folder of clean software. The
+   runs are described in [TESTING.md](TESTING.md).
+2. Someone reads the rule and looks at the file: what the file is, where it
+   came from, and what in it the rule matches.
+3. If the file is clean and the rule cannot tell it from its target, the
+   rule gets an entry with the evidence.
+4. The bundle is built again and the run repeated, and both results go into
+   [BENCHMARKS.md](BENCHMARKS.md).
+
+"Clean" rests on where the files were found. Those on the GitHub runner sat
+in the Windows system folder and the .NET SDK folder of a machine image
+that is built fresh from installers. `liblouis.dll` sat in the system
+folder of a desktop in daily use with Microsoft Defender on. Nobody has
+checked their signatures: Warden cannot verify an Authenticode signature
+yet. When it can, the signer belongs in the evidence.
+
+### What the build does with it
+
+`warden rules build --exclusions rules/exclusions.toml` takes each listed
+rule out of the rule text before it reaches the compiler. `warden-yara`
+finds the rule with the parser that YARA-X itself uses and puts a stub of
+the same name in its place, which the compiler discards. Everything else in
+the file stays as it was, byte for byte.
+
+- A rule is found by name, in every rule file that declares it.
+- **Rules that use a listed rule are left out as well.** They cannot work
+  without it. The build lists them among the rules that were left out, with
+  the rule they depend on as the reason. No rule of the pinned package uses
+  either of the two listed ones.
+- **Some rules cannot be listed**, and the build stops if one is: the
+  built-in rules, and `global` rules. A global rule narrows every other rule
+  in its file, so without it all of those would match more than their
+  authors meant.
+- **A name that matches no rule is reported.** That brings a misspelt name
+  to light, and an entry that a newer release of the rule set has made
+  unnecessary.
+- **The bundle records what happened**: the SHA-256 of the list it was
+  built with, and the names of the rules that were taken out.
+  `warden rules info` shows both, and a scan report counts the excluded
+  rules next to the rules it used. The SHA-256 is that of the file, so
+  `sha256sum rules/exclusions.toml` or `Get-FileHash` checks it.
+
+### What it costs
+
+A rule that is left out no longer finds what it was written for either.
+Without `MALPEDIA_Win_Triback_Loader_Auto`, this rule set has nothing left
+that names that malware family. That is the price of an entry, and the
+reason the list asks for evidence instead of a feeling that a rule is
+noisy.
+
+How much detection the two entries cost is not measured. In every run so
+far the two rules flagged clean files and nothing else, but no run held a
+file they were written for.
+
+Lowering a rule's score would be the gentler tool: its matches would still
+be recorded, without changing the verdict. Warden does not have that yet.
 
 ## From a match to a verdict
 
@@ -212,10 +311,32 @@ The manifest follows the header and is UTF-8 JSON:
       "bytes": 1844,
       "rules": 1,
       "skipped": 0
+    },
+    {
+      "name": "yara-forge-rules-core.zip/packages/core/yara-rules-core.yar",
+      "sha256": "7770d912c4b1f7ce67d3614abda9a96d9d9dd2b5207b30ae0b4e7ba96bbdb0f8",
+      "bytes": 7879714,
+      "rules": 5135,
+      "skipped": 0,
+      "excluded": 2
     }
-  ]
+  ],
+  "exclusions": {
+    "sha256": "the SHA-256 of the exclusion list",
+    "rules": [
+      "MALPEDIA_Win_Triback_Loader_Auto",
+      "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+    ]
+  }
 }
 ```
+
+`sha256` and `bytes` of a rule file describe the file as it was given to the
+builder, before listed rules were taken out. `excluded` is written only when
+it is not zero, and `exclusions` only when the bundle was built with an
+exclusion list. Both were added after version 1 was first written down. A
+reader that does not know them ignores them, and a bundle without them
+loads as before, so the version number did not change.
 
 The compiled rules follow the manifest, in the form YARA-X serialises them.
 
