@@ -1,0 +1,8 @@
+/target/
+# Built signature databases are artifacts, not sources.
+*.wdb
+# Never commit antivirus test files. They are generated at test time.
+/testdata/
+*.log
+.DS_Store
+.idea/
