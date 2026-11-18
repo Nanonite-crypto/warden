@@ -1,0 +1,99 @@
+{
+  "schema": 2,
+  "label": "GitHub-hosted Windows runner, rules-heuristics",
+  "path": "C:\\Program Files\\PowerShell",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 25 Model 1 Stepping 1, AuthenticAMD"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795015569,
+        "bundle_digest": "df641c5dd9b3f0cfee77be9eccd10b9edc3a2398c4c0dc44ae071dcc77484107",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5136,
+        "rules_excluded": 2
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 2,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 10884.0795,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 101.43255568833358,
+          "megabytes_per_second": 27.311353615158726
+        },
+        {
+          "first": false,
+          "duration_ms": 10644.1682,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 103.71876686428162,
+          "megabytes_per_second": 27.926930354219696
+        },
+        {
+          "first": false,
+          "duration_ms": 10388.7628,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 106.26866945118816,
+          "megabytes_per_second": 28.613507664262002
+        },
+        {
+          "first": false,
+          "duration_ms": 10475.7221,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 105.38652986985976,
+          "megabytes_per_second": 28.37598603345921
+        },
+        {
+          "first": false,
+          "duration_ms": 10388.261999999999,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 106.27379247847234,
+          "megabytes_per_second": 28.614887071581368
+        }
+      ],
+      "repeat_median_files_per_second": 105.82759966052396,
+      "repeat_median_megabytes_per_second": 28.494746848860608
+    }
+  ]
+}

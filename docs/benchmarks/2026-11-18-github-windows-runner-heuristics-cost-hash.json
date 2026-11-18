@@ -1,0 +1,79 @@
+{
+  "schema": 2,
+  "label": "GitHub-hosted Windows runner, hash",
+  "path": "C:\\Program Files\\PowerShell",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 25 Model 1 Stepping 1, AuthenticAMD"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 2,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 1226.3913,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 900.2020806899071,
+          "megabytes_per_second": 242.38507236638094
+        },
+        {
+          "first": false,
+          "duration_ms": 295.1943,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 3739.9096120758427,
+          "megabytes_per_second": 1006.9941865408647
+        },
+        {
+          "first": false,
+          "duration_ms": 254.0328,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 4345.895490661049,
+          "megabytes_per_second": 1170.1596959132835
+        },
+        {
+          "first": false,
+          "duration_ms": 225.22,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 4901.873723470384,
+          "megabytes_per_second": 1319.8603321197052
+        },
+        {
+          "first": false,
+          "duration_ms": 250.9384,
+          "files_scanned": 1104,
+          "bytes_scanned": 297258944,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 4399.486089016268,
+          "megabytes_per_second": 1184.5893015975234
+        }
+      ],
+      "repeat_median_files_per_second": 4372.690789838658,
+      "repeat_median_megabytes_per_second": 1177.3744987554035
+    }
+  ]
+}

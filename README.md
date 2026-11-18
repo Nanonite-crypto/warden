@@ -6,11 +6,12 @@ Warden is a portfolio project by Vevang Technologies. It is built in phases,
 each ending with something that can be run and tested. The aim is depth in
 the scan engine, a clean architecture and measured results.
 
-> **Status: phase 2 of 10.** The scan engine has two detection layers, hash
-> matching and YARA rules, and looks inside zip archives. It is driven from
-> the command line. There is no GUI, no quarantine and no real-time
-> protection yet. Warden is not a replacement for your antivirus; it runs
-> next to Microsoft Defender.
+> **Status: phase 3 of 10.** The scan engine has three detection layers:
+> hash matching, YARA rules, and heuristics that judge a Windows executable
+> by its structure. It looks inside zip archives and is driven from the
+> command line. There is no GUI, no quarantine and no real-time protection
+> yet. Warden is not a replacement for your antivirus; it runs next to
+> Microsoft Defender.
 
 ## What works today
 
@@ -58,12 +59,37 @@ different hash, so only the rule finds it. The third is found after
 unpacking, and the finding says where inside the archive it is.
 
 That is output from Windows: the CI run for phase 2, in which the check
-script wrote the three files and scanned them. Screenshots arrive with the
-desktop app.
+script wrote the three files and scanned them. (Since phase 3 the header
+has one more line, for the heuristics.) Screenshots arrive with the desktop
+app.
+
+The third layer judges files that no signature and no rule knows.
+`warden inspect` shows what it sees in one file, here an inert test file
+that is built like a packed loader:
+
+```
+Indicators that add to the score
+   +10  A section is both writable and executable: sections "UPX0", "UPX1"
+    +9  An executable section looks compressed or encrypted: section "UPX1" has an entropy of 7.99 bits per byte
+    +5  A quarter of the file or more sits after the last section: 16384 of 33280 bytes come after the last section
+    +8  The program imports nothing: the import table is empty or missing
+    +5  The header holds no checksum: the checksum field is zero
+    +4  The program has no resources: the header points to no resource table
+
+Score       41
+Verdict     suspicious: a file counts as suspicious from a score of 32
+```
+
+(Shortened: every line comes with an explanation.) The weights are not
+guesses. They are fitted to the 2.3 million labelled files of the training
+weeks of the public EMBER2024 dataset, and a test fails if the code and the
+data disagree. [docs/HEURISTICS.md](docs/HEURISTICS.md) has the method, the
+numbers, and what the layer cannot do.
 
 | Command | What it does |
 |---|---|
 | `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report. |
+| `warden inspect <file>` | Shows what the heuristics see in one Windows executable: its sections, imports and header, every indicator that applies with its weight, the score and the threshold. |
 | `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. |
 | `warden rules info <file>` | Shows what a bundle holds: how many rules lead to which verdict, the rule files it was built from, the rules that were left out on purpose, the licences the rules name. |
 | `warden false-positives <path>...` | Scans files that are expected to be clean and lists every one that was flagged. |
@@ -143,7 +169,7 @@ it cannot.
 |---|---|---|---|
 | Hash match | 1, done | Exact copies of known files | One changed byte evades it |
 | YARA rules | 2, done | Patterns shared by a malware family | Packing hides the patterns |
-| PE heuristics | 3 | Signs of packing, injection and evasion | Legitimate software can look suspicious |
+| PE heuristics | 3, built | Executables nobody has seen that are built the way malware often is | Clean software is packed too; says little about libraries and .NET |
 | ML classifier | optional | Statistical resemblance to known malware | Only as good as its training data |
 
 Today's layers work like this:
@@ -157,20 +183,25 @@ Today's layers work like this:
 4. The YARA rules run over the same bytes. The rule engine is
    [YARA-X](https://virustotal.github.io/yara-x/); every worker thread has a
    scanner of its own, and the compiled rules are shared.
-5. A zip archive is unpacked in memory and its members go through steps 3
-   and 4, archives inside archives included. Limits on depth, member count,
+5. If the file is a Windows executable, the heuristic layer reads its
+   structure with a reader written for hostile input, asks 43 yes-or-no
+   questions about it, and adds up the weights of the 13 that are scored.
+   A score of 32 or more makes the file suspicious, never malicious.
+6. A zip archive is unpacked in memory and its members go through steps 3
+   to 5, archives inside archives included. Limits on depth, member count,
    size and compression ratio keep a zip bomb from getting anywhere.
-6. Every match becomes a finding with reasons attached: which hash or rule,
-   where in the file, who wrote the rule. A separate verdict policy turns
-   the findings into clean, suspicious or malicious, so every detection can
-   answer "why was this flagged?".
-7. Files that could not be read, and files that could only be checked in
+7. Every match becomes a finding with reasons attached: which hash or rule,
+   where in the file, who wrote the rule, which indicators with which
+   weights. A separate verdict policy turns the findings into clean,
+   suspicious or malicious, so every detection can answer "why was this
+   flagged?".
+8. Files that could not be read, and files that could only be checked in
    part (too large, a password-protected member, a limit reached), are
    listed with the reason, never silently dropped.
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
-[docs/RULES.md](docs/RULES.md) and
-[docs/SIGDB_FORMAT.md](docs/SIGDB_FORMAT.md).
+[docs/RULES.md](docs/RULES.md), [docs/HEURISTICS.md](docs/HEURISTICS.md)
+and [docs/SIGDB_FORMAT.md](docs/SIGDB_FORMAT.md).
 
 ## What Warden is not
 
@@ -187,35 +218,43 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 
 Warden is developed without writing, generating, modifying or handling live
 malware. Tests use the EICAR file, harmless generated fixtures, published
-detection rules and, later, public feature datasets.
+detection rules and a public dataset that holds features and labels of
+files, not the files.
 
 One consequence is stated plainly wherever numbers appear: detection rates
 on live samples are **not measured**, by design. What is measured is scan
-speed, false positives on clean files and, from phase 3, detection rates in
-feature space on the EMBER2024 dataset. See [docs/TESTING.md](docs/TESTING.md).
+speed, false positives on clean files, and how the heuristic score does on
+the labelled feature records of the EMBER2024 dataset. See
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Benchmarks
 
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the numbers and how they were
-produced. In short, as of phase 2:
+produced. In short, as of phase 3:
 
 - **Speed.** A 16-thread desktop with Microsoft Defender running scans its
   System32 folder (27,644 files, 10 GB) from the file cache in 8 seconds
-  with the default layers, and in 19 seconds with 5,138 YARA rules. On two
-  cores of a cloud container, a 7 GB Linux tree of small files runs at
-  800 MB/s with hash matching alone and at 52 MB/s with those rules.
-- **False positives** with those 5,138 rules: no clean file was reported
-  as malicious. 22 of 137,155 files on two Windows machines were reported
-  as suspicious, and none of 140,383 files in the Linux tree. Two rules
-  were responsible for all 22. They are now on the
-  [exclusion list](rules/exclusions.toml), and when the runs on the GitHub
-  runner were repeated, none of 109,499 files was flagged.
+  with the default layers of phase 2, and in 19 seconds with 5,138 YARA
+  rules. On two cores of a cloud container, a 7 GB Linux tree of small
+  files runs at 800 MB/s with hash matching alone and at 52 MB/s with those
+  rules. The heuristic layer adds under one percent to a scan with rules.
+- **False positives** with all three layers, on a GitHub-hosted Windows
+  runner: none of 109,500 files in System32 and in the installed software
+  was flagged. Getting there took one correction: two public rules flagged
+  22 clean files in the first runs and are now on the
+  [exclusion list](rules/exclusions.toml), each with its evidence.
+- **The heuristic score on EMBER2024**, on the twelve weeks it was not
+  fitted to: it flags 24.6 % of the malicious Windows executables and
+  0.0056 % of the benign ones (15 of 269,813). Among programs it is 29.6 %;
+  among libraries and .NET assemblies it is 1 % and less. Of 4,868
+  malicious files that no antivirus product detected when they first
+  appeared, it flags none.
 - **Detection rate on live malware:** not measured, by design.
 
 ## Roadmap
 
 [docs/ROADMAP.md](docs/ROADMAP.md) lists every phase with its exit
-criterion. Next: heuristics for Windows executables.
+criterion. Next: quarantine.
 
 ## Licence
 
