@@ -12,6 +12,7 @@ mod bench;
 mod fp;
 mod inspect;
 mod misc;
+mod quarantine;
 mod render;
 mod rules;
 mod scan;
@@ -71,6 +72,14 @@ enum Command {
     /// and the reason it counts. Exits with 1 if the file is suspicious.
     Inspect(inspect::InspectArgs),
 
+    /// Move files out of harm's way, and put them back
+    ///
+    /// A quarantined file is gone from its place and not lost: it can be
+    /// restored with the content, the timestamps and the permissions it
+    /// had. See `warden quarantine add --help`.
+    #[command(subcommand)]
+    Quarantine(quarantine::QuarantineCommand),
+
     /// Print the SHA-256 of files
     Hash {
         /// Files to hash
@@ -92,6 +101,7 @@ fn main() -> ExitCode {
         Command::Bench(args) => bench::run(&args),
         Command::FalsePositives(args) => fp::run(&args),
         Command::Inspect(args) => inspect::run(&args),
+        Command::Quarantine(command) => quarantine::run(&command),
         Command::Hash { files } => misc::hash(&files),
         Command::Eicar(command) => misc::eicar(&command),
     };

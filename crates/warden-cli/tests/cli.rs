@@ -14,6 +14,7 @@ fn warden() -> Command {
     command
         .env_remove("WARDEN_SIGDB")
         .env_remove("WARDEN_RULES")
+        .env_remove("WARDEN_QUARANTINE")
         .env_remove("SOURCE_DATE_EPOCH");
     command
 }
@@ -1715,4 +1716,403 @@ fn control_characters_in_file_names_do_not_reach_the_terminal() {
             .arg("--json"),
     );
     assert!(json.contains("evil\\u001b[2Jname.bin"));
+}
+
+/// Harmless bytes that stand in for a file somebody wants out of the way.
+/// The marker is what a scanner "would look for".
+const QUARANTINE_MARKER: &str = "WARDEN-CLI-QUARANTINE-MARKER";
+
+fn suspect_bytes() -> Vec<u8> {
+    format!("some bytes, then {QUARANTINE_MARKER}, then some more\n")
+        .repeat(40)
+        .into_bytes()
+}
+
+/// A moment long past, with a fraction of a second: 2021-03-04 05:06:07.5 UTC.
+fn long_ago() -> std::time::SystemTime {
+    std::time::UNIX_EPOCH + std::time::Duration::new(1_614_834_367, 500_000_000)
+}
+
+fn write_dated(path: &Path, bytes: &[u8]) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, bytes).unwrap();
+    let file = fs::File::options().write(true).open(path).unwrap();
+    file.set_times(fs::FileTimes::new().set_modified(long_ago()))
+        .unwrap();
+}
+
+/// The acceptance test of the quarantine: a file goes in and comes back
+/// with its content, its timestamp and its permissions.
+#[test]
+fn quarantine_moves_a_file_out_and_puts_it_back_as_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+    let file = dir.path().join("files").join("suspect.bin");
+    let bytes = suspect_bytes();
+    write_dated(&file, &bytes);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+    }
+    let digest = sha256_hex(&bytes);
+    let shown = file.to_string_lossy().into_owned();
+
+    let added = stdout_of(
+        warden()
+            .args(["quarantine", "add"])
+            .arg(&file)
+            .args(["--reason", "a test of the round trip", "--dir"])
+            .arg(&store),
+    );
+    assert!(added.contains(&format!("Quarantined  {shown}")), "{added}");
+    assert!(
+        added.contains(&format!("sha256     {digest} (2,480 bytes)")),
+        "{added}"
+    );
+    assert!(!file.exists(), "the file is gone from its place");
+
+    // What lies in the quarantine is not the file.
+    let stored: Vec<PathBuf> = fs::read_dir(store.join("items"))
+        .unwrap()
+        .map(|item| item.unwrap().path())
+        .collect();
+    assert_eq!(stored.len(), 1);
+    let on_disk = fs::read(&stored[0]).unwrap();
+    assert!(
+        !on_disk
+            .windows(QUARANTINE_MARKER.len())
+            .any(|window| window == QUARANTINE_MARKER.as_bytes())
+    );
+
+    let listed = stdout_of(warden().args(["quarantine", "list", "--dir"]).arg(&store));
+    for expected in [
+        "1 entry",
+        shown.as_str(),
+        "2,480 bytes",
+        "reason: a test of the round trip",
+    ] {
+        assert!(
+            listed.contains(expected),
+            "missing {expected:?} in:\n{listed}"
+        );
+    }
+    let json: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden()
+            .args(["quarantine", "list", "--json", "--dir"])
+            .arg(&store),
+    ))
+    .unwrap();
+    let entry = &json["entries"][0];
+    let id = entry["id"].as_str().unwrap().to_owned();
+    assert_eq!(id.len(), 16);
+    assert_eq!(entry["original_path"], shown.as_str());
+    assert_eq!(entry["size"], 2480);
+    assert_eq!(entry["sha256"], digest.as_str());
+    assert_eq!(entry["reason"]["note"], "a test of the round trip");
+    assert_eq!(entry["cipher"]["algorithm"], "chacha20");
+    assert_eq!(entry["times"]["modified"]["secs"], 1_614_834_367);
+    assert_eq!(entry["times"]["modified"]["nanos"], 500_000_000);
+    assert_eq!(json["damaged"], serde_json::json!([]));
+
+    // The start of the identifier is enough from here on.
+    let short = &id[..6];
+    let info = stdout_of(
+        warden()
+            .args(["quarantine", "info", short, "--dir"])
+            .arg(&store),
+    );
+    for expected in [
+        format!("Entry        {id}"),
+        format!("Was at       {shown}"),
+        format!("SHA-256      {digest}"),
+        "Modified     2021-03-04T05:06:07Z and 500,000,000 ns".to_owned(),
+        "Reason       a test of the round trip".to_owned(),
+    ] {
+        assert!(info.contains(&expected), "missing {expected:?} in:\n{info}");
+    }
+
+    let restored = stdout_of(
+        warden()
+            .args(["quarantine", "restore", short, "--dir"])
+            .arg(&store),
+    );
+    for expected in [
+        format!("Restored  {shown}"),
+        format!("sha256  {digest} (2,480 bytes), as recorded"),
+        "Its timestamps and permissions are what they were.".to_owned(),
+    ] {
+        assert!(
+            restored.contains(&expected),
+            "missing {expected:?} in:\n{restored}"
+        );
+    }
+    let metadata = fs::metadata(&file).unwrap();
+    assert_eq!(metadata.modified().unwrap(), long_ago());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(metadata.permissions().mode() & 0o7777, 0o640);
+    }
+    assert_eq!(fs::read(&file).unwrap(), bytes);
+    assert_eq!(hash_of(&file), digest);
+
+    let empty = stdout_of(warden().args(["quarantine", "list", "--dir"]).arg(&store));
+    assert!(empty.contains("Nothing is in quarantine."), "{empty}");
+}
+
+#[test]
+fn quarantine_says_no_and_why_and_leaves_things_as_they_are() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+    let file = dir.path().join("files").join("suspect.bin");
+    let bytes = suspect_bytes();
+    write_dated(&file, &bytes);
+    // The folder comes from the environment in this test.
+    let quarantine = || {
+        let mut command = warden();
+        command.env("WARDEN_QUARANTINE", &store).arg("quarantine");
+        command
+    };
+
+    // A folder is not a file, and one refusal does not stop the others.
+    let other = dir.path().join("files").join("other.bin");
+    write_dated(&other, b"another file");
+    quarantine()
+        .arg("add")
+        .arg(file.parent().unwrap())
+        .arg(&other)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "is a folder, and only a regular file can be quarantined",
+        ))
+        .stdout(predicate::str::contains("Quarantined  "));
+    assert!(!other.exists() && file.exists());
+
+    // Identifiers are hexadecimal, so no entry can start with this.
+    quarantine()
+        .args(["restore", "xyz"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("there is no quarantine entry xyz"));
+
+    // Something else has taken the file's place by the time it comes back.
+    let added = stdout_of(quarantine().arg("add").arg(&file));
+    let id = added
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("entry"))
+        .unwrap()
+        .trim()
+        .to_owned();
+    fs::write(&file, b"a newer file").unwrap();
+    quarantine()
+        .args(["restore", &id])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("exists already"));
+    assert_eq!(fs::read(&file).unwrap(), b"a newer file");
+
+    // Somewhere else it can go.
+    let elsewhere = dir.path().join("elsewhere.bin");
+    quarantine()
+        .args(["restore", &id, "--to"])
+        .arg(&elsewhere)
+        .assert()
+        .success();
+    assert_eq!(fs::read(&elsewhere).unwrap(), bytes);
+
+    // Or over what is there, if that is asked for.
+    let added = stdout_of(quarantine().arg("add").arg(&elsewhere));
+    let id = added
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("entry"))
+        .unwrap()
+        .trim()
+        .to_owned();
+    quarantine()
+        .args(["restore", &id, "--overwrite", "--to"])
+        .arg(&file)
+        .assert()
+        .success();
+    assert_eq!(fs::read(&file).unwrap(), bytes);
+
+    // Deleting is for good, and takes the other entry with it here.
+    let listed: serde_json::Value =
+        serde_json::from_str(&stdout_of(quarantine().args(["list", "--json"]))).unwrap();
+    let left = listed["entries"].as_array().unwrap();
+    assert_eq!(left.len(), 1);
+    let last = left[0]["id"].as_str().unwrap().to_owned();
+    quarantine()
+        .args(["delete", &last, "xyz"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains(format!("Deleted  {last}")))
+        .stderr(predicate::str::contains("there is no quarantine entry xyz"));
+    assert!(stdout_of(quarantine().arg("list")).contains("Nothing is in quarantine."));
+    assert!(!other.exists());
+}
+
+/// A run that died in the middle, as the next command meets it. The crash
+/// is made with the library's own switch for it, and the command line is
+/// what a person would type next.
+#[test]
+fn quarantine_settles_what_an_interrupted_run_left_behind() {
+    use warden_quarantine::{Quarantine, QuarantineError, Reason, RestoreOptions, Step};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+    let file = dir.path().join("files").join("suspect.bin");
+    let bytes = suspect_bytes();
+    write_dated(&file, &bytes);
+    let shown = file.to_string_lossy().into_owned();
+
+    // Dies when the copy is safe and the original is still there.
+    {
+        let (mut quarantine, _) = Quarantine::open(&store).unwrap();
+        quarantine.interrupt_after(Step::EntryCommitted);
+        let died = quarantine.add(&file, Reason::default()).unwrap_err();
+        assert!(matches!(died, QuarantineError::Interrupted(_)), "{died}");
+    }
+    assert!(file.exists());
+
+    let next = warden()
+        .args(["quarantine", "list", "--dir"])
+        .arg(&store)
+        .assert()
+        .success();
+    let output = next.get_output();
+    let said = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        said.contains(&format!(
+            "note: Quarantining {shown} had been cut off after the copy was safe. It was finished: the file is in quarantine as "
+        )),
+        "{said}"
+    );
+    let listed = String::from_utf8_lossy(&output.stdout).into_owned();
+    assert!(listed.contains("1 entry"), "{listed}");
+    assert!(!file.exists(), "the original is gone now");
+
+    // Dies while the file is being written back.
+    let id = {
+        let (mut quarantine, recovered) = Quarantine::open(&store).unwrap();
+        assert!(recovered.is_empty(), "the command before settled it");
+        let id = quarantine.list().unwrap().entries[0].info.id.clone();
+        quarantine.interrupt_after(Step::RestoreWritten);
+        quarantine
+            .restore(&id, &RestoreOptions::default())
+            .unwrap_err();
+        id
+    };
+    assert!(!file.exists());
+    assert_eq!(fs::read_dir(file.parent().unwrap()).unwrap().count(), 1);
+
+    let next = warden()
+        .args(["quarantine", "restore", &id, "--dir"])
+        .arg(&store)
+        .assert()
+        .success();
+    let said = String::from_utf8_lossy(&next.get_output().stderr).into_owned();
+    assert!(
+        said.contains(&format!(
+            "note: Restoring {shown} had been cut off before the file was back. It was undone: entry {id} is still in quarantine."
+        )),
+        "{said}"
+    );
+    // The same command then did what it was asked to.
+    assert_eq!(fs::read(&file).unwrap(), bytes);
+    assert_eq!(fs::read_dir(file.parent().unwrap()).unwrap().count(), 1);
+}
+
+/// The EICAR test file through the quarantine. It is written only where
+/// the test file may be written: see `eicar_write_then_scan_detects_every_form`.
+#[test]
+fn the_test_file_is_harmless_in_quarantine_and_itself_again_afterwards() {
+    let strict = std::env::var_os("WARDEN_REQUIRE_EICAR").is_some_and(|value| value == "1");
+    let not_exercised = |why: &str| {
+        let note = format!("EICAR in quarantine not exercised: {why}. See docs/TESTING.md.");
+        assert!(!strict, "{note}");
+        eprintln!("note: {note}");
+    };
+    let configured = std::env::var_os("WARDEN_EICAR_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if cfg!(windows) && configured.is_none() {
+        not_exercised("WARDEN_EICAR_DIR is not set to an antivirus-excluded folder");
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let dir = match &configured {
+        Some(base) => base.join(format!("quarantine-{}", std::process::id())),
+        None => temp.path().join("zone"),
+    };
+    let store = temp.path().join("quarantine");
+    let file = dir.join("eicar.com");
+    let scan = |path: &Path| {
+        let output = warden().arg("scan").arg(path).assert().get_output().clone();
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+        )
+    };
+
+    let written = warden()
+        .args(["eicar", "write"])
+        .arg(&dir)
+        .assert()
+        .get_output()
+        .status
+        .success();
+    let before = scan(&dir);
+    if !written || before.0 != Some(1) {
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_dir(&dir);
+        not_exercised("the test file could not be written, or was removed before the scan");
+        return;
+    }
+
+    let added = warden()
+        .args(["quarantine", "add"])
+        .arg(&file)
+        .args(["--reason", "detected as EICAR-Test-File", "--dir"])
+        .arg(&store)
+        .assert()
+        .get_output()
+        .clone();
+    let in_place = scan(&dir);
+    let in_store = scan(&store);
+    let id: Option<String> = String::from_utf8_lossy(&added.stdout)
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("entry")
+                .map(|id| id.trim().to_owned())
+        });
+    let restored = id.as_ref().map(|id| {
+        warden()
+            .args(["quarantine", "restore", id, "--dir"])
+            .arg(&store)
+            .assert()
+            .get_output()
+            .clone()
+    });
+    let after = scan(&dir);
+    let digest = file.exists().then(|| hash_of(&file));
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_dir(&dir);
+
+    assert!(added.status.success(), "{added:?}");
+    // Where the file was, there is nothing left to find.
+    assert_eq!(in_place.0, Some(0), "{}", in_place.1);
+    // And what is kept does not set off a scanner: not this one, and for
+    // the same reason not a resident antivirus that watches the folder.
+    assert_eq!(in_store.0, Some(0), "{}", in_store.1);
+    assert!(in_store.1.contains("No threats found."), "{}", in_store.1);
+
+    assert!(restored.is_some_and(|output| output.status.success()));
+    assert_eq!(after.0, Some(1), "it is detected again: {}", after.1);
+    assert_eq!(
+        digest.as_deref(),
+        Some("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")
+    );
 }

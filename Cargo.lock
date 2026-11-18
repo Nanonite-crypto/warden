@@ -2781,6 +2781,7 @@ dependencies = [
  "time",
  "warden-engine",
  "warden-pe",
+ "warden-quarantine",
  "warden-sigdb",
  "warden-yara",
  "zip",
