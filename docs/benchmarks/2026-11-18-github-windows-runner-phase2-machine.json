@@ -1,0 +1,13 @@
+{
+    "cpu":  "Intel(R) Xeon(R) 6973P-C",
+    "cores":  1,
+    "logical_processors":  2,
+    "os":  "Microsoft Windows Server 2025 Datacenter",
+    "os_version":  "10.0.26100",
+    "memory_gb":  8,
+    "benchmark_disk":  "Virtual_Disk NVME Premium (SSD, NVMe)",
+    "defender_realtime_protection":  false,
+    "antivirus_products":  [
+
+                           ]
+}

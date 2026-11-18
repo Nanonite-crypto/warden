@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "label": "local machine",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel64 Family 6 Model 173 Stepping 1, GenuineIntel"
+  },
+  "paths": [
+    "C:\\Windows\\System32\\drivers"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1794989902,
+        "bundle_digest": "a71e25e871000369a60ba9855211c9aa26fc87218394dfe547937af8984a9fee",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5138
+      }
+    }
+  ],
+  "threads": 2,
+  "duration_ms": 2775,
+  "files_scanned": 613,
+  "bytes_scanned": 157053515,
+  "files_skipped": 0,
+  "files_partially_scanned": 0,
+  "archive_members_scanned": 0,
+  "files_per_second": 220.84723701192175,
+  "megabytes_per_second": 56.58211231771682,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false
+}

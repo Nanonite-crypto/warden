@@ -9,7 +9,8 @@ Every number on this page comes from a run that is recorded in
 |---|---|
 | Scan throughput: files/sec and MB/sec | Phase 1 |
 | Signature lookup and hashing speed | Phase 1 |
-| False positives on clean files | From phase 2 |
+| What each detection layer costs in throughput | Phase 2 |
+| False positives on clean files | Phase 2 |
 | Detection and false-positive rates in feature space (EMBER2024) | From phase 3 |
 | Real-time time-to-detect | From phase 9 |
 
@@ -27,9 +28,14 @@ See [TESTING.md](TESTING.md).
   the first run and takes its median over the repeat runs only. Both are
   shown here. A rigorous cold-cache figure, taken after a reboot, is planned
   for the portfolio checkpoint.
-- Result files marked `"schema": 1` were written before that split, so
-  their median fields include the first run. The tables below are built
-  from the individual runs.
+- Benchmark result files marked `"schema": 1` were written before that
+  split, so their median fields include the first run. The tables below are
+  built from the individual runs.
+- **False positives** are counted by `warden false-positives <folder>`,
+  which scans files that are expected to be clean and lists every one that
+  gets a verdict other than clean. Each result names the rule release it
+  was produced with, because the count belongs to the rules as much as to
+  the engine.
 - **Micro-benchmarks** use Criterion (`cargo bench`) and report the
   estimate with its confidence interval.
 - **Hardware is always stated.** Numbers from a shared CI runner or a cloud
@@ -41,7 +47,7 @@ See [TESTING.md](TESTING.md).
 ## Results: phase 1
 
 Phase 1 has one detection layer (hash matching), so these figures are the
-ceiling that later layers will be measured against.
+ceiling that later layers are measured against.
 
 ### Development container (Linux, 2 vCPU)
 
@@ -109,8 +115,8 @@ figures are indicative only.
 
 **Scan throughput** over `C:\Windows\System32`: 21,783 files, 4.71 GB, with
 44 files skipped because they could not be read.
-`warden bench C:\Windows\System32 --runs 2`, run by
-`scripts\win\phase1-check.cmd`
+`warden bench C:\Windows\System32 --runs 2`, run by the Windows check
+script
 
 | Threads | Run | Time | Files/s | MB/s | Cache |
 |---|---|---|---|---|---|
@@ -130,7 +136,184 @@ are attached to each workflow run.
 
 ### Windows desktop
 
-Not yet measured. `scripts\win\phase1-check.cmd` produces these numbers by
-scanning the System32 folder with the machine's antivirus running, and
-writes them to `target\phase1\bench.json`, next to a description of the
-machine in `system.json`. They will be added here from that run.
+AMD Ryzen 7 5800X (8 cores, 16 threads), 32 GB RAM, Kingston SNVS1000G NVMe
+SSD, Windows 11 Home (10.0.26300), Microsoft Defender real-time protection
+on. The scan ran without administrator rights.
+
+**Scan throughput** over `C:\Windows\System32`: 25,521 files, 9.35 GB, with
+315 files skipped because they could not be read.
+`warden bench C:\Windows\System32 --runs 3`, run by the Windows check
+script
+
+| Threads | Run | Time | Files/s | MB/s | Cache |
+|---|---|---|---|---|---|
+| 16 | 1 | 50.28 s | 508 | 186.1 | First read |
+| 16 | 2 | 9.06 s | 2,818 | 1,033.0 | Warm |
+| 16 | 3 | 11.71 s | 2,180 | 799.1 | Warm |
+
+Median of the warm runs: 2,499 files/s and 916 MB/s.
+
+Sixteen threads on this desktop are no faster in warm runs than the two
+threads of the CI runner above. Defender inspects every file that Warden
+opens here and did not on the runner, and the scanner may not scale to 16
+threads the way it does to two. The two effects have not been separated
+yet: that takes a run with `--threads 1,2,4,8,16` on this machine.
+
+Raw results:
+[2026-11-18-windows-desktop-system32.json](benchmarks/2026-11-18-windows-desktop-system32.json),
+machine:
+[2026-11-18-windows-desktop-machine.json](benchmarks/2026-11-18-windows-desktop-machine.json).
+
+On this machine the check could not verify EICAR detection: Defender
+removed the test file before Warden read it, which is what it should do.
+[TESTING.md](TESTING.md#eicar-and-your-antivirus) describes the one folder
+exclusion that lets the check run in full.
+
+## Results: phase 2
+
+Phase 2 added two things that take time: looking inside zip archives, and
+YARA rules. The rule set used throughout is the YARA Forge core package,
+release 20261018, compiled together with Warden's built-in rule: 5,138
+rules. [RULES.md](RULES.md) describes it.
+
+### Development container (Linux, 2 vCPU)
+
+The same machine and folder as in phase 1: `/usr`, 140,383 files, 7.15 GB.
+Two threads, median of the repeat runs.
+`warden bench /usr --runs 3 --threads 2`, plus the switches in the table
+
+| Configuration | Switches | Files/s | MB/s | Time taken, hash only = 1 |
+|---|---|---|---|---|
+| Hash only | `--no-yara --no-archives` | 15,707 | 800.1 | 1 |
+| Hash and archives | `--no-yara` | 12,573 | 640.4 | 1.25 |
+| Default: hash, the built-in rule, archives | none | 12,558 | 639.7 | 1.25 |
+| Hash, archives, 5,138 rules | `--rules core.wrb` | 1,015 | 51.7 | 15.5 |
+
+- **Archives** add a quarter to the scan time on this tree. 380 of its files
+  are zip archives (document templates, Java archives, plain zips), and
+  unpacking them adds 88,855 members and 361.9 MB to what is checked.
+- **One rule** costs nothing that can be measured: the second and third
+  rows differ by less than the spread between runs.
+- **The full rule set** makes the same scan take 12 times as long as the
+  row above it. This tree is mostly small files (51 kB on average), and
+  every one pays for evaluating 5,138 rules: about 1.1 ms of processor time
+  for each of the 229,238 files and archive members.
+
+On larger files the picture is different. `/usr/bin` holds 901 files with an
+average size of 783 kB:
+`warden bench /usr/bin --runs 2 --threads 1,2 --rules core.wrb`
+
+| Threads | Files/s | MB/s |
+|---|---|---|
+| 1 | 105 | 82.6 |
+| 2 | 210 | 164.5 |
+
+Two threads are 1.99 times as fast as one.
+
+Raw results:
+[hash only](benchmarks/2026-11-18-dev-container-usr-phase2-hash-only.json),
+[hash and archives](benchmarks/2026-11-18-dev-container-usr-phase2-hash-archives.json),
+[default](benchmarks/2026-11-18-dev-container-usr-phase2-defaults.json),
+[5,138 rules](benchmarks/2026-11-18-dev-container-usr-phase2-yara-forge.json),
+[5,138 rules on /usr/bin](benchmarks/2026-11-18-dev-container-usr-bin-phase2-yara-forge.json).
+
+**Rule bundle.** Timed in the same container.
+
+| Operation | Time |
+|---|---|
+| Compile 5,138 rules into a bundle (8.7 MB) | 2.2 s |
+| Start, open that bundle, scan three small files | 0.73 s (median of 30) |
+| The same with only the built-in rule | 7 ms |
+| The same without YARA | 3 ms |
+
+Opening the bundle is the 0.7 seconds: the rule engine rebuilds its search
+structures from the stored rules. A command-line scan pays that every time.
+The service planned for phase 6 pays it once. Raw figures:
+[2026-11-18-dev-container-rule-bundle.txt](benchmarks/2026-11-18-dev-container-rule-bundle.txt).
+
+### GitHub-hosted Windows runner (indicative)
+
+Intel Xeon 6973P-C, 2 logical processors, 8 GB RAM, Windows Server 2025
+(10.0.26100), Microsoft Defender real-time protection off. Hosted runners
+are not all the same hardware: this is a different machine from the one in
+phase 1, so the two sets of figures are not comparable with each other.
+
+**Scan throughput** over `C:\Windows\System32\drivers`: 613 files, 157.1 MB,
+with the default layers (hash, the built-in rule, archives).
+`warden bench C:\Windows\System32\drivers --runs 3`, run by
+`scripts\win\check.cmd`
+
+| Threads | Run | Time | Files/s | MB/s | Cache |
+|---|---|---|---|---|---|
+| 2 | 1 | 2.38 s | 258 | 66.1 | First read |
+| 2 | 2 | 114 ms | 5,396 | 1,382.6 | Warm |
+| 2 | 3 | 91 ms | 6,706 | 1,718.1 | Warm |
+
+**The same folder with 5,138 rules**, one pass with the files in the cache:
+613 files in 2.78 s, which is 221 files/s and 56.6 MB/s on two threads.
+Compiling the bundle took 1.6 s on this machine.
+
+Raw results:
+[benchmark](benchmarks/2026-11-18-github-windows-runner-phase2-drivers.json),
+[the run with rules](benchmarks/2026-11-18-github-windows-runner-phase2-drivers-false-positives.json),
+[machine](benchmarks/2026-11-18-github-windows-runner-phase2-machine.json).
+
+## False positives
+
+The rule set is the YARA Forge core package, release 20261018, with
+Warden's built-in rule: 5,138 rules. A match of 205 of them leads to the
+verdict malicious, a match of any of the other 4,933 to suspicious. The
+tables count files with either verdict.
+
+| Files expected to be clean | Files | Data | Files inside archives | Malicious | Suspicious |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,804 | 4.80 GB | 193 | 0 | 1 |
+| Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 0 | 20 |
+| `/usr` in the Linux development container | 140,383 | 7.15 GB | 88,855 | 0 | 0 |
+
+No clean file was reported as malicious. 21 of the 109,511 Windows files
+(0.019%) were reported as suspicious, and they come from two rules:
+
+- **`MALPEDIA_Win_Triback_Loader_Auto`** flagged `System32\vulkan-1.dll`,
+  the loader of the Vulkan graphics interface. The rule was generated by a
+  tool from code sequences found in one malware family; 1,622 of the rules
+  in the package were made that way. This is a plain false positive.
+- **`COD3NYM_DOTNET_Singlefilehost_Bundled_App`** flagged all 20 copies of
+  `singlefilehost.exe` in the .NET SDK. The rule's own description is
+  "Detects single file host .NET bundled apps": it recognises a way of
+  packaging a program, and Microsoft's host is that packaging itself. The
+  package gives the rule a score of 75, like most of its rules, so Warden
+  reports a match as suspicious.
+
+What follows from this:
+
+- The verdict that later phases will act on by themselves is malicious,
+  and it stayed at zero. A suspicious file is shown to the user and nothing
+  else happens to it.
+- Both cases have the same root: Warden takes a rule's score at face
+  value. What a match of a medium-score rule should mean is an open
+  decision in the [roadmap](ROADMAP.md#open-decisions), to be settled
+  with the heuristics of phase 3.
+- Zero flagged files in a folder says that the rules are quiet there. It
+  says nothing about what they catch, which is not measured here.
+- A hosted runner is a server image with developer tools on it. A desktop
+  with graphics drivers, games and office software holds many kinds of
+  files that were not part of this run.
+
+Not everything could be checked in full. In System32, 39 files could not be
+read and 2 were checked in part; in the software folders, 7 were checked in
+part; in `/usr`, 8: four larger than the 128 MiB content limit, two with
+more than 10,000 archive members, two zip files that are damaged on
+purpose (test data of the Go toolchain).
+
+The Windows runs read every file for the first time from the runner's
+disk, at 14 to 21 MB/s, so their duration (5 min 39 s and 11 min 37 s) says
+little about the engine. Machine: AMD EPYC 9V74, 2 logical processors, 8 GB
+RAM, Windows Server 2025, Microsoft Defender real-time protection off.
+Produced by the `False positives` workflow.
+
+Raw results:
+[System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives.json),
+[software](benchmarks/2026-11-18-github-windows-runner-software-false-positives.json),
+[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-machine.json),
+[`/usr`](benchmarks/2026-11-18-dev-container-usr-false-positives.json).

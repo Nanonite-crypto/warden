@@ -1,0 +1,59 @@
+{
+  "schema": 2,
+  "label": "development container, hash and archives",
+  "path": "/usr",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "linux",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 2,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 11264.063115,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 12462.90957061989,
+          "megabytes_per_second": 634.8269857861143
+        },
+        {
+          "first": false,
+          "duration_ms": 11254.541071,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 12473.453969769604,
+          "megabytes_per_second": 635.3640890276333
+        },
+        {
+          "first": false,
+          "duration_ms": 11077.444234999999,
+          "files_scanned": 140383,
+          "bytes_scanned": 7150731235,
+          "files_skipped": 0,
+          "detections": 0,
+          "files_per_second": 12672.869032050696,
+          "megabytes_per_second": 645.5217542334124
+        }
+      ],
+      "repeat_median_files_per_second": 12573.16150091015,
+      "repeat_median_megabytes_per_second": 640.4429216305228
+    }
+  ]
+}

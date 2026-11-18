@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "label": "GitHub-hosted Windows runner, common software",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 25 Model 17 Stepping 1, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Program Files\\7-Zip",
+    "C:\\Program Files\\Git",
+    "C:\\Program Files\\Google\\Chrome",
+    "C:\\Program Files\\Mozilla Firefox",
+    "C:\\Program Files\\PowerShell",
+    "C:\\Program Files\\dotnet",
+    "C:\\Program Files\\nodejs"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1794990177,
+        "bundle_digest": "770445ff4be7de1e9bb4fc435a4df11cc6ed191d509b391ecd055a57c92792fd",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5138
+      }
+    }
+  ],
+  "threads": 2,
+  "duration_ms": 697169,
+  "files_scanned": 87707,
+  "bytes_scanned": 14416680921,
+  "files_skipped": 0,
+  "files_partially_scanned": 7,
+  "archive_members_scanned": 89049,
+  "files_per_second": 125.80436198909567,
+  "megabytes_per_second": 20.67886651312635,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 20,
+  "flagged_percent": 0.022803197008220553,
+  "by_name": [
+    {
+      "name": "COD3NYM_DOTNET_Singlefilehost_Bundled_App",
+      "files": 20
+    }
+  ],
+  "flagged": [
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-arm64\\10.0.14\\runtimes\\win-arm64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 10501120,
+      "sha256": "a767db3c45bf7e75f2d662bd7c071d39e63aa7fb2178eb030d9edc2c2c1ba29f",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-arm64\\8.0.22\\runtimes\\win-arm64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9773568,
+      "sha256": "7af72e57924d64cc4ad7718703c921a97c338f8525ed24ac321a76e089371d58",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-arm64\\8.0.33\\runtimes\\win-arm64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9778688,
+      "sha256": "702d7e12b4168ac2513cd74e6442b8534d265bb2212eb56d15cf40343c2933af",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-arm64\\8.0.6\\runtimes\\win-arm64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9732096,
+      "sha256": "700d79b10f2be448b29b36d4640d145e78a6c4ac76d2329fcd57f260d1b353f1",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-arm64\\9.0.22\\runtimes\\win-arm64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 10381824,
+      "sha256": "f0fbe2026a9f82f150f7cf4389563038622f2570b016ecd3d5ca831be3a8cda2",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-arm64\\9.0.6\\runtimes\\win-arm64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 10378240,
+      "sha256": "cbe3fd3f84bb7e56874524ee2a85b3dd64c08034ba34464bca0fa8953584d4b9",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\10.0.11\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9987072,
+      "sha256": "e55054e147c18682f9d683010855591d4846c08a75f593e0d1207763a25fc7b3",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\10.0.14\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9990144,
+      "sha256": "55b55ef1e98a4c4d1c8ef9d74042f69361a4bb5893ffd350f61042b59594ca8a",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\10.0.8\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9970176,
+      "sha256": "96ab967a45e3fb22831fcf97ae44cb0e47e07232d22a9e5bc797bac8b7167281",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\8.0.22\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9636864,
+      "sha256": "9b16744a589c716d85a4535ae335090100b315ec5e1a27ac0400437480fc8b3d",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\8.0.33\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9643008,
+      "sha256": "e6fc2f6ea3fb185265a86e7d8759bc29b7001d8b352da7fb3a2d0864e59855a2",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\8.0.6\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9660416,
+      "sha256": "afd36566629fd4599124feab7deeb2b7744217d0467b35e31e4b0ef8097e1ae6",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\9.0.22\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9844224,
+      "sha256": "4acb5c2364f15c40c940cddfdbd3377314f8253ab93173f2611e1ae1122260b7",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x64\\9.0.6\\runtimes\\win-x64\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 9858560,
+      "sha256": "790fd2871d78503aa2950a8103b7c14abfcaa1d990c734dc19838ba7eb94df84",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x86\\10.0.14\\runtimes\\win-x86\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 8578048,
+      "sha256": "af21060c5a882280f135fd307ed3fa3d6a0495d271ff5dff473244b2c0a72bc2",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x86\\8.0.22\\runtimes\\win-x86\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 8432128,
+      "sha256": "512b52f1f352111dbc5a019865fbca43797aaf1711bb4e532e164dedf74627e8",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x86\\8.0.33\\runtimes\\win-x86\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 8375296,
+      "sha256": "903148d82e3f988ee16b0d4bc16926ddfe3e618eb8f6d78b242f6e45012cf4dc",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x86\\8.0.6\\runtimes\\win-x86\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 8399360,
+      "sha256": "9175db4a24ce4056218b6e40724ad9b6d2bc353aecb90b82151df624acb4b7c4",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x86\\9.0.22\\runtimes\\win-x86\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 8503808,
+      "sha256": "08edb49222ed38555ef140f246c96adc39f47bdd781af433c6d7fa2abc181c36",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\dotnet\\packs\\Microsoft.NETCore.App.Host.win-x86\\9.0.6\\runtimes\\win-x86\\native\\singlefilehost.exe",
+      "verdict": "suspicious",
+      "size": 8483328,
+      "sha256": "fd0e6bebe2eadf87b93accbdb102d14e4677b79319c1b9cf9a29a02082f57917",
+      "names": [
+        "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      ]
+    }
+  ],
+  "flagged_truncated": false
+}
