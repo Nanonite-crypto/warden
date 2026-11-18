@@ -41,13 +41,13 @@ mod tests {
     use crate::finding::ThreatCategory;
 
     fn finding(confidence: Confidence) -> Finding {
-        Finding {
-            detector: "test",
-            name: "Test.Finding".to_owned(),
-            category: ThreatCategory::Malware,
+        Finding::new(
+            "test",
+            "Test.Finding",
+            ThreatCategory::Malware,
             confidence,
-            reasons: vec!["because the test says so".to_owned()],
-        }
+            vec!["because the test says so".to_owned()],
+        )
     }
 
     #[test]

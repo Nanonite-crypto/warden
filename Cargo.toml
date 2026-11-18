@@ -17,6 +17,7 @@ warden-sigdb = { path = "crates/warden-sigdb" }
 anyhow = "1.0.104"
 clap = { version = "4.6.8", features = ["derive"] }
 crossbeam-channel = "0.5.17"
+memchr = "2.7"
 ctrlc = "3.5.2"
 memmap2 = "0.9.12"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -25,6 +26,12 @@ sha2 = "0.11.1"
 thiserror = "2.0.21"
 time = { version = "0.3.55", features = ["formatting", "serde"] }
 walkdir = "2.5.0"
+
+# Pinned exactly: Warden walks archives with the reader in `zip::unstable`,
+# which keeps memory use independent of the number of members and may change
+# in any release. Only the two deflate variants are built; members packed any
+# other way are reported, not unpacked.
+zip = { version = "=9.7.0", default-features = false, features = ["deflate-flate2-zlib-rs", "deflate64"] }
 
 # Test and benchmark only.
 assert_cmd = "2.2.2"

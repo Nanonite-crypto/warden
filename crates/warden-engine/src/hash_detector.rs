@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use warden_sigdb::SigDb;
 
-use crate::detector::{Detector, DetectorError, DetectorInfo, FileView, InfoValue};
+use crate::detector::{Detector, DetectorError, DetectorInfo, FileView, InfoValue, Session};
 use crate::finding::{Confidence, Finding, ThreatCategory};
 use crate::{Sha256, eicar};
 
@@ -117,42 +117,47 @@ impl Detector for HashDetector {
         }
     }
 
-    fn inspect(&self, file: &FileView<'_>) -> Result<Vec<Finding>, DetectorError> {
+    fn session(&self) -> Box<dyn Session + '_> {
+        // A lookup needs no scratch state, so the detector is its own session.
+        Box::new(self)
+    }
+}
+
+impl Session for &HashDetector {
+    fn inspect(&mut self, file: &FileView<'_>) -> Result<Vec<Finding>, DetectorError> {
         let sha256 = file.sha256();
         if let Some(builtin) = self.builtin.iter().find(|entry| &entry.sha256 == sha256) {
-            return Ok(vec![Finding {
-                detector: Self::ID,
-                name: builtin.name.to_owned(),
-                category: builtin.category,
-                confidence: Confidence::Definitive,
-                reasons: vec![builtin.reason.to_owned()],
-            }]);
+            return Ok(vec![Finding::new(
+                HashDetector::ID,
+                builtin.name,
+                builtin.category,
+                Confidence::Definitive,
+                vec![builtin.reason.to_owned()],
+            )]);
         }
         let Some(signature) = self.database.as_ref().and_then(|db| db.lookup(sha256)) else {
             return Ok(Vec::new());
         };
-        Ok(vec![Finding {
-            detector: Self::ID,
-            name: signature.name.to_owned(),
-            category: signature.category.into(),
-            confidence: Confidence::Definitive,
-            reasons: vec!["SHA-256 matches an entry in the signature database".to_owned()],
-        }])
+        Ok(vec![Finding::new(
+            HashDetector::ID,
+            signature.name,
+            signature.category.into(),
+            Confidence::Definitive,
+            vec!["SHA-256 matches an entry in the signature database".to_owned()],
+        )])
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use warden_sigdb::{Category, SigDbBuilder};
 
     use super::*;
 
     fn inspect(detector: &HashDetector, bytes: &[u8]) -> Vec<Finding> {
         let sha256 = crate::sha256(bytes);
-        let view = FileView::new(Path::new(""), bytes.len() as u64, &sha256, None);
-        detector.inspect(&view).unwrap()
+        let view = FileView::in_memory(bytes, &sha256);
+        detector.session().inspect(&view).unwrap()
     }
 
     #[test]

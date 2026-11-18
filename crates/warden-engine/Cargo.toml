@@ -15,14 +15,17 @@ workspace = true
 warden-sigdb.workspace = true
 
 crossbeam-channel.workspace = true
+memchr.workspace = true
 serde.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 time.workspace = true
 walkdir.workspace = true
+zip.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+proptest.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 

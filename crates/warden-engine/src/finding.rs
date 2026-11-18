@@ -39,6 +39,20 @@ pub enum Confidence {
     Definitive,
 }
 
+/// A file inside an archive.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Member {
+    /// The names leading from the scanned file to the member, outermost
+    /// first: `["inner.zip", "tool.exe"]` is `tool.exe` inside `inner.zip`
+    /// inside the scanned file. Names come from the archive, so control
+    /// characters in them are replaced before they get here.
+    pub path: Vec<String>,
+    /// Size of the member after unpacking, in bytes.
+    pub size: u64,
+    /// SHA-256 of the unpacked member, in lowercase hexadecimal.
+    pub sha256: String,
+}
+
 /// One thing a detector noticed about a file.
 ///
 /// A finding always says why: `reasons` is the evidence, written for a
@@ -56,6 +70,32 @@ pub struct Finding {
     pub confidence: Confidence,
     /// The evidence, one human-readable sentence per item.
     pub reasons: Vec<String>,
+    /// The archive member the finding is about. Absent when it is about the
+    /// scanned file itself. Detectors leave this empty; the pipeline fills
+    /// it in.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub member: Option<Member>,
+}
+
+impl Finding {
+    /// Creates a finding about the file a detector was handed.
+    #[must_use]
+    pub fn new(
+        detector: &'static str,
+        name: impl Into<String>,
+        category: ThreatCategory,
+        confidence: Confidence,
+        reasons: Vec<String>,
+    ) -> Self {
+        Self {
+            detector,
+            name: name.into(),
+            category,
+            confidence,
+            reasons,
+            member: None,
+        }
+    }
 }
 
 /// The decision about one file, derived from its findings by a

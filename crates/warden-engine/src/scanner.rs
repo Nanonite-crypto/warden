@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::io::{self, Read};
+use std::io;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,49 +7,27 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
-use sha2::Digest;
 use time::OffsetDateTime;
 use walkdir::WalkDir;
 
 use crate::cancel::CancelToken;
-use crate::detector::{Detector, FileView};
+use crate::detector::Detector;
 use crate::error::ScanError;
 use crate::file;
-use crate::finding::{Finding, Verdict};
+use crate::finding::Verdict;
 use crate::observer::{Progress, ScanObserver};
 use crate::options::ScanOptions;
 use crate::paths::{self, ExcludeSet};
-use crate::report::{Detection, DetectorFailure, ScanReport, ScanStats, SkipReason, Skipped};
+use crate::report::{Detection, PartialScan, ScanReport, ScanStats, SkipReason, Skipped};
+use crate::session::{FileResult, ScanSession};
 use crate::verdict::VerdictPolicy;
-use crate::{ENGINE_VERSION, REPORT_SCHEMA, Sha256};
+use crate::{ENGINE_VERSION, REPORT_SCHEMA};
 
 /// How often the observer hears about progress.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
-/// Read size for files that are hashed without being buffered.
-pub(crate) const STREAM_CHUNK_BYTES: usize = 256 * 1024;
-/// Content buffers larger than this are released after the file that needed
-/// them, so one huge file does not pin memory for the rest of the scan.
-const RETAINED_CONTENT_BYTES: usize = 8 * 1024 * 1024;
 /// Queue slots per worker. Bounded queues give back-pressure: the walker
 /// cannot run far ahead of the workers and fill memory with paths.
 const QUEUE_SLOTS_PER_THREAD: usize = 64;
-
-/// The outcome of checking one file or one in-memory buffer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileResult {
-    /// Number of bytes read.
-    pub size: u64,
-    /// SHA-256 of those bytes.
-    pub sha256: Sha256,
-    /// The decision.
-    pub verdict: Verdict,
-    /// What the detectors found.
-    pub findings: Vec<Finding>,
-    /// Whether the file was too large for content detectors.
-    pub content_scan_skipped: bool,
-    /// Detectors that failed on this file, as `id: message`.
-    pub detector_errors: Vec<String>,
-}
 
 /// Configures and creates a [`Scanner`].
 #[derive(Default)]
@@ -91,10 +69,13 @@ impl ScannerBuilder {
     /// Creates the scanner.
     #[must_use]
     pub fn build(self) -> Scanner {
-        let needs_content = self
-            .detectors
-            .iter()
-            .any(|detector| detector.needs_content());
+        // Unpacking an archive needs its bytes just as a content detector
+        // does.
+        let needs_content = self.options.archives.enabled
+            || self
+                .detectors
+                .iter()
+                .any(|detector| detector.needs_content());
         Scanner {
             detectors: self.detectors,
             policy: self.policy,
@@ -109,10 +90,12 @@ impl ScannerBuilder {
 /// A scanner is immutable and can be shared between threads. See the
 /// [crate documentation](crate) for how a scan proceeds.
 pub struct Scanner {
-    detectors: Vec<Arc<dyn Detector>>,
-    policy: VerdictPolicy,
-    options: ScanOptions,
-    needs_content: bool,
+    pub(crate) detectors: Vec<Arc<dyn Detector>>,
+    pub(crate) policy: VerdictPolicy,
+    pub(crate) options: ScanOptions,
+    /// Whether files are buffered: a detector reads content, or archives
+    /// are unpacked.
+    pub(crate) needs_content: bool,
 }
 
 impl std::fmt::Debug for Scanner {
@@ -144,12 +127,26 @@ impl Scanner {
         &self.options
     }
 
+    /// Sets up one thread's working state: a session for every detector and
+    /// buffers that are reused from file to file.
+    ///
+    /// Use this to check many buffers or files from one thread. [`scan`]
+    /// does it for its own worker threads.
+    ///
+    /// [`scan`]: Scanner::scan
+    #[must_use]
+    pub fn session(&self) -> ScanSession<'_> {
+        ScanSession::new(self)
+    }
+
     /// Checks a buffer that is already in memory.
+    ///
+    /// This sets the detectors up for a single use. To check many buffers,
+    /// keep a [`session`](Scanner::session) and call
+    /// [`ScanSession::scan_bytes`] on it.
     #[must_use]
     pub fn scan_bytes(&self, bytes: &[u8]) -> FileResult {
-        let sha256 = crate::sha256(bytes);
-        let view = FileView::new(Path::new(""), bytes.len() as u64, &sha256, Some(bytes));
-        self.run_detectors(&view, sha256, false)
+        self.session().scan_bytes(bytes)
     }
 
     /// Scans files and directory trees.
@@ -242,7 +239,7 @@ impl Scanner {
 
     /// Worker thread body: takes paths until the queue closes.
     fn work(&self, jobs: &Receiver<PathBuf>, outcomes: &Sender<Outcome>, cancel: &CancelToken) {
-        let mut buffers = Buffers::new();
+        let mut session = self.session();
         for path in jobs {
             if cancel.is_cancelled() {
                 // Keep draining so the walker is never blocked on a full queue.
@@ -250,138 +247,34 @@ impl Scanner {
             }
             // A panic in a detector must not take the scan down with it. The
             // file is reported as skipped and the worker carries on.
-            let attempt =
-                panic::catch_unwind(AssertUnwindSafe(|| self.scan_file(&path, &mut buffers)));
+            let attempt = panic::catch_unwind(AssertUnwindSafe(|| session.scan_file(&path)));
             let outcome = match attempt {
-                Ok(Ok(result)) => Outcome::Scanned { path, result },
+                Ok(Ok(result)) => Outcome::Scanned {
+                    path,
+                    result: Box::new(result),
+                },
                 Ok(Err((reason, detail))) => Outcome::Skipped(Skipped {
                     path,
                     reason,
                     detail,
                 }),
                 Err(payload) => {
-                    buffers = Buffers::new();
+                    // Whatever the detectors were in the middle of is gone;
+                    // start them afresh for the next file.
+                    session = self.session();
                     Outcome::Skipped(Skipped {
                         path,
                         reason: SkipReason::InternalError,
-                        detail: format!("a detector panicked: {}", panic_message(&*payload)),
+                        detail: format!(
+                            "checking this file panicked: {}",
+                            panic_message(&*payload)
+                        ),
                     })
                 }
             };
             if outcomes.send(outcome).is_err() {
                 return;
             }
-        }
-    }
-
-    /// Reads one file once, hashing it on the way, and runs the detectors.
-    fn scan_file(
-        &self,
-        path: &Path,
-        buffers: &mut Buffers,
-    ) -> Result<FileResult, (SkipReason, String)> {
-        let failed = |error: io::Error| (file::classify_io_error(&error), error.to_string());
-        let mut file = file::open_for_scan(path).map_err(failed)?;
-        let mut hasher = sha2::Sha256::new();
-
-        if self.needs_content {
-            let limit = self.options.max_content_bytes;
-            buffers.content.clear();
-            // Reading one byte past the limit tells us whether the file fits
-            // without trusting the size the directory listing reported.
-            (&mut file)
-                .take(limit.saturating_add(1))
-                .read_to_end(&mut buffers.content)
-                .map_err(failed)?;
-            hasher.update(&buffers.content);
-            if buffers.content.len() as u64 <= limit {
-                let sha256: Sha256 = hasher.finalize().into();
-                let size = buffers.content.len() as u64;
-                let view = FileView::new(path, size, &sha256, Some(&buffers.content));
-                let result = self.run_detectors(&view, sha256, false);
-                buffers.release_excess();
-                return Ok(result);
-            }
-            // Too large to keep: finish the hash in streaming fashion.
-            let already_read = buffers.content.len() as u64;
-            buffers.content = Vec::new();
-            let rest = hash_stream(&mut file, &mut hasher, &mut buffers.chunk).map_err(failed)?;
-            let sha256: Sha256 = hasher.finalize().into();
-            let view = FileView::new(path, already_read + rest, &sha256, None);
-            return Ok(self.run_detectors(&view, sha256, true));
-        }
-
-        let size = hash_stream(&mut file, &mut hasher, &mut buffers.chunk).map_err(failed)?;
-        let sha256: Sha256 = hasher.finalize().into();
-        let view = FileView::new(path, size, &sha256, None);
-        Ok(self.run_detectors(&view, sha256, false))
-    }
-
-    fn run_detectors(
-        &self,
-        view: &FileView<'_>,
-        sha256: Sha256,
-        content_scan_skipped: bool,
-    ) -> FileResult {
-        let mut findings = Vec::new();
-        let mut detector_errors = Vec::new();
-        for detector in &self.detectors {
-            if detector.needs_content() && view.content().is_none() {
-                continue;
-            }
-            match detector.inspect(view) {
-                Ok(mut found) => findings.append(&mut found),
-                Err(error) => detector_errors.push(format!("{}: {error}", detector.id())),
-            }
-        }
-        FileResult {
-            size: view.size(),
-            sha256,
-            verdict: self.policy.decide(&findings),
-            findings,
-            content_scan_skipped,
-            detector_errors,
-        }
-    }
-}
-
-/// Per-worker scratch memory, reused from file to file.
-struct Buffers {
-    content: Vec<u8>,
-    chunk: Vec<u8>,
-}
-
-impl Buffers {
-    fn new() -> Self {
-        Self {
-            content: Vec::new(),
-            chunk: vec![0u8; STREAM_CHUNK_BYTES],
-        }
-    }
-
-    fn release_excess(&mut self) {
-        if self.content.capacity() > RETAINED_CONTENT_BYTES {
-            self.content = Vec::new();
-        }
-    }
-}
-
-/// Feeds the rest of `reader` into `hasher`. Returns the number of bytes read.
-pub(crate) fn hash_stream(
-    reader: &mut impl Read,
-    hasher: &mut sha2::Sha256,
-    chunk: &mut [u8],
-) -> io::Result<u64> {
-    let mut total = 0u64;
-    loop {
-        match reader.read(chunk) {
-            Ok(0) => return Ok(total),
-            Ok(read) => {
-                hasher.update(&chunk[..read]);
-                total += read as u64;
-            }
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(error),
         }
     }
 }
@@ -398,7 +291,10 @@ fn panic_message(payload: &(dyn Any + Send)) -> &str {
 
 /// What the walker and the workers report to the collecting thread.
 enum Outcome {
-    Scanned { path: PathBuf, result: FileResult },
+    Scanned {
+        path: PathBuf,
+        result: Box<FileResult>,
+    },
     Skipped(Skipped),
     LinkNotFollowed,
     Excluded,
@@ -523,7 +419,8 @@ struct Tally {
     detections: Vec<Detection>,
     skipped: Vec<Skipped>,
     skipped_truncated: bool,
-    detector_failures: Vec<DetectorFailure>,
+    partially_scanned: Vec<PartialScan>,
+    partially_scanned_truncated: bool,
     max_recorded: usize,
 }
 
@@ -543,7 +440,8 @@ impl Tally {
             detections: Vec::new(),
             skipped: Vec::new(),
             skipped_truncated: false,
-            detector_failures: Vec::new(),
+            partially_scanned: Vec::new(),
+            partially_scanned_truncated: false,
             max_recorded,
         }
     }
@@ -551,18 +449,29 @@ impl Tally {
     fn record(&mut self, outcome: Outcome, observer: &mut dyn ScanObserver) {
         match outcome {
             Outcome::Scanned { path, result } => {
+                let result = *result;
                 self.stats.files_scanned += 1;
                 self.stats.bytes_scanned += result.size;
-                if result.content_scan_skipped {
-                    self.stats.content_scans_skipped += 1;
+                self.stats.archives_unpacked += u64::from(result.unpacked);
+                self.stats.archive_members_scanned += result.members_scanned;
+                self.stats.archive_member_bytes += result.member_bytes;
+                if !result.partial.is_empty() {
+                    self.stats.files_partially_scanned += 1;
                 }
-                for message in result.detector_errors {
-                    self.stats.detector_errors += 1;
-                    if self.detector_failures.len() < self.max_recorded {
-                        self.detector_failures.push(DetectorFailure {
+                for partial in result.partial {
+                    *self
+                        .stats
+                        .partial_by_reason
+                        .entry(partial.reason)
+                        .or_insert(0) += 1;
+                    if self.partially_scanned.len() < self.max_recorded {
+                        self.partially_scanned.push(PartialScan {
                             path: path.clone(),
-                            message,
+                            reason: partial.reason,
+                            detail: partial.detail,
                         });
+                    } else {
+                        self.partially_scanned_truncated = true;
                     }
                 }
                 if result.verdict != Verdict::Clean {
@@ -573,6 +482,7 @@ impl Tally {
                         sha256: warden_sigdb::hex::encode(&result.sha256),
                         verdict: result.verdict,
                         findings: result.findings,
+                        findings_omitted: result.findings_omitted,
                     };
                     observer.on_detection(&detection);
                     self.detections.push(detection);
@@ -614,8 +524,8 @@ impl Tally {
             .sort_by(|left, right| left.path.cmp(&right.path));
         self.skipped
             .sort_by(|left, right| left.path.cmp(&right.path));
-        self.detector_failures
-            .sort_by(|left, right| left.path.cmp(&right.path));
+        self.partially_scanned
+            .sort_by(|left, right| (&left.path, left.reason).cmp(&(&right.path, right.reason)));
 
         let seconds = context.duration.as_secs_f64();
         if seconds > 0.0 {
@@ -638,7 +548,8 @@ impl Tally {
             detections: self.detections,
             skipped: self.skipped,
             skipped_truncated: self.skipped_truncated,
-            detector_failures: self.detector_failures,
+            partially_scanned: self.partially_scanned,
+            partially_scanned_truncated: self.partially_scanned_truncated,
         }
     }
 }

@@ -44,6 +44,7 @@
 
 #![forbid(unsafe_code)]
 
+mod archive;
 mod cancel;
 mod detector;
 pub mod eicar;
@@ -56,17 +57,22 @@ mod options;
 mod paths;
 mod report;
 mod scanner;
+mod session;
+pub mod text;
 mod verdict;
 
 pub use cancel::CancelToken;
-pub use detector::{Detector, DetectorError, DetectorInfo, FileView, InfoValue};
+pub use detector::{Detector, DetectorError, DetectorInfo, FileView, InfoValue, Session};
 pub use error::ScanError;
-pub use finding::{Confidence, Finding, ThreatCategory, Verdict};
+pub use finding::{Confidence, Finding, Member, ThreatCategory, Verdict};
 pub use hash_detector::HashDetector;
 pub use observer::{NoObserver, Progress, ScanObserver};
-pub use options::ScanOptions;
-pub use report::{Detection, DetectorFailure, ScanReport, ScanStats, SkipReason, Skipped};
-pub use scanner::{FileResult, Scanner, ScannerBuilder};
+pub use options::{ArchiveOptions, ScanOptions};
+pub use report::{
+    Detection, Partial, PartialReason, PartialScan, ScanReport, ScanStats, SkipReason, Skipped,
+};
+pub use scanner::{Scanner, ScannerBuilder};
+pub use session::{FileResult, ScanSession};
 pub use verdict::VerdictPolicy;
 
 /// A SHA-256 digest.
@@ -76,7 +82,11 @@ pub type Sha256 = [u8; 32];
 pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Version of the JSON report layout. Bumped on incompatible changes.
-pub const REPORT_SCHEMA: u32 = 1;
+///
+/// Version 2 added archive members to findings and replaced the separate
+/// lists of oversized files and detector failures with one list of partially
+/// scanned files.
+pub const REPORT_SCHEMA: u32 = 2;
 
 /// Computes the SHA-256 of a byte slice.
 #[must_use]
@@ -96,7 +106,7 @@ pub fn sha256(bytes: &[u8]) -> Sha256 {
 pub fn sha256_reader(reader: &mut impl std::io::Read) -> std::io::Result<Sha256> {
     use sha2::Digest;
     let mut hasher = sha2::Sha256::new();
-    let mut chunk = vec![0u8; scanner::STREAM_CHUNK_BYTES];
-    scanner::hash_stream(reader, &mut hasher, &mut chunk)?;
+    let mut chunk = vec![0u8; session::STREAM_CHUNK_BYTES];
+    session::hash_stream(reader, &mut hasher, &mut chunk)?;
     Ok(hasher.finalize().into())
 }

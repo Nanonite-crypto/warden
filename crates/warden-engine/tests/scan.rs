@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use warden_engine::{
     CancelToken, Confidence, Detection, Detector, DetectorError, FileView, Finding, HashDetector,
-    NoObserver, Progress, ScanError, ScanObserver, ScanOptions, ScanReport, Scanner, SkipReason,
-    ThreatCategory, Verdict, eicar,
+    NoObserver, PartialReason, Progress, ScanError, ScanObserver, ScanOptions, ScanReport, Scanner,
+    Session, SkipReason, ThreatCategory, Verdict, eicar,
 };
 use warden_sigdb::{Category, SigDb, SigDbBuilder};
 
@@ -430,17 +430,25 @@ impl Detector for MarkerDetector {
         true
     }
 
-    fn inspect(&self, file: &FileView<'_>) -> Result<Vec<Finding>, DetectorError> {
+    fn session(&self) -> Box<dyn Session + '_> {
+        Box::new(self)
+    }
+}
+
+impl Session for &MarkerDetector {
+    fn inspect(&mut self, file: &FileView<'_>) -> Result<Vec<Finding>, DetectorError> {
         let content = file
             .content()
-            .ok_or_else(|| DetectorError("content was not provided".to_owned()))?;
+            .ok_or_else(|| DetectorError::Failed("content was not provided".to_owned()))?;
         assert_eq!(content.len() as u64, file.size());
         if file
             .path()
             .file_name()
             .is_some_and(|name| name == "fail.bin")
         {
-            return Err(DetectorError("refusing this file on purpose".to_owned()));
+            return Err(DetectorError::Failed(
+                "refusing this file on purpose".to_owned(),
+            ));
         }
         if file
             .path()
@@ -450,13 +458,13 @@ impl Detector for MarkerDetector {
             panic!("panicking on purpose");
         }
         if content.windows(MARKER.len()).any(|window| window == MARKER) {
-            return Ok(vec![Finding {
-                detector: "marker",
-                name: "Test.Marker".to_owned(),
-                category: ThreatCategory::Malware,
-                confidence: Confidence::Medium,
-                reasons: vec!["contains the test marker".to_owned()],
-            }]);
+            return Ok(vec![Finding::new(
+                "marker",
+                "Test.Marker",
+                ThreatCategory::Malware,
+                Confidence::Medium,
+                vec!["contains the test marker".to_owned()],
+            )]);
         }
         Ok(Vec::new())
     }
@@ -494,7 +502,11 @@ fn content_detectors_see_small_files_and_large_files_are_still_hashed() {
     let report = scan(&scanner, dir.path());
 
     assert_eq!(report.stats.files_scanned, 4);
-    assert_eq!(report.stats.content_scans_skipped, 1);
+    assert_eq!(report.stats.files_partially_scanned, 1);
+    assert_eq!(report.stats.partial_by_reason[&PartialReason::TooLarge], 1);
+    assert_eq!(report.partially_scanned.len(), 1);
+    assert!(report.partially_scanned[0].path.ends_with("large.bin"));
+    assert!(report.partially_scanned[0].detail.contains("1024 bytes"));
     assert_eq!(
         relative_paths(&report, dir.path()),
         ["exactly-at-limit.bin", "large.bin", "small.bin"]
@@ -534,12 +546,20 @@ fn a_failing_detector_is_recorded_and_the_other_detectors_still_run() {
     let report = scan(&scanner, dir.path());
 
     assert_eq!(report.stats.files_scanned, 2);
-    assert_eq!(report.stats.detector_errors, 1);
-    assert_eq!(report.detector_failures.len(), 1);
-    assert!(report.detector_failures[0].path.ends_with("fail.bin"));
+    assert_eq!(report.stats.files_partially_scanned, 1);
+    assert_eq!(
+        report.stats.partial_by_reason[&PartialReason::DetectorError],
+        1
+    );
+    assert_eq!(report.partially_scanned.len(), 1);
+    assert!(report.partially_scanned[0].path.ends_with("fail.bin"));
+    assert_eq!(
+        report.partially_scanned[0].reason,
+        PartialReason::DetectorError
+    );
     assert!(
-        report.detector_failures[0]
-            .message
+        report.partially_scanned[0]
+            .detail
             .starts_with("marker: refusing")
     );
     assert_eq!(report.stats.detections, 2);
@@ -630,7 +650,13 @@ impl Detector for SlowDetector {
         "slow"
     }
 
-    fn inspect(&self, _file: &FileView<'_>) -> Result<Vec<Finding>, DetectorError> {
+    fn session(&self) -> Box<dyn Session + '_> {
+        Box::new(self)
+    }
+}
+
+impl Session for &SlowDetector {
+    fn inspect(&mut self, _file: &FileView<'_>) -> Result<Vec<Finding>, DetectorError> {
         std::thread::sleep(Duration::from_millis(3));
         Ok(Vec::new())
     }
@@ -758,7 +784,7 @@ fn the_report_serialises_to_the_documented_json_shape() {
     let report = scan(&scanner, dir.path());
     let json = serde_json::to_value(&report).unwrap();
 
-    assert_eq!(json["schema"], 1);
+    assert_eq!(json["schema"], 2);
     assert_eq!(json["engine_version"], env!("CARGO_PKG_VERSION"));
     assert!(json["started_at"].as_str().unwrap().contains('T'));
     assert!(json["finished_at"].is_string());
@@ -796,5 +822,9 @@ fn the_report_serialises_to_the_documented_json_shape() {
 
     assert_eq!(json["skipped"], serde_json::json!([]));
     assert_eq!(json["skipped_truncated"], false);
-    assert_eq!(json["detector_failures"], serde_json::json!([]));
+    assert_eq!(json["partially_scanned"], serde_json::json!([]));
+    assert_eq!(json["partially_scanned_truncated"], false);
+    // A finding about the scanned file itself names no archive member.
+    assert!(detection["findings"][0].get("member").is_none());
+    assert!(detection.get("findings_omitted").is_none());
 }

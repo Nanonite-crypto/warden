@@ -138,19 +138,18 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
     if stats.excluded > 0 {
         let _ = writeln!(out, "Excluded    {}", group_digits(stats.excluded));
     }
-    if stats.content_scans_skipped > 0 {
+    if stats.files_partially_scanned > 0 {
+        let reasons: Vec<String> = stats
+            .partial_by_reason
+            .iter()
+            .map(|(reason, count)| format!("{}: {}", reason.as_str(), group_digits(*count)))
+            .collect();
         let _ = writeln!(
             out,
-            "Too large   {} hashed only",
-            group_digits(stats.content_scans_skipped)
-        );
-    }
-    if stats.detector_errors > 0 {
-        let _ = writeln!(
-            out,
-            "Errors      {} detector {}",
-            group_digits(stats.detector_errors),
-            plural(stats.detector_errors, "failure", "failures")
+            "In part     {} {} not checked in full ({})",
+            group_digits(stats.files_partially_scanned),
+            plural(stats.files_partially_scanned, "file", "files"),
+            reasons.join(", ")
         );
     }
     if report.cancelled {
