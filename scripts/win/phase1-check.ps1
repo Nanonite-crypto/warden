@@ -7,10 +7,12 @@
     detected, runs the test suite and measures scan throughput.
 
     What it touches:
-    - It writes inside this repository only: target\ and testdata\.
+    - It writes its results and the test file inside this repository only:
+      target\phase1\ and testdata\.
     - Cargo and rustup do what they do on any first build: they download the
-      Rust toolchain pinned in rust-toolchain.toml and the dependencies into
-      your user profile.
+      Rust toolchain pinned in rust-toolchain.toml and the dependencies, and
+      put the build output in cargo's target folder (target\ here, unless
+      you have configured another one).
     - The benchmark reads the folder it is pointed at and changes nothing.
     - It never changes a Windows or antivirus setting.
 
@@ -45,12 +47,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# The programs started below write UTF-8. Read their output as such, so that
+# paths with non-ASCII characters survive. The previous setting is restored
+# when the script ends.
+$previousOutputEncoding = $null
+try {
+    $previousOutputEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+} catch { }
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repo
 $out = Join-Path $repo 'target\phase1'
 $zone = Join-Path $repo 'testdata\eicar-zone'
 New-Item -ItemType Directory -Force -Path $out, $zone | Out-Null
-$warden = Join-Path $repo 'target\release\warden.exe'
 $steps = [ordered]@{}
 
 function Write-Heading([string]$Text) {
@@ -147,6 +157,9 @@ function Complete-Check {
     }
     Write-Host ''
     Write-Host "PHASE 1 CHECK: $($overall.ToUpper())    (details in target\phase1)"
+    if ($previousOutputEncoding) {
+        try { [Console]::OutputEncoding = $previousOutputEncoding } catch { }
+    }
     if ($overall -eq 'failed') { exit 1 }
     exit 0
 }
@@ -174,6 +187,17 @@ if ((Invoke-Logged 'toolchain' $toolchainCommand) -ne 0) {
 $steps.toolchain = 'passed'
 Write-Utf8 (Join-Path $out 'system.json') ((Get-SystemInfo) | ConvertTo-Json -Depth 5)
 
+# The build output is not always in <repo>\target: CARGO_TARGET_DIR or a cargo
+# configuration file can move it. Ask cargo where it is.
+$targetDir = Join-Path $repo 'target'
+try {
+    $metadata = (cmd /c 'cargo metadata --format-version 1 --no-deps 2>nul') -join "`n" | ConvertFrom-Json
+    if ($metadata.target_directory) {
+        $targetDir = $metadata.target_directory
+    }
+} catch { }
+$warden = Join-Path $targetDir 'release\warden.exe'
+
 # --- 2. Release build -------------------------------------------------------------
 Write-Heading 'Release build (the first one downloads dependencies and takes a few minutes)'
 if ((Invoke-Logged 'build' 'cargo build --release --locked') -ne 0) {
@@ -185,6 +209,11 @@ if ((Invoke-Logged 'build' 'cargo build --release --locked') -ne 0) {
         Write-Host '"Desktop development with C++" workload, for example:' -ForegroundColor Yellow
         Write-Host '  winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"' -ForegroundColor Yellow
     }
+    Complete-Check
+}
+if (-not (Test-Path -LiteralPath $warden)) {
+    Write-Host "The build succeeded, but warden.exe is not at $warden." -ForegroundColor Red
+    $steps.build = 'failed'
     Complete-Check
 }
 $steps.build = 'passed'

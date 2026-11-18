@@ -53,8 +53,11 @@ is pinned in `rust-toolchain.toml`; `rustup` fetches it on first use.
 
 ```
 cargo build --release
-target\release\warden.exe scan C:\some\folder
+cargo run --release -- scan C:\some\folder
 ```
+
+The program itself is `warden.exe` in cargo's target folder, which is
+`target\release\` unless you have configured another one.
 
 On Windows, `scripts\win\phase1-check.cmd` builds Warden, checks EICAR
 detection, runs the test suite and measures scan speed in one go.
