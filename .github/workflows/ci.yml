@@ -66,6 +66,16 @@ jobs:
           # for them. See docs/TESTING.md.
           WARDEN_EICAR_DIR: ${{ runner.temp }}/warden-eicar
           WARDEN_REQUIRE_EICAR: "1"
+      # The tests above read executables that this project builds itself.
+      # Windows has a folder full of real ones: they are read with Warden's
+      # reader and with a second, independent one, and the two have to agree.
+      - name: Compare the reader for executables with a second reader on System32
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cargo test -p warden-pe --test corpus --locked -- --nocapture
+        env:
+          WARDEN_PE_CORPUS: C:\Windows\System32
+          WARDEN_PE_CORPUS_LIMIT: "1500"
 
   windows-acceptance:
     name: Windows acceptance check
