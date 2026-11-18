@@ -168,8 +168,9 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
   the same megabyte cost one megabyte of work.
 - The exclusion list is a file that people edit by hand, so the reader is
   strict: an entry without evidence, a misspelt field, a hash of the wrong
-  length or a rule named twice stops the build. So does an entry that would
-  take out a rule that has to stay. A test loads the list in this
+  length or a rule named twice stops the build. So does evidence that has
+  neither a hash nor a stated reason for withholding it, and an entry that
+  would take out a rule that has to stay. A test loads the list in this
   repository, so a mistake in it fails in CI.
 - A rule set that takes more than 30 seconds on one file is stopped, and
   the file is reported as checked in part.

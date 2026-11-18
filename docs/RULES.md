@@ -77,13 +77,13 @@ with the exclusion list described below:
 |---|---|
 | Release | 20261018 |
 | Rules in the package | 5,137, all of which compile |
-| Left out by the exclusion list | 2 |
-| Rules in the bundle | 5,136: 5,135 from the package, plus the built-in rule |
+| Left out by the exclusion list | 10 |
+| Rules in the bundle | 5,128: 5,127 from the package, plus the built-in rule |
 | Repositories the package draws on | 35 |
-| Rules that name a licence | 3,082 |
-| Rules that name none | 2,054 |
+| Rules that name a licence | 3,078 |
+| Rules that name none | 2,050 |
 | Reported as malicious (score 80 and above) | 205 |
-| Reported as suspicious (score 60 to 79) | 4,931 |
+| Reported as suspicious (score 60 to 79) | 4,923 |
 
 ### Rule files and your antivirus
 
@@ -121,17 +121,48 @@ not been tried.
 ## Rules that are left out
 
 Public rules flag clean files now and then. With all 5,137 rules of the
-pinned package, Warden reported 22 of 137,155 clean Windows files as
-suspicious, and two rules accounted for all 22
-([BENCHMARKS.md](BENCHMARKS.md) has the runs). A scanner that calls a
-system library suspicious teaches its user to ignore it, so those two rules
-are left out. Which rules, and on what evidence, is written down in one
-file: [`rules/exclusions.toml`](../rules/exclusions.toml).
+pinned package, Warden reported 22 of 137,155 clean files in Windows system
+folders and a CI runner's software as suspicious, and two rules accounted
+for all 22. In the installed programs of a desktop, eight more rules
+flagged 13 of 310,849 files ([BENCHMARKS.md](BENCHMARKS.md) has the runs).
+A scanner that calls a system library suspicious teaches its user to ignore
+it, so those ten rules are left out. Which rules, and on what evidence, is
+written down in one file:
+[`rules/exclusions.toml`](../rules/exclusions.toml).
 
-| Rule | What it flagged | Why it is left out |
+They are of three kinds.
+
+**Generated from malware samples, and matching library code.** These four
+come from a tool that picks code sequences out of the samples of one
+malware family. Each asks for seven of its ten sequences. If the samples
+carry a common library, some sequences are that library's, and other
+programs built with the same library can have them too.
+
+| Rule | What it flagged |
+|---|---|
+| `MALPEDIA_Win_Triback_Loader_Auto` | `vulkan-1.dll` in System32 of a GitHub-hosted Windows runner, and `liblouis.dll`, a braille library, in System32 of a Windows 11 desktop |
+| `MALPEDIA_Win_Bqtlock_Auto` | `libstdc++-6.dll`, the GNU C++ runtime library, in Git for Windows (two copies) |
+| `MALPEDIA_Win_Mystic_Stealer_Auto` | `zip.dll` and `unpack200.exe` of the Java runtime. At least three of the rule's sequences are zlib's compression code |
+| `MALPEDIA_Win_Yokai_Auto` | `ucrtbased.dll`, the debug build of Microsoft's C runtime, in two places of the Windows SDK |
+
+**Recognising a tool, not malware.** These four describe how a program was
+packaged or protected. That is true of the files they flag, and it says
+nothing against them.
+
+| Rule | What it recognises | What it flagged |
 |---|---|---|
-| `MALPEDIA_Win_Triback_Loader_Auto` | `vulkan-1.dll` in System32 of a GitHub-hosted Windows runner, `liblouis.dll` in System32 of a Windows 11 desktop | Generated automatically from samples of one malware family. It asks for seven of its ten code sequences, and that many are also in these two libraries, which come from unrelated projects |
-| `COD3NYM_DOTNET_Singlefilehost_Bundled_App` | All 20 copies of `singlefilehost.exe` in the .NET SDK of a GitHub-hosted Windows runner | It recognises a way of packaging .NET programs, not malware. Its author gave it no score, the package fills in 75, and that makes every match suspicious |
+| `COD3NYM_DOTNET_Singlefilehost_Bundled_App` | A way of packaging .NET programs. Its author gave it no score, the package fills in 75, and that makes every match suspicious | All 20 copies of `singlefilehost.exe` in the .NET SDK of a GitHub-hosted Windows runner |
+| `DITEKSHEN_INDICATOR_TOOL_UAC_NSISUAC` | A plug-in of the NSIS installer builder | The uninstallers of two versions of FL Studio |
+| `COD3NYM_SUSP_OBF_NET_Reactor_Indicators_Jan24` | .NET Reactor, a commercial obfuscator | Two files of a commercial .NET application; not named, see below |
+| `CAPE_Obfuscar` | Obfuscar, an open-source obfuscator for .NET programs | A library of a small .NET utility; not named, see below |
+
+**Asking for too little.** These two ask for a few common strings and
+little else.
+
+| Rule | What it asks for | What it flagged |
+|---|---|---|
+| `SECUINFRA_SUSP_Powershell_Download_Temp_Rundll_1` | `$Env:temp`, `downloadfile(` and `rundll32.exe` anywhere in a file of any kind and size | `node_modules.asar` of Visual Studio Code, a 55 MB archive of JavaScript |
+| `COD3NYM_SUSP_NET_Shellcode_Loader_Indicators_Jan24` | Three of six names of Windows memory and thread functions in a .NET program | `Clipchamp.Widgets.exe`, part of the video editor that Microsoft ships with Windows 11 |
 
 ### What an entry holds
 
@@ -154,6 +185,26 @@ entry without evidence is refused, and so is a field the format does not
 know, so that a misspelt field is not skipped unnoticed. With the hash,
 anyone who has the same file can repeat the observation.
 
+There is one exception. The name and the hash of a file can give away
+something private, such as which programs are installed on the machine of
+the person who ran the scan. Evidence may then describe the file by its
+kind and say why the rest is withheld:
+
+```toml
+[[rule.evidence]]
+file = "the main program of a commercial .NET application protected with .NET Reactor"
+withheld = "The name and the hash would show which programs are installed on a private machine."
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+```
+
+One of `sha256` and `withheld` has to be there, and never both. Evidence
+like this is weaker: nobody else can check it. Two entries rest on it
+alone, the two obfuscator rules in the table above. What carries those
+entries is the rule text, which anyone can read: each recognises a
+protection tool that ordinary software uses, and says so in its
+description.
+
 ### How a rule gets on the list
 
 1. A false-positive run flags a file in a folder of clean software. The
@@ -168,9 +219,12 @@ anyone who has the same file can repeat the observation.
 "Clean" rests on where the files were found. Those on the GitHub runner sat
 in the Windows system folder and the .NET SDK folder of a machine image
 that is built fresh from installers. `liblouis.dll` sat in the system
-folder of a desktop in daily use with Microsoft Defender on. Nobody has
-checked their signatures: Warden cannot verify an Authenticode signature
-yet. When it can, the signer belongs in the evidence.
+folder of a desktop in daily use with Microsoft Defender on. The files
+from that desktop's installed programs belong to Git for Windows, Oracle's
+Java runtime, Microsoft's Windows SDK, Visual Studio Code and Clipchamp,
+and Image-Line's FL Studio, each in the folder its installer puts it in.
+Nobody has checked their signatures: Warden cannot verify an Authenticode
+signature yet. When it can, the signer belongs in the evidence.
 
 ### What the build does with it
 
@@ -184,7 +238,7 @@ the file stays as it was, byte for byte.
 - **Rules that use a listed rule are left out as well.** They cannot work
   without it. The build lists them among the rules that were left out, with
   the rule they depend on as the reason. No rule of the pinned package uses
-  either of the two listed ones.
+  any of the ten listed ones.
 - **Some rules cannot be listed**, and the build stops if one is: the
   built-in rules, and `global` rules. A global rule narrows every other rule
   in its file, so without it all of those would match more than their
@@ -201,17 +255,27 @@ the file stays as it was, byte for byte.
 ### What it costs
 
 A rule that is left out no longer finds what it was written for either.
-Without `MALPEDIA_Win_Triback_Loader_Auto`, this rule set has nothing left
-that names that malware family. That is the price of an entry, and the
-reason the list asks for evidence instead of a feeling that a rule is
-noisy.
+Three of the four generated rules were the only ones in this rule set to
+name their malware family; for the fourth, Mystic Stealer, two hand-written
+rules remain. Nothing else in the rule set recognises Obfuscar, and for
+.NET Reactor one rule remains, which looks for another trace of it. That
+is the price of an entry, and the reason the list asks for evidence instead
+of a feeling that a rule is noisy.
 
-How much detection the two entries cost is not measured. In every run so
-far the two rules flagged clean files and nothing else, but no run held a
+How much detection the ten entries cost is not measured. In every run so
+far the ten rules flagged clean files and nothing else, but no run held a
 file they were written for.
 
-Lowering a rule's score would be the gentler tool: its matches would still
-be recorded, without changing the verdict. Warden does not have that yet.
+The list also only knows what somebody has scanned. Of the 5,137 rules in
+the package, 1,622 are generated the way the first four were, and every
+machine with other software on it is likely to find another one.
+
+The gentler tool is to let such a rule count only together with a second
+sign: its match alone would be recorded and would not change the verdict,
+and it would make a file suspicious when another layer has something to
+say about the file as well. Warden does not have that yet. It is scheduled
+as the first piece of phase 4, see [ROADMAP.md](ROADMAP.md); the four
+generated rules can then be tried without their entries.
 
 ## From a match to a verdict
 
@@ -316,16 +380,17 @@ The manifest follows the header and is UTF-8 JSON:
       "name": "yara-forge-rules-core.zip/packages/core/yara-rules-core.yar",
       "sha256": "7770d912c4b1f7ce67d3614abda9a96d9d9dd2b5207b30ae0b4e7ba96bbdb0f8",
       "bytes": 7879714,
-      "rules": 5135,
+      "rules": 5127,
       "skipped": 0,
-      "excluded": 2
+      "excluded": 10
     }
   ],
   "exclusions": {
     "sha256": "the SHA-256 of the exclusion list",
     "rules": [
       "MALPEDIA_Win_Triback_Loader_Auto",
-      "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
+      "COD3NYM_DOTNET_Singlefilehost_Bundled_App",
+      "...eight more"
     ]
   }
 }

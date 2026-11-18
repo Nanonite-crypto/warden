@@ -14,10 +14,14 @@
 #   source    where the rule comes from (optional)
 #   note      anything else worth knowing (optional)
 #   evidence  one or more clean files the rule flagged:
-#     file    path of the file on the machine where it was seen
-#     sha256  SHA-256 of the file
-#     seen    the day, as a date
-#     machine the machine, in a few words
+#     file     path of the file on the machine where it was seen
+#     sha256   SHA-256 of the file
+#     seen     the day, as a date
+#     machine  the machine, in a few words
+#     withheld in place of sha256, where the name and the hash of a file
+#              would give away something private: the reason. `file` then
+#              says what kind of file it is. Nobody else can check such
+#              evidence, so it is the exception.
 #
 # An entry without evidence is refused, and so is a field that is not in this
 # list, so a misspelt field cannot be skipped unnoticed.
@@ -72,3 +76,159 @@ file = 'C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-arm64\10.0.
 sha256 = "a767db3c45bf7e75f2d662bd7c071d39e63aa7fb2178eb030d9edc2c2c1ba29f"
 seen = 2026-11-18
 machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+
+# The entries from here on come from one run: the installed programs of a
+# Windows 11 desktop, C:\Program Files and C:\Program Files (x86), 310,849
+# files, on 2026-11-18. Eight rules flagged 13 of them.
+
+[[rule]]
+name = "MALPEDIA_Win_Bqtlock_Auto"
+reason = """\
+Generated automatically from samples of one malware family. It asks for seven \
+of its ten code sequences, and that many are also in the GNU C++ runtime \
+library that ships with Git for Windows."""
+source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
+note = """\
+Flagged two copies of the same file. The second is in \
+C:\\Program Files\\Git\\mingw64\\libexec\\git-core."""
+
+[[rule.evidence]]
+file = 'C:\Program Files\Git\mingw64\bin\libstdc++-6.dll'
+sha256 = "ac49a81529393ab27268a1b534340462daaa8386a718cf20890865c0caeece66"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "MALPEDIA_Win_Mystic_Stealer_Auto"
+reason = """\
+Generated automatically from samples of one malware family. At least three of \
+its ten code sequences are zlib's compression code: they use the fields of \
+zlib's compression state at the offsets zlib gives them. Other programs that \
+contain zlib can have the same code, and two files of the Java runtime match \
+at least seven of the ten sequences."""
+source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
+
+[[rule.evidence]]
+file = 'C:\Program Files (x86)\Java\jre1.8.0_471\bin\zip.dll'
+sha256 = "710414d3610e133ddfce48a13a47efc8d31daf7799de48f22e5136a9e826de86"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule.evidence]]
+file = 'C:\Program Files (x86)\Java\jre1.8.0_471\bin\unpack200.exe'
+sha256 = "6612b9dac6ad3ebb3c2fee1db2758acdd9b2aec73a79dee1d16918a13d64fba3"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "MALPEDIA_Win_Yokai_Auto"
+reason = """\
+Generated automatically from samples of one malware family. It asks for seven \
+of its ten code sequences, and that many are also in the debug build of \
+Microsoft's C runtime library, which ships with the Windows SDK."""
+source = "malpedia/signator-rules (yara-signator v0.6.0), through the YARA Forge core package 20261018"
+
+[[rule.evidence]]
+file = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\ucrt\ucrtbased.dll'
+sha256 = "c15f97935e113729974d55f4c881efc85fd5a0baadc2d81895a93e10d6e738fb"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule.evidence]]
+file = 'C:\Program Files (x86)\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.26100.0\Redist\Debug\x86\ucrtbased.dll'
+sha256 = "efbf2f43811e15785116880e45b955d3b7bfd5585107d9fded2c0e5a2a45feec"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "DITEKSHEN_INDICATOR_TOOL_UAC_NSISUAC"
+reason = """\
+Recognises the UAC plug-in of the NSIS installer builder, not malware. \
+Installers and uninstallers of ordinary software carry that plug-in, and with \
+the rule's score of 75 each of them is reported as suspicious."""
+source = "ditekshen/detection, through the YARA Forge core package 20261018"
+
+[[rule.evidence]]
+file = 'C:\Program Files\Image-Line\FL Studio 2025\uninstall.exe'
+sha256 = "6ac5648118eee90c8a3e7dc1603c04ca15a0a9a2102578f7a82b26b0a6aa010f"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule.evidence]]
+file = 'C:\Program Files\Image-Line\FL Studio 21\uninstall.exe'
+sha256 = "c67af996bed020d187ff7db741d98de654dd795bea9824ec102e1be5ae046919"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "SECUINFRA_SUSP_Powershell_Download_Temp_Rundll_1"
+reason = """\
+Asks for three short strings anywhere in a file of any kind and size: \
+"$Env:temp", "downloadfile(" and "rundll32.exe". A large bundle of script \
+code has all three without being a downloader."""
+source = "SIFalcon/Detection, through the YARA Forge core package 20261018"
+note = "The file is a 55 MB archive of the JavaScript modules of Visual Studio Code."
+
+[[rule.evidence]]
+file = 'C:\Program Files\Microsoft VS Code\a5b5009513\resources\app\node_modules.asar'
+sha256 = "c70847141b1af286b1e29d4d06e12003c8a63f0c974866b307be072197d17c81"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "COD3NYM_SUSP_NET_Shellcode_Loader_Indicators_Jan24"
+reason = """\
+Asks for three of six names of Windows memory and thread functions in a .NET \
+program, such as VirtualAlloc and CreateThread. A large .NET program that \
+calls into Windows has them without being a loader."""
+source = "cod3nym/detection-rules, through the YARA Forge core package 20261018"
+note = "The file is part of Clipchamp, a video editor that Microsoft ships with Windows 11."
+
+[[rule.evidence]]
+file = 'C:\Program Files\WindowsApps\Clipchamp.Clipchamp_4.7.10220.0_x64__yxz26nhyzhsrt\Clipchamp.Widgets\Clipchamp.Widgets.exe'
+sha256 = "753b95dce14613debfab8f2e3b37f9467a8c6581681e76e3f87fd1b35bc98f5b"
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "COD3NYM_SUSP_OBF_NET_Reactor_Indicators_Jan24"
+reason = """\
+Recognises programs protected with .NET Reactor, a commercial obfuscator, not \
+malware. Software vendors use it to protect their code, and the rule reports \
+every program they protect with it as suspicious."""
+source = "cod3nym/detection-rules, through the YARA Forge core package 20261018"
+note = """\
+The two files are described by their kind only, so nobody else can repeat the \
+observation. The entry rests more on what the rule looks for, which anyone can \
+read in the rule: names of compiler-generated types with an identifier in \
+braces added, as .NET Reactor writes them."""
+
+[[rule.evidence]]
+file = "the main program of a commercial .NET application protected with .NET Reactor"
+withheld = "The name and the hash would show which programs are installed on a private machine."
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule.evidence]]
+file = "a library of the same application"
+withheld = "The name and the hash would show which programs are installed on a private machine."
+seen = 2026-11-18
+machine = "Windows 11 desktop"
+
+[[rule]]
+name = "CAPE_Obfuscar"
+reason = """\
+Recognises the routine with which Obfuscar, an open-source obfuscator for .NET \
+programs, decodes strings, not malware. Every program protected with Obfuscar \
+has it, and with the rule's score of 75 each is reported as suspicious."""
+source = "kevoreilly/CAPEv2, through the YARA Forge core package 20261018"
+note = """\
+The file is described by its kind only, so nobody else can repeat the \
+observation. The entry rests more on what the rule looks for, which anyone can \
+read in the rule: one sequence of .NET instructions."""
+
+[[rule.evidence]]
+file = "a library of a small .NET utility protected with Obfuscar"
+withheld = "The name and the hash would show which programs are installed on a private machine."
+seen = 2026-11-18
+machine = "Windows 11 desktop"

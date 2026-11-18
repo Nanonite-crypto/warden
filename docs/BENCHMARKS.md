@@ -566,26 +566,38 @@ archives. How many of the desktop's files are executables was not counted.
 **The rules flagged 13 files among the installed programs**, all as
 suspicious and none as malicious. Eight rules account for them:
 
-| Rule | Files | What the rule is |
+| Rule | Files | What it flagged |
 |---|---|---|
-| `MALPEDIA_Win_Bqtlock_Auto` | 2 | Generated automatically from samples of one malware family, like the rule that flagged `liblouis.dll` in the first round |
-| `MALPEDIA_Win_Mystic_Stealer_Auto` | 2 | The same kind |
-| `MALPEDIA_Win_Yokai_Auto` | 2 | The same kind |
-| `DITEKSHEN_INDICATOR_TOOL_UAC_NSISUAC` | 2 | Recognises a plug-in of the NSIS installer builder |
-| `COD3NYM_SUSP_OBF_NET_Reactor_Indicators_Jan24` | 2 | Recognises a commercial obfuscator for .NET programs |
-| `CAPE_Obfuscar` | 1 | Recognises an open-source obfuscator for .NET programs |
-| `COD3NYM_SUSP_NET_Shellcode_Loader_Indicators_Jan24` | 1 | Asks for three of six names of Windows memory and thread functions in a .NET program |
-| `SECUINFRA_SUSP_Powershell_Download_Temp_Rundll_1` | 1 | Asks for three short strings anywhere in a file of any kind and size |
+| `MALPEDIA_Win_Bqtlock_Auto` | 2 | `libstdc++-6.dll`, the GNU C++ runtime library, twice in Git for Windows |
+| `MALPEDIA_Win_Mystic_Stealer_Auto` | 2 | `zip.dll` and `unpack200.exe` of the Java runtime |
+| `MALPEDIA_Win_Yokai_Auto` | 2 | `ucrtbased.dll`, the debug build of Microsoft's C runtime, in two places of the Windows SDK |
+| `DITEKSHEN_INDICATOR_TOOL_UAC_NSISUAC` | 2 | The uninstallers of two versions of FL Studio |
+| `COD3NYM_SUSP_OBF_NET_Reactor_Indicators_Jan24` | 2 | Two files of a commercial .NET application protected with .NET Reactor |
+| `CAPE_Obfuscar` | 1 | A library of a small .NET utility protected with Obfuscar |
+| `COD3NYM_SUSP_NET_Shellcode_Loader_Indicators_Jan24` | 1 | `Clipchamp.Widgets.exe`, part of the video editor that Microsoft ships with Windows 11 |
+| `SECUINFRA_SUSP_Powershell_Download_Temp_Rundll_1` | 1 | `node_modules.asar` of Visual Studio Code, a 55 MB archive of JavaScript |
+
+The first three are generated automatically from samples of one malware
+family, like the rule that flagged `liblouis.dll` in the first round. The
+next three recognise an installer plug-in and two obfuscators, and the last
+two ask for a few common strings.
+[RULES.md](RULES.md#rules-that-are-left-out) goes through each.
 
 Of the 5,137 rules in the package, 1,622 are generated automatically in
 the way of the first three. Four of those have now flagged clean files, in
 about 448,000 Windows files on two machines. Every further machine is
 likely to find more: that is what public rules are like, and what the
-[exclusion list](RULES.md#rules-that-are-left-out) is for.
+exclusion list is for.
 
-At the time of writing these eight rules are not on the list, and the
-files they flagged are not named here or kept as a raw result: the names
-show which programs are installed on a private machine.
+**All eight went onto the exclusion list the same day**, each with its
+evidence. A bundle built with the list now has 5,128 rules: 205 lead to the
+verdict malicious and 4,923 to suspicious. The scan of the installed
+programs has not been repeated with that bundle yet, so what the longer
+list does there is not measured.
+
+Three of the 13 files are not named, here or in the raw result: their names
+would show which programs are installed on a private machine. They are
+described by their kind.
 
 What the runs still do not cover: the folders of a user, such as downloads
 and application data, programs on other drives, and other people's
@@ -608,4 +620,5 @@ Raw results:
 [System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-heuristics.json),
 [software](benchmarks/2026-11-18-github-windows-runner-software-false-positives-with-heuristics.json),
 [machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-heuristics-machine.json),
-[System32 on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json).
+[System32 on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
+[installed programs on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-programs-false-positives.json).

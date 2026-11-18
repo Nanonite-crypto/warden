@@ -19,6 +19,23 @@
 //! seen = 2026-11-18
 //! machine = "Windows 11 desktop"
 //! ```
+//!
+//! With the hash, anyone who has the same file can repeat the observation.
+//! Now and then a file's name and hash would give away something private,
+//! such as what is installed on somebody's machine. Evidence can then
+//! describe the file by its kind and say why the rest is withheld:
+//!
+//! ```toml
+//! [[rule.evidence]]
+//! file = "the main program of a commercial accounting package"
+//! withheld = "The name and the hash would show what is installed on a private machine."
+//! seen = 2026-11-18
+//! machine = "Windows 11 desktop"
+//! ```
+//!
+//! That is weaker evidence, because nobody else can check it, and the list
+//! makes it visible: one of `sha256` and `withheld` has to be there, and
+//! never both.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -70,10 +87,15 @@ pub enum ExclusionError {
 /// One clean file that a rule flagged.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Evidence {
-    /// Path of the clean file on the machine where it was seen.
+    /// Path of the clean file on the machine where it was seen, or a
+    /// description of what kind of file it is if its identity is withheld.
     pub file: String,
-    /// SHA-256 of that file, in lowercase hexadecimal.
-    pub sha256: String,
+    /// SHA-256 of that file, in lowercase hexadecimal. `None` if the list
+    /// withholds it.
+    pub sha256: Option<String>,
+    /// Why the file's name and hash are withheld, if they are. Evidence has
+    /// either this or a hash.
+    pub withheld: Option<String>,
     /// The day it was seen, as `YYYY-MM-DD`.
     pub seen: String,
     /// The machine it was seen on, in a few words.
@@ -126,7 +148,10 @@ struct RawRule {
 #[serde(deny_unknown_fields)]
 struct RawEvidence {
     file: String,
-    sha256: String,
+    #[serde(default)]
+    sha256: Option<String>,
+    #[serde(default)]
+    withheld: Option<String>,
     seen: toml::value::Datetime,
     machine: String,
 }
@@ -205,12 +230,33 @@ impl ExclusionList {
             for item in entry.evidence {
                 check_text(&name, "file", &item.file)?;
                 check_text(&name, "machine", &item.machine)?;
-                if warden_sigdb::hex::decode_sha256(&item.sha256).is_none() {
-                    return Err(invalid(format!(
-                        "{name}: the sha256 of {} must be 64 hexadecimal digits",
-                        shorten(&item.file)
-                    )));
-                }
+                let sha256 = match (item.sha256, &item.withheld) {
+                    (Some(sha256), None) => {
+                        if warden_sigdb::hex::decode_sha256(&sha256).is_none() {
+                            return Err(invalid(format!(
+                                "{name}: the sha256 of {} must be 64 hexadecimal digits",
+                                shorten(&item.file)
+                            )));
+                        }
+                        Some(sha256.to_ascii_lowercase())
+                    }
+                    (None, Some(withheld)) => {
+                        check_text(&name, "withheld", withheld)?;
+                        None
+                    }
+                    (None, None) => {
+                        return Err(invalid(format!(
+                            "{name}: the evidence {} has no sha256; if the hash cannot be given, \"withheld\" has to say why",
+                            shorten(&item.file)
+                        )));
+                    }
+                    (Some(_), Some(_)) => {
+                        return Err(invalid(format!(
+                            "{name}: the evidence {} gives a sha256 and says that it is withheld",
+                            shorten(&item.file)
+                        )));
+                    }
+                };
                 if item.seen.date.is_none()
                     || item.seen.time.is_some()
                     || item.seen.offset.is_some()
@@ -221,7 +267,8 @@ impl ExclusionList {
                 }
                 evidence.push(Evidence {
                     file: item.file,
-                    sha256: item.sha256.to_ascii_lowercase(),
+                    sha256,
+                    withheld: item.withheld,
                     seen: item.seen.to_string(),
                     machine: item.machine,
                 });
@@ -505,7 +552,13 @@ machine = "Windows 11 desktop"
         assert_eq!(rule.evidence.len(), 1);
         assert_eq!(rule.evidence[0].file, r"C:\Windows\System32\example.dll");
         // Hashes are compared in lowercase everywhere else.
-        assert!(rule.evidence[0].sha256.starts_with("ab00"));
+        assert!(
+            rule.evidence[0]
+                .sha256
+                .as_deref()
+                .is_some_and(|sha256| sha256.starts_with("ab00"))
+        );
+        assert_eq!(rule.evidence[0].withheld, None);
         assert_eq!(rule.evidence[0].seen, "2026-11-18");
         assert_eq!(list.digest().len(), 64);
         assert!(list.get("Loud_Rule").is_some());
@@ -524,6 +577,45 @@ machine = "Windows 11 desktop"
         let error = ExclusionList::parse(text).unwrap_err();
         assert!(matches!(error, ExclusionError::Invalid(_)), "{error}");
         assert!(error.to_string().contains("no evidence"), "{error}");
+    }
+
+    /// A file's name and hash can be withheld, with a reason. Then the
+    /// evidence has no hash, and it has to say why not.
+    #[test]
+    fn evidence_may_withhold_the_file_and_has_to_say_why() {
+        const HASH: &str =
+            "sha256 = \"AB00000000000000000000000000000000000000000000000000000000000000\"";
+        let withheld = "withheld = \"The name would show what is installed on a private machine.\"";
+
+        let list = ExclusionList::parse(&LIST.replace(HASH, withheld)).unwrap();
+        let evidence = &list.rules()[0].evidence[0];
+        assert_eq!(evidence.sha256, None);
+        assert_eq!(
+            evidence.withheld.as_deref(),
+            Some("The name would show what is installed on a private machine.")
+        );
+        // The digest of the list covers the reason like everything else.
+        assert_ne!(list.digest(), ExclusionList::parse(LIST).unwrap().digest());
+
+        let refused = [
+            // Neither a hash nor a reason for leaving it out.
+            (LIST.replace(HASH, ""), "has no sha256"),
+            // Both.
+            (
+                LIST.replace(HASH, &format!("{HASH}\n{withheld}")),
+                "gives a sha256 and says that it is withheld",
+            ),
+            // A reason that is none.
+            (
+                LIST.replace(HASH, "withheld = \"  \""),
+                "\"withheld\" is empty",
+            ),
+        ];
+        for (text, expected) in refused {
+            let error = ExclusionList::parse(&text).unwrap_err();
+            assert!(matches!(error, ExclusionError::Invalid(_)), "{error}");
+            assert!(error.to_string().contains(expected), "{error}");
+        }
     }
 
     #[test]
