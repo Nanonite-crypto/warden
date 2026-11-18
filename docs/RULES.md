@@ -169,6 +169,10 @@ and the rest are counted.
   `macho`, `lnk`, `hash`, `math`, `string`, `time` and `console`. Rules
   that need another module (`magic`, `cuckoo` and a few more) are left out
   of the bundle and counted.
+- **Includes.** An `include` statement in a rule file is a compile error.
+  The included file would be missing from the bundle's record of where its
+  rules came from, and the exclusion list would not see the rules in it.
+  Give the builder every rule file directly, or a folder of them.
 - **One thread, one scanner.** A YARA-X scanner holds the state of the rule
   engine and cannot be shared. Each worker thread has its own; the compiled
   rules are shared.

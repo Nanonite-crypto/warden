@@ -408,6 +408,37 @@ rule Good_Two { strings: $a = "WARDEN-YARA-ALSO-GOOD" condition: $a }
 }
 
 #[test]
+fn an_include_is_refused_and_the_rest_of_the_file_is_kept() {
+    // A bundle records every rule file it was built from. A file that is
+    // pulled in by an include would be missing from that record.
+    let dir = tempfile::tempdir().unwrap();
+    let hidden = dir.path().join("hidden.yar");
+    std::fs::write(&hidden, "rule Hidden { condition: true }").unwrap();
+    let rules = format!(
+        "include \"{}\"\nrule Visible {{ strings: $a = \"WARDEN-YARA-VISIBLE\" condition: $a }}\n",
+        hidden.display().to_string().replace('\\', "/")
+    );
+    let mut builder = BundleBuilder::new().builtin_rules(false);
+    builder.add_source("with-include.yar", rules);
+    let built = builder.build().unwrap();
+
+    assert_eq!(built.report.rules, 1);
+    assert_eq!(built.report.error_total, 1);
+    assert!(
+        built.report.errors[0].contains("include statements not allowed"),
+        "{}",
+        built.report.errors[0]
+    );
+    let names: Vec<String> = built
+        .bundle
+        .rules()
+        .iter()
+        .map(|rule| rule.identifier().to_owned())
+        .collect();
+    assert_eq!(names, ["Visible"]);
+}
+
+#[test]
 fn rule_files_are_read_from_folders_and_packages() {
     let rule = |name: &str| format!("rule {name} {{ strings: $a = \"{name}\" condition: $a }}\n");
     let dir = tempfile::tempdir().unwrap();

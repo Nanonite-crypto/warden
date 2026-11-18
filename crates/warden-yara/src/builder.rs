@@ -342,6 +342,9 @@ impl BundleBuilder {
         // Many public rules were written for the original YARA, which
         // accepts some regular expressions that YARA-X is strict about.
         compiler.relaxed_re_syntax(true);
+        // An included file would not appear in the bundle's record of where
+        // its rules came from, and the exclusion list would not see it.
+        compiler.enable_includes(false);
         for module in MODULES_NOT_BUILT {
             compiler.ignore_module(module);
         }

@@ -38,6 +38,7 @@ systems depth.
 | 2026-11-18 | Third-party rules are not stored in this repository. A script downloads one pinned YARA Forge release and checks its SHA-256; `warden rules build` compiles it into a bundle. The rules keep their authors' licences. Warden itself ships one rule, for the EICAR test file. |
 | 2026-11-18 | A rule's `score` decides the verdict: 80 and above is malicious, 60 to 79 suspicious, below 60 recorded only. A rule without a score counts as 75. The ranges are those of the YARA style guide that YARA Forge follows. |
 | 2026-11-18 | Zip archives are unpacked in memory, never to disk, with limits on depth (3), members (10,000), member size (64 MiB), total size (512 MiB) and compression ratio (250 to 1). Reaching a limit is reported per file; it is not a detection. |
+| 2026-11-18 | Rule files may not `include` other files. A bundle records every rule file it was built from, and an included file would be missing from that record and invisible to the exclusion list. |
 
 ## Open decisions
 
