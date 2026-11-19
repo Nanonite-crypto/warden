@@ -251,8 +251,10 @@ if ($failure) {
 Send-File $fpReport
 $fp = Get-Content -LiteralPath $fpReport -Raw -Encoding UTF8 | ConvertFrom-Json
 $flagged = $fp.flagged_malicious + $fp.flagged_suspicious
-Send-Line "WARDEN-KIT DONE $(Get-UtcNow) flagged=$flagged files=$($fp.files_scanned)"
+# Files with a finding that did not count: their verdict is clean.
+$recorded = [int]$fp.recorded_files
+Send-Line "WARDEN-KIT DONE $(Get-UtcNow) flagged=$flagged recorded=$recorded files=$($fp.files_scanned)"
 Close-Serial
-Write-Host "DONE: $flagged of $($fp.files_scanned) files flagged." -ForegroundColor Green
+Write-Host "DONE: $flagged of $($fp.files_scanned) files flagged, $recorded more with a finding on record that did not count." -ForegroundColor Green
 Write-Host "Results: $OutDir"
 exit 0
