@@ -29,8 +29,8 @@
 # Four rules that a tool had generated from malware samples were on this list
 # until phase 4, for matching library code in clean files. They are back in
 # the bundle: the match of a generated rule now counts only together with a
-# sign from another layer, and those files have none. docs/RULES.md lists the
-# four rules and the files, under "Generated rules".
+# sign from another layer. docs/RULES.md lists the four rules, the files, and
+# what a scan says about those files now, under "Generated rules".
 
 [[rule]]
 name = "COD3NYM_DOTNET_Singlefilehost_Bundled_App"

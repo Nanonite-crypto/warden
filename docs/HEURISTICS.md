@@ -8,7 +8,9 @@ question: what kind of file is built like this?
 It answers with a score, and with every reason behind the score. A file
 whose score reaches the threshold is reported as **suspicious**: shown to
 the user, never acted on. Structure alone never makes a file malicious,
-because clean programs are packed and protected too.
+because clean programs are packed and protected too. A lower score reports
+nothing, and from a second, lower bar on it can still back up a finding of
+another layer that does not count alone.
 
 The questions this layer asks were written by hand. What an answer is
 worth was not: every weight and the threshold are computed from a public
@@ -52,7 +54,15 @@ of unscored ones is longer.) In a scan, the same file is one finding,
 
 The same file with its three imports left in and nothing behind its last
 section scores 28 and is not reported. Packed is common in clean software,
-and the weights know it.
+and the weights know it. For that file the output ends like this:
+
+```text
+Score       28
+Verdict     not suspicious: a file counts as suspicious from a score of 32
+Second sign yes: it backs up a finding of another layer that does not count alone, which takes a score of 14
+```
+
+The last line is about [the bar for a second sign](#the-bar-for-a-second-sign).
 
 ## How it works
 
@@ -310,6 +320,59 @@ The table shows what the choice costs. In the test weeks, a threshold of
 benign ones. For a scanner that people are meant to trust, a false alarm is
 the expensive mistake: this layer would rather stay silent.
 
+## The bar for a second sign
+
+A score below 32 reports nothing. It can still do one thing: back up a
+finding of another layer that does not count alone. Today that is the
+match of a YARA rule that a tool generated, which makes a file suspicious
+only if the file's structure is unusual as well
+([RULES.md](RULES.md#generated-rules) has the reasons).
+
+"Unusual" needs a number, and it comes from a rule of the same kind as the
+threshold: **the lowest score that at most one in twenty benign training
+files of every kind reaches**. The rule gives 14. At 13, more than one in
+twenty of the dataset's benign programs would reach it.
+
+One in twenty is the choice here, and it is 250 times looser than the
+threshold's one in 5,000. It can be, because reaching the bar reports
+nothing. For a clean file to be reported, a generated rule has to match
+it by mistake and its structure has to reach the bar, and the first of the
+two is rare already: in the runs so far, generated rules matched 8 of about
+448,000 clean files.
+
+What other bars would do, on programs, which are the hard case:
+
+| Second sign from | Malicious programs that reach it, test | Benign programs that reach it, training | Benign programs that reach it, test |
+|---|---|---|---|
+| 10 | 71.4 % | 15.1 % | 10.8 % |
+| 13 | 60.5 % | 5.7 % | 4.5 % |
+| **14** | **56.1 %** | **4.1 %** | **3.0 %** |
+| 20 | 46.3 % | 2.0 % | 1.4 % |
+| 25 | 37.9 % | 0.32 % | 0.22 % |
+
+With the bar at 14, on the test weeks:
+
+| Kind of file | Malicious files that reach it | Benign files that reach it |
+|---|---|---|
+| Programs | 56.1 % (125,742 of 224,062) | 3.0 % (1,922 of 63,669) |
+| Libraries | 32.9 % (4,647 of 14,144) | 0.67 % (1,185 of 175,573) |
+| .NET assemblies | 38.4 % (12,201 of 31,790) | 1.7 % (513 of 30,571) |
+| All | 52.8 % (142,590 of 269,996) | 1.3 % (3,620 of 269,813) |
+
+The left column is what the second sign costs. A generated rule that
+matches a malicious file is backed up for about half of the dataset's
+malicious files, and for the other half it is not, and then its match
+changes nothing. On the challenge set it is worse: 95 of 4,868 reach the
+bar, one in fifty. Whether the files that generated rules match are like
+the dataset's files in this respect is not known; measuring it takes the
+samples themselves.
+
+A file that reaches the bar and not the threshold is given a finding of
+its own, `Heuristic.UnusualExecutable`, which exists only to be counted
+with. When nothing else waits for it, it is dropped, and the file's report
+is what it would be without this layer. `warden inspect` says for every
+file whether its score would be enough.
+
 ## What the score does
 
 ### On the weeks it was not fitted to
@@ -338,7 +401,8 @@ does not measure, see [TESTING.md](TESTING.md).
 Of the 4,868 Windows executables in the challenge set, the score flags
 **none**. These are the files that got past every antivirus product on
 the day they appeared. They are built to look ordinary, and to a layer
-that only looks at structure they do.
+that only looks at structure they do. Even the bar for a second sign is
+out of reach for most of them: 95 reach it.
 
 ### On a clean Windows installation
 
@@ -348,10 +412,10 @@ alarms that matter happen elsewhere: on the files of a Windows
 installation. So the same tool counted the same indicators on a clean
 machine, a GitHub-hosted runner with Windows Server 2025:
 
-| Folder | Executables | Reach 32 | Highest score |
-|---|---|---|---|
-| `C:\Windows\System32` | 9,015 | 0 | 20 |
-| Installed software: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 45,261 | 0 | below 16 |
+| Folder | Executables | Reach 32 | Reach 14, the bar for a second sign | Highest score |
+|---|---|---|---|---|
+| `C:\Windows\System32` | 9,015 | 0 | 5 | 20 |
+| Installed software: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 45,261 | 0 | 0 | below 14 |
 
 Three system files score 16 or more. The files of a Windows installation
 are far more regular than the dataset's benign files. In System32, one
@@ -369,8 +433,9 @@ the installed programs of a desktop that people use, because that is where
 packed and protected software is. It was run on the same desktop:
 310,849 files in `C:\Program Files` and `C:\Program Files (x86)`, 74.5 GB,
 and 345,010 more files inside archives. None reached the threshold. (The
-YARA rules flagged 13 of those files; that is a matter for the
-[exclusion list](RULES.md#rules-that-are-left-out).)
+YARA rules flagged 13 of those files. That is a matter for the rule layer:
+see the [exclusion list](RULES.md#rules-that-are-left-out) and
+[generated rules](RULES.md#generated-rules).)
 
 In all, the layer has flagged none of 447,994 files that were expected to
 be clean. Only the Windows executables among them can be flagged at all:
