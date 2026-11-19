@@ -1,0 +1,77 @@
+{
+  "schema": 2,
+  "label": "local machine",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 26 Model 2 Stepping 1, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Windows\\System32"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795040870,
+        "bundle_digest": "302ed047321a61d2891626ee2b91aec4703c7a5ba067d464638ec042884b5f8b",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5132,
+        "rules_excluded": 6,
+        "rules_generated": 1622
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "threads": 2,
+  "duration_ms": 322458,
+  "files_scanned": 21806,
+  "bytes_scanned": 4797497988,
+  "files_skipped": 38,
+  "files_partially_scanned": 2,
+  "archive_members_scanned": 193,
+  "files_per_second": 67.62426573715072,
+  "megabytes_per_second": 14.877890434465648,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false,
+  "recorded_files": 1,
+  "recorded_by_name": [
+    {
+      "name": "MALPEDIA_Win_Triback_Loader_Auto",
+      "files": 1
+    }
+  ],
+  "recorded": [
+    {
+      "path": "C:\\Windows\\System32\\vulkan-1.dll",
+      "size": 1416664,
+      "sha256": "591d4c316a0a39f96792979ce5ebb1bb380f0015c30707ba7ac611b35ae01cfc",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    }
+  ],
+  "recorded_truncated": false
+}

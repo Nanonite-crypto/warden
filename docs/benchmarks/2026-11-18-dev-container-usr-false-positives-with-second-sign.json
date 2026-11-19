@@ -1,0 +1,63 @@
+{
+  "schema": 2,
+  "label": "Linux container /usr, phase 4",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "linux",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz"
+  },
+  "paths": [
+    "/usr"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795040000,
+        "bundle_digest": "a59e429c133a00821f819b1b136ffb5cca69d0026871f3b2451b5531e5c26fe6",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5132,
+        "rules_excluded": 6,
+        "rules_generated": 1622
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "threads": 2,
+  "duration_ms": 169094,
+  "files_scanned": 140429,
+  "bytes_scanned": 7152872857,
+  "files_skipped": 0,
+  "files_partially_scanned": 8,
+  "archive_members_scanned": 88855,
+  "files_per_second": 830.4786526142914,
+  "megabytes_per_second": 42.30115013709916,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false,
+  "recorded_files": 0,
+  "recorded_by_name": [],
+  "recorded": [],
+  "recorded_truncated": false
+}

@@ -1,0 +1,69 @@
+{
+  "schema": 2,
+  "label": "GitHub-hosted Windows runner, common software",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 26 Model 2 Stepping 1, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Program Files\\7-Zip",
+    "C:\\Program Files\\Git",
+    "C:\\Program Files\\Google\\Chrome",
+    "C:\\Program Files\\Mozilla Firefox",
+    "C:\\Program Files\\PowerShell",
+    "C:\\Program Files\\dotnet",
+    "C:\\Program Files\\nodejs"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795040870,
+        "bundle_digest": "302ed047321a61d2891626ee2b91aec4703c7a5ba067d464638ec042884b5f8b",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5132,
+        "rules_excluded": 6,
+        "rules_generated": 1622
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "threads": 2,
+  "duration_ms": 565864,
+  "files_scanned": 87707,
+  "bytes_scanned": 14416680921,
+  "files_skipped": 0,
+  "files_partially_scanned": 7,
+  "archive_members_scanned": 89049,
+  "files_per_second": 154.9964240955199,
+  "megabytes_per_second": 25.47725939869231,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false,
+  "recorded_files": 0,
+  "recorded_by_name": [],
+  "recorded": [],
+  "recorded_truncated": false
+}
