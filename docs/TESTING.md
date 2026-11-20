@@ -354,21 +354,58 @@ Microsoft Defender removes a bundle anywhere else
 
 The image holds the Windows build of Warden, a rule bundle and
 `fresh-install-scan.cmd`. Attached to a virtual machine and started there
-as administrator, the script records what the machine is (edition, build,
-installed updates and programs), runs `warden false-positives` over the
-whole of `C:\`, and writes both results to `C:\warden-out`. If the machine
-has a serial port, it also sends them through it with a checksum each,
-which is the way out of a machine without a network: the hypervisor writes
-what arrives to a file on the host. There, a second script takes that file
-apart and checks each result against its checksum:
+as administrator, the script
+
+1. records what the machine is: edition, build, installed updates and
+   programs, whether a network is up, what the antivirus is doing;
+2. asks `warden rules info` whether the rule bundle can be read on this
+   machine;
+3. runs `warden false-positives` over the whole of `C:\`;
+4. records what the machine's antivirus reported in the meantime;
+5. writes all of it to `C:\warden-out`.
+
+While it runs, the script asks Windows to stay awake: a fresh Windows goes
+to sleep after some minutes without input, and a scan of a whole drive
+takes longer.
+
+If the machine has a serial port, the script also sends the results
+through it, each with a checksum. That is the way out of a machine without
+a network: the hypervisor writes what arrives to a file on the host.
+There, a second script takes that file apart and checks each result
+against its checksum:
 
 ```
 python3 scripts/read-scan-kit-output.py com1.txt --out results/
 ```
 
+Three things to know before the first run:
+
+- **Microsoft Defender on a fresh Windows blocks the rule bundle too**, as
+  it did on the desktop ([RULES.md](RULES.md#rule-files-and-your-antivirus)).
+  Warden then cannot read it: "the file contains a virus or potentially
+  unwanted software". The script notices in step 2, says so, and scans
+  with the layers that need no bundle: the built-in signature and rule,
+  and the heuristics. The result is marked as such. A scan with the public
+  rules needs the bundle excluded in that machine's Defender first. The
+  script does not do that, as no script here changes an antivirus setting.
+- **Do not click into the script's window.** A click selects text, and
+  Windows holds a console program still for as long as text is selected.
+  The scan then waits, without a word, until Esc is pressed.
+- **The virtual machine may need switching off and on.** On VirtualBox 7.1
+  on a Windows host, the machine's firmware crashed at the first restart
+  of Windows Setup and left a black screen, and later a machine that had
+  apparently gone to sleep did not wake up. Neither has to do with Warden.
+  Powering the machine off and starting it again helped both times;
+  Windows Setup went on where it had stopped.
+
+The first run with the kit is in
+[BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11).
+
 `warden.exe` is built with the C runtime linked in (`.cargo/config.toml`),
-because a freshly installed Windows need not have it. A test checks that
-the Windows build asks for no runtime library.
+because a freshly installed Windows does not have it: the Windows 11 of
+the first run with the kit had no `vcruntime140.dll`, and this build
+started there. A test checks that the Windows build asks for no runtime
+library.
 
 ## Benchmarks
 

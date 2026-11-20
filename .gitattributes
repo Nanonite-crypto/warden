@@ -3,3 +3,6 @@
 *.bat text eol=crlf
 *.ps1 text eol=crlf
 *.wdb binary
+# What a scan kit sent out of a machine, byte for byte: the capture holds the
+# checksum of each result, so git must not touch their line endings.
+docs/benchmarks/*-fresh-vm-* -text

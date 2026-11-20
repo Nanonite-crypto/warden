@@ -442,6 +442,13 @@ be clean. Only the Windows executables among them can be flagged at all:
 on the runner that is about half of the files, on the desktop they were not
 counted. And it is two machines, not a promise about a third.
 
+The third machine came in phase 4, and it is the first that nothing here
+had been checked against: a Windows 11 installed for the purpose, with
+nothing on it but what Microsoft ships. The layer flagged none of its
+153,317 files
+([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)). The
+executables among them were not counted either.
+
 ### What it costs
 
 On a folder of executables the layer adds three quarters to the time of a

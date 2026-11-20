@@ -1,0 +1,33 @@
+{
+    "recorded_at":  "2026-11-20T13:23:56Z",
+    "os":  "Microsoft Windows 11 Enterprise Evaluation",
+    "os_version":  "10.0.26300",
+    "installed_at":  "2026-11-20T12:25:26Z",
+    "memory_gb":  8,
+    "os_display_version":  "26H2",
+    "os_edition":  "EnterpriseEval",
+    "os_build":  "26300.9457",
+    "cpu":  "AMD Ryzen 7 5800X 8-Core Processor",
+    "logical_processors":  4,
+    "computer_model":  "innotek GmbH VirtualBox",
+    "administrator_rights":  true,
+    "defender_realtime_protection":  true,
+    "defender_signature_version":  "1.437.1.0",
+    "defender_product_version":  "4.18.25080.5",
+    "network_adapters_up":  0,
+    "updates":  [
+                    "KB5121794",
+                    "KB5124007",
+                    "KB5126052",
+                    "KB5129195"
+                ],
+    "installed_programs":  [
+                               "Microsoft Edge 152.0.4191.66",
+                               "Microsoft Edge Update 1.3.265.7",
+                               "Microsoft Edge WebView2 Runtime 152.0.4191.66",
+                               "Microsoft OneDrive 25.087.0506.0001"
+                           ],
+    "has_vcruntime140":  false,
+    "warden_sha256":  "cc50290490ae49b5955dbbb6d081438558101ac2269337ea5361ffab84e69c84",
+    "rule_bundle":  "not read: error: cannot read rule bundle D:\\rules.wrb: Operation did not complete successfully because the file contains a virus or potentially unwanted software. (os error 225)"
+}

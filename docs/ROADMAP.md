@@ -77,6 +77,13 @@ suspicious too, and not when it is plain.
 | The CI runner | Done: no file flagged in 109,513, and `vulkan-1.dll`, which a generated rule flagged in the first round, is on record with a clean verdict |
 | The desktop | Done: no file flagged in 285,917. The seven files that the four rules flagged there are on record with a clean verdict, and so are four clean libraries that nobody knew of: the rule that matches them had been on the exclusion list since before those folders were first scanned |
 
+**Beyond the criterion.** A Windows 11 was installed in a virtual machine
+for a run on files that nothing here was written from. Its Defender blocks
+the rule bundle, so the run so far is without the public rules: none of
+153,317 files flagged. The run with the rules is open; it needs the
+machine's owner to let Defender leave the bundle alone
+([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)).
+
 **What it cannot show.** What the change costs in detection. A generated
 rule that matches plain-looking malware no longer flags it alone, and
 without malware samples, which this project does not handle, that cost
@@ -116,6 +123,7 @@ installer plug-in.
 | 2026-11-18 | An interrupted quarantine operation is settled when the quarantine is next opened: undone if the copy had not reached its destination, finished if it had. Finishing is the right default for a file somebody asked to have out of the way. |
 | 2026-11-19 | On Windows, the read-only bit and the security descriptor of a restored file are put back after the file has its name, through the handle the file was written with. Before, they can stop the restore itself. |
 | 2026-11-18 | The quarantine belongs to the user who runs Warden until there is a service. A quarantine for the whole machine needs a program with rights of its own, and that program must not restore to places its user could not write to. |
+| 2026-11-20 | The kit for a fresh machine does not stop when that machine's antivirus blocks the rule bundle. It says so and scans with the layers that need no bundle. It changes no antivirus setting, like every script here. |
 
 ## Open decisions
 

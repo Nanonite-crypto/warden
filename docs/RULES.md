@@ -123,6 +123,14 @@ anything that holds one: the image of the
 [scan kit](TESTING.md#a-machine-the-list-was-not-written-from) is kept
 there for that reason.
 
+A freshly installed Windows 11 without a network did the same to the
+bundle on the kit's CD, and its Defender gave the reason a name:
+`Trojan:JS/Webshell.DSK1!MTB`. Going by the name, the patterns of rules
+that describe web shells are enough to be taken for one. Warden got "the
+file contains a virus or potentially unwanted software" when it opened the
+bundle, and the scan there ran without the public rules
+([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)).
+
 This is fine for development and not for a release: an installed program
 cannot ask its users to exclude a folder. How a release stores its rules
 is not decided yet.

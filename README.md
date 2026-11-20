@@ -288,6 +288,11 @@ produced. In short, as of phase 4:
   such rules match are on record with a clean verdict; four of them are
   files that no list knew. What the second sign costs in detection is not
   measured.
+- **On a Windows 11 that was installed for the test**, with nothing else
+  on it, the built-in rule and the heuristic layer flag none of 153,317
+  files. The public rules have not run there yet. That machine's Defender
+  blocks the rule bundle, as the desktop's does, and no script of this
+  project changes an antivirus setting.
 - **The heuristic score on EMBER2024**, on the twelve weeks it was not
   fitted to: it flags 24.6 % of the malicious Windows executables and
   0.0056 % of the benign ones (15 of 269,813). Among programs it is 29.6 %;

@@ -1,0 +1,62 @@
+{
+  "schema": 2,
+  "label": "fresh Windows installation, without the rule bundle",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 4,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795181047,
+        "bundle_digest": "f48086e76c44760aba03f151d66dce620d33103cab74ab9217b0f2c5fbfd882f",
+        "engine": "yara-x 1.23.0",
+        "origin": "built-in rules",
+        "rule_files": 1,
+        "rules": 1,
+        "rules_generated": 0
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "threads": 4,
+  "duration_ms": 390658,
+  "files_scanned": 153317,
+  "bytes_scanned": 26357723334,
+  "files_skipped": 162,
+  "files_partially_scanned": 66,
+  "archive_members_scanned": 5018,
+  "files_per_second": 392.45736915093056,
+  "megabytes_per_second": 67.4699006403056,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false,
+  "recorded_files": 0,
+  "recorded_by_name": [],
+  "recorded": [],
+  "recorded_truncated": false
+}
