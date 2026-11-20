@@ -15,8 +15,8 @@ use warden_engine::{
     Scanner, Session, ThreatCategory, Verdict, eicar,
 };
 use warden_yara::{
-    BUILTIN_SOURCE, BundleBuilder, BundleError, ENGINE, RuleBundle, YaraDetector, YaraOptions,
-    generator, write_bundle,
+    BUILTIN_SOURCE, BundleBuilder, BundleError, ENGINE, Layout, RuleBundle, YaraDetector,
+    YaraOptions, generator, write_bundle,
 };
 
 const MARKER_RULES: &str = r#"
@@ -79,6 +79,22 @@ fn marker_bundle() -> warden_yara::Built {
     let mut builder = BundleBuilder::new().created_unix_secs(1_800_000_000);
     builder.add_source("markers.yar", MARKER_RULES);
     builder.build().unwrap()
+}
+
+/// The marker rules in a bundle that stores its contents as they are.
+fn plain_marker_bundle() -> warden_yara::Built {
+    let mut builder = BundleBuilder::new()
+        .created_unix_secs(1_800_000_000)
+        .layout(Layout::Plain);
+    builder.add_source("markers.yar", MARKER_RULES);
+    builder.build().unwrap()
+}
+
+/// Whether `needle` occurs anywhere in `haystack`.
+fn holds(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 fn marker_scanner() -> Scanner {
@@ -360,6 +376,64 @@ fn a_bundle_survives_being_written_and_read_back() {
 }
 
 #[test]
+fn a_bundle_keeps_what_its_rules_look_for_out_of_sight() {
+    // What an antivirus goes by when it takes a rule file for malware is
+    // the patterns the rules look for. Here those are the marker strings.
+    let patterns: [&[u8]; 4] = [
+        b"WARDEN-YARA-HIGH",
+        b"WARDEN-YARA-MEDIUM",
+        b"WARDEN-YARA-NAMED",
+        b"markers.yar",
+    ];
+
+    let sealed = marker_bundle();
+    assert_eq!(sealed.bundle.layout(), Layout::Sealed);
+    let plain = plain_marker_bundle();
+    assert_eq!(plain.bundle.layout(), Layout::Plain);
+    for pattern in patterns {
+        let shown = String::from_utf8_lossy(pattern);
+        assert!(holds(&plain.bytes, pattern), "{shown} in the plain bundle");
+        assert!(
+            !holds(&sealed.bytes, pattern),
+            "{shown} in the sealed bundle"
+        );
+    }
+
+    // Both are the same rules, and say so.
+    assert_eq!(sealed.bundle.manifest(), plain.bundle.manifest());
+    assert_eq!(sealed.bundle.rule_count(), plain.bundle.rule_count());
+    assert_eq!(sealed.bytes.len(), plain.bytes.len() + 32);
+
+    // Both load from their bytes and detect the same.
+    for built in [&sealed, &plain] {
+        let loaded = RuleBundle::from_bytes(&built.bytes).unwrap();
+        assert_eq!(loaded.layout(), built.bundle.layout());
+        assert_eq!(loaded.digest(), built.bundle.digest());
+        assert_eq!(loaded.manifest(), built.bundle.manifest());
+        let scanner = Scanner::builder()
+            .detector(YaraDetector::new(loaded))
+            .build();
+        assert_eq!(
+            scanner.scan_bytes(b"WARDEN-YARA-HIGH").verdict,
+            Verdict::Malicious
+        );
+        assert_eq!(
+            scanner.scan_bytes(b"WARDEN-YARA-MEDIUM").verdict,
+            Verdict::Suspicious
+        );
+        assert_eq!(scanner.scan_bytes(b"nothing here").verdict, Verdict::Clean);
+        assert_eq!(
+            scanner.scan_bytes(&padded(b"\n")).findings[0].name,
+            eicar::DETECTION_NAME
+        );
+    }
+
+    // Building again gives the same file, byte for byte.
+    assert_eq!(marker_bundle().bytes, sealed.bytes);
+    assert_eq!(plain_marker_bundle().bytes, plain.bytes);
+}
+
+#[test]
 fn a_rule_that_does_not_compile_is_left_out_and_the_rest_is_kept() {
     let rules = r#"
 import "magic"
@@ -527,38 +601,58 @@ fn a_bundle_needs_at_least_one_rule() {
 
 #[test]
 fn damaged_bundles_are_refused() {
-    let bytes = marker_bundle().bytes;
+    for built in [marker_bundle(), plain_marker_bundle()] {
+        let layout = built.bundle.layout();
+        let bytes = built.bytes;
 
-    // Cut short anywhere.
-    for length in (0..bytes.len()).step_by(bytes.len() / 64 + 1) {
-        assert!(
-            RuleBundle::from_bytes(&bytes[..length]).is_err(),
-            "length {length}"
-        );
+        // Cut short anywhere.
+        for length in (0..bytes.len()).step_by(bytes.len() / 64 + 1) {
+            assert!(
+                RuleBundle::from_bytes(&bytes[..length]).is_err(),
+                "{layout:?}, length {length}"
+            );
+        }
+        // Cut short inside the header and right after it.
+        for length in [8, 64, 95, 96, 97, 127, 128, 129] {
+            assert!(
+                RuleBundle::from_bytes(&bytes[..length]).is_err(),
+                "{layout:?}, length {length}"
+            );
+        }
+        // Longer than it should be.
+        let mut longer = bytes.clone();
+        longer.push(0);
+        assert!(matches!(
+            RuleBundle::from_bytes(&longer),
+            Err(BundleError::WrongLength { .. })
+        ));
+        // One changed byte anywhere: in the header, the manifest or the
+        // rules.
+        for position in (0..bytes.len()).step_by(bytes.len() / 48 + 1) {
+            let mut damaged = bytes.clone();
+            damaged[position] ^= 0x01;
+            assert!(
+                RuleBundle::from_bytes(&damaged).is_err(),
+                "{layout:?}, position {position}"
+            );
+        }
+        // Every byte of the header counts, whatever the layout keeps there.
+        for position in 0..layout.header_len() {
+            let mut damaged = bytes.clone();
+            damaged[position] ^= 0x10;
+            assert!(
+                RuleBundle::from_bytes(&damaged).is_err(),
+                "{layout:?}, position {position}"
+            );
+        }
+        let mut body_damage = bytes.clone();
+        let last = body_damage.len() - 1;
+        body_damage[last] ^= 0x80;
+        assert!(matches!(
+            RuleBundle::from_bytes(&body_damage),
+            Err(BundleError::DigestMismatch)
+        ));
     }
-    // Longer than it should be.
-    let mut longer = bytes.clone();
-    longer.push(0);
-    assert!(matches!(
-        RuleBundle::from_bytes(&longer),
-        Err(BundleError::WrongLength { .. })
-    ));
-    // One changed byte anywhere: in the header, the manifest or the rules.
-    for position in (0..bytes.len()).step_by(bytes.len() / 48 + 1) {
-        let mut damaged = bytes.clone();
-        damaged[position] ^= 0x01;
-        assert!(
-            RuleBundle::from_bytes(&damaged).is_err(),
-            "position {position}"
-        );
-    }
-    let mut body_damage = bytes.clone();
-    let last = body_damage.len() - 1;
-    body_damage[last] ^= 0x80;
-    assert!(matches!(
-        RuleBundle::from_bytes(&body_damage),
-        Err(BundleError::DigestMismatch)
-    ));
     // Something else entirely.
     assert!(matches!(
         RuleBundle::from_bytes(&[0u8; 4096]),

@@ -27,9 +27,11 @@ warden-quarantine = { path = "crates/warden-quarantine" }
 
 anyhow = "1.0.104"
 # The stream cipher that makes a quarantined file unusable as it lies on
-# disk. From the RustCrypto project, and already part of the build: the
-# random number generator that yara-x pulls in is made of it. Using it as
-# a cipher adds two small crates of the same project, `cipher` and `inout`.
+# disk, and that keeps a rule bundle from being taken for the malware its
+# rules describe. From the RustCrypto project, and already part of the
+# build: the random number generator that yara-x pulls in is made of it.
+# Using it as a cipher adds two small crates of the same project, `cipher`
+# and `inout`.
 chacha20 = "0.10.2"
 clap = { version = "4.6.8", features = ["derive"] }
 crossbeam-channel = "0.5.17"

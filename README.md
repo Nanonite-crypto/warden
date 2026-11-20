@@ -116,7 +116,7 @@ has the format, the reasoning and the limits.
 | `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report. |
 | `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. |
 | `warden inspect <file>` | Shows what the heuristics see in one Windows executable: its sections, imports and header, every indicator that applies with its weight, the score and the threshold. |
-| `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. |
+| `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. The bundle keeps its contents under a cipher, so that an antivirus does not take it for the malware its rules describe. |
 | `warden rules info <file>` | Shows what a bundle holds: how many rules lead to which verdict, the rule files it was built from, the rules that were left out on purpose, the licences the rules name. |
 | `warden false-positives <path>...` | Scans files that are expected to be clean and lists every one that was flagged, and what it could not read. |
 | `warden sigdb build` | Builds a signature database from lists of SHA-256 hashes. |
@@ -189,9 +189,10 @@ file's SHA-256, the day and the machine.
 
 Microsoft Defender blocks that package: a rule file is full of the byte
 patterns it describes, and Defender takes it for the real thing. The fetch
-script then names the one folder to exclude, `rules\vendor`, and
+script then names the one folder to exclude, `rules\vendor`. A bundle
+that Warden builds keeps its contents under a cipher for the same reason.
 [docs/RULES.md](docs/RULES.md#rule-files-and-your-antivirus) has the
-details.
+details and what has been measured of it.
 
 ## How detection works
 
@@ -295,8 +296,9 @@ produced. In short, as of phase 4:
 - **On a Windows 11 that was installed for the test**, with nothing else
   on it, the built-in rule and the heuristic layer flag none of 153,317
   files. The public rules have not run there yet. That machine's Defender
-  blocks the rule bundle, as the desktop's does, and no script of this
-  project changes an antivirus setting.
+  blocked the rule bundle, as the desktop's did, and no script of this
+  project changes an antivirus setting. For that reason a bundle now keeps
+  its contents under a cipher. The run with such a bundle is still to come.
 - **The heuristic score on EMBER2024**, on the twelve weeks it was not
   fitted to: it flags 24.6 % of the malicious Windows executables and
   0.0056 % of the benign ones (15 of 269,813). Among programs it is 29.6 %;

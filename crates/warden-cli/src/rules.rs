@@ -8,7 +8,8 @@ use clap::Subcommand;
 use serde::Serialize;
 use warden_sigdb::hex;
 use warden_yara::{
-    BundleBuilder, ExclusionInfo, ExclusionList, RuleBundle, SourceInfo, YaraDetector, write_bundle,
+    BundleBuilder, ExclusionInfo, ExclusionList, Layout, RuleBundle, SourceInfo, YaraDetector,
+    write_bundle,
 };
 
 use crate::render::{group_digits, human_bytes, human_duration, human_timestamp, shown};
@@ -27,6 +28,11 @@ pub enum RulesCommand {
     /// Rules that flag clean files can be left out with --exclusions. The
     /// bundle records which list it was built with and which rules that
     /// removed, and `warden rules info` shows it.
+    ///
+    /// A bundle keeps its contents under a cipher. Rules are made of the
+    /// byte patterns of the malware they describe, and an antivirus that
+    /// finds those patterns in a file removes the file. The cipher is not a
+    /// secret: the key is in the bundle.
     Build {
         /// Rule files, folders of rule files, or zip packages of rule files
         #[arg(required = true, value_name = "PATH")]
@@ -51,6 +57,13 @@ pub enum RulesCommand {
         /// Creation time to record, in seconds since the Unix epoch
         #[arg(long, value_name = "SECONDS", env = "SOURCE_DATE_EPOCH")]
         created: Option<u64>,
+
+        /// Store the rules as they are, not under a cipher
+        ///
+        /// An antivirus may take such a bundle for malware and remove it.
+        /// Use this to look at what a bundle holds with other tools.
+        #[arg(long)]
+        plain: bool,
 
         /// List every rule that was left out, with the reason
         #[arg(long)]
@@ -77,6 +90,7 @@ pub fn run(command: RulesCommand) -> anyhow::Result<ExitCode> {
             no_builtin,
             exclusions,
             created,
+            plain,
             show_skipped,
         } => build(
             &sources,
@@ -84,6 +98,7 @@ pub fn run(command: RulesCommand) -> anyhow::Result<ExitCode> {
             no_builtin,
             exclusions.as_deref(),
             created,
+            if plain { Layout::Plain } else { Layout::Sealed },
             show_skipped,
         ),
         RulesCommand::Info { bundle, json } => info(&bundle, json),
@@ -98,15 +113,26 @@ fn rule_count(count: u64) -> String {
     )
 }
 
+/// How `rules build` and `rules info` name a layout.
+fn layout_in_words(layout: Layout) -> &'static str {
+    match layout {
+        Layout::Plain => "contents as they are",
+        Layout::Sealed => "contents under a cipher",
+    }
+}
+
 fn build(
     sources: &[PathBuf],
     out: &Path,
     no_builtin: bool,
     exclusions: Option<&Path>,
     created: Option<u64>,
+    layout: Layout,
     show_skipped: bool,
 ) -> anyhow::Result<ExitCode> {
-    let mut builder = BundleBuilder::new().builtin_rules(!no_builtin);
+    let mut builder = BundleBuilder::new()
+        .builtin_rules(!no_builtin)
+        .layout(layout);
     if let Some(created) = created {
         builder = builder.created_unix_secs(created);
     }
@@ -208,11 +234,17 @@ fn build(
         )?;
     }
     outln!(
-        "Wrote {} ({}), digest {}",
+        "Wrote {} ({}, {}), digest {}",
         out.display(),
         human_bytes(built.bundle.size_bytes()),
+        layout_in_words(built.bundle.layout()),
         hex::encode(&built.bundle.digest())
     )?;
+    if built.bundle.layout() == Layout::Plain {
+        outln!(
+            "An antivirus may take a bundle with its contents as they are for malware and remove it."
+        )?;
+    }
     outln!("Rules keep the licences their authors gave them. `warden rules info` lists them.")?;
     Ok(ExitCode::SUCCESS)
 }
@@ -242,6 +274,9 @@ struct LicenceCount {
 #[derive(Debug, Serialize)]
 struct BundleInfo<'a> {
     path: String,
+    /// Version of the bundle format: 1 stores the contents as they are, 2
+    /// under a cipher.
+    format_version: u32,
     rules: u32,
     created_unix_secs: u64,
     created: String,
@@ -274,6 +309,7 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
     });
     let description = BundleInfo {
         path: path.display().to_string(),
+        format_version: bundle.layout().version(),
         rules: bundle.rule_count(),
         created_unix_secs: bundle.created_unix_secs(),
         created: human_timestamp(bundle.created_unix_secs()),
@@ -300,6 +336,11 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
     }
 
     outln!("Rule bundle  {}", description.path)?;
+    outln!(
+        "Format       version {}, {}",
+        description.format_version,
+        layout_in_words(bundle.layout())
+    )?;
     outln!(
         "Rules        {}",
         group_digits(u64::from(description.rules))

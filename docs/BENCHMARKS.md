@@ -446,7 +446,8 @@ the later run:
 Phase 4 changed how findings add up to a verdict, and added the
 quarantine. Its numbers are about false positives and are under
 [the fifth round](#with-a-second-sign-for-generated-rules). This section
-has one check: how long a scan takes now.
+has two checks: how long a scan takes now, and what the cipher on the rule
+bundle costs at a start.
 
 ### Windows desktop
 
@@ -482,6 +483,41 @@ Raw results:
 [benchmark](benchmarks/2026-11-19-windows-desktop-phase4-system32.json),
 [the run with rules](benchmarks/2026-11-19-windows-desktop-phase4-system32-false-positives.json),
 [machine](benchmarks/2026-11-19-windows-desktop-phase4-machine.json).
+
+### What the cipher on the rule bundle costs
+
+Since 2026-11-20 a rule bundle keeps its contents under a cipher;
+[RULES.md](RULES.md#rule-files-and-your-antivirus) has the reason. A start
+with a bundle now takes the cipher off and checks the key against what it
+opened. Measured in the development container, 2 virtual CPUs, with the
+bundle of 5,132 rules from the pinned package, built with the cipher and
+without (8.7 MB each):
+
+| Start, open the bundle, scan three small files | With the cipher | Without |
+|---|---|---|
+| Wall-clock time, median of 30 runs | 0.528 s | 0.523 s |
+| Fastest and slowest of the 30 | 0.504 s and 0.678 s | 0.495 s and 0.601 s |
+| Processor time, mean of 60 runs | 0.561 s | 0.547 s |
+
+- The two differ by less than the runs of either one do. So the steps
+  that the cipher adds were also timed on their own, inside the reader:
+  0.6 ms to copy the contents, 4.1 ms for ChaCha20, and 4.8 ms for the
+  SHA-256 that checks the key. Together that is 9 ms, under 2 % of a
+  start with this bundle.
+- The rest of the half second is what it was in
+  [phase 2](#development-container-linux-2-vcpu-1): the rule engine
+  rebuilds its search structures from the stored rules.
+- These figures do not compare with the 0.73 s of 2026-11-18. The
+  container is not always on the same hardware, and the bundle had six
+  rules more then.
+- The same rules give the same file. Each of the two bundles was built
+  twice and came out the same byte for byte. Built without the cipher,
+  with the exclusion list and the creation time of the bundle on the
+  Windows desktop, the container wrote that very file: the one that the
+  Windows build of commit `f9aef95` had written there the day before.
+
+Raw figures, with what can and cannot be read in the two files:
+[2026-11-20-dev-container-sealed-bundle.txt](benchmarks/2026-11-20-dev-container-sealed-bundle.txt).
 
 ## False positives
 
@@ -873,6 +909,11 @@ leave that one file alone is a change to an antivirus setting. No script
 of this project makes such a change, on any machine; the owner of the
 machine does. Until then the kit says what it could not read and scans
 with the rest.
+
+Since this run a rule bundle keeps its contents under a cipher, so that
+the patterns of its rules are not in the file as they are
+([RULES.md](RULES.md#rule-files-and-your-antivirus)). A kit with such a
+bundle has not run on this machine yet.
 
 How the run went, because it took three attempts on the same
 installation:

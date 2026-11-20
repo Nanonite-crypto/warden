@@ -48,7 +48,7 @@ with other software on it is likely to meet another one.
 - The YARA layer recognises a generated rule by the `tool` field of its
   metadata, when it reports a match. The plan was to record it in the rule
   bundle; that turned out not to be needed, so the bundle format did not
-  change.
+  change for it.
 - The heuristic layer reports a score below its threshold too, from a
   lower bar on, as something to count with and not as a finding. That
   brought back the lower level that phase 3 removed because nothing used
@@ -78,11 +78,14 @@ suspicious too, and not when it is plain.
 | The desktop | Done: no file flagged in 285,917. The seven files that the four rules flagged there are on record with a clean verdict, and so are four clean libraries that nobody knew of: the rule that matches them had been on the exclusion list since before those folders were first scanned |
 
 **Beyond the criterion.** A Windows 11 was installed in a virtual machine
-for a run on files that nothing here was written from. Its Defender blocks
-the rule bundle, so the run so far is without the public rules: none of
-153,317 files flagged. The run with the rules is open; it needs the
-machine's owner to let Defender leave the bundle alone
-([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)).
+for a run on files that nothing here was written from. Its Defender
+blocked the rule bundle, so the run so far is without the public rules:
+none of 153,317 files flagged
+([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)). For
+that reason a bundle now keeps its contents under a cipher
+([RULES.md](RULES.md#rule-files-and-your-antivirus)). The run with the
+rules is still open: it needs a kit with such a bundle, or the machine's
+owner to let Defender leave the old one alone.
 
 **What it cannot show.** What the change costs in detection. A generated
 rule that matches plain-looking malware no longer flags it alone, and
@@ -126,6 +129,7 @@ installer plug-in.
 | 2026-11-20 | The kit for a fresh machine does not stop when that machine's antivirus blocks the rule bundle. It says so and scans with the layers that need no bundle. It changes no antivirus setting, like every script here. |
 | 2026-11-20 | A command whose output nobody reads any more, as when it is piped into `head`, stops quietly with exit code 2. It used to end in a panic. Everything the command-line program prints goes through one place that can fail, and a lint keeps out the printing macros that cannot. |
 | 2026-11-20 | A scan counts the folders it could not open apart from the files it could not read, and a false-positive result names them. An unreadable folder used to count as one skipped entry, whatever was in it. The formats went up a version for it: scan report 4, false-positive result 3, benchmark result 3. |
+| 2026-11-20 | A rule bundle keeps its contents under ChaCha20 with the key in its header, as the quarantine keeps files, so that an antivirus does not take the bundle for the malware its rules describe. The key is the SHA-256 of the contents, so that the same rules give the same file. Bundles written before stay readable, and `warden rules build --plain` still writes one. This settles how a release stores its rules. |
 
 ## Open decisions
 
@@ -135,12 +139,6 @@ installer plug-in.
   one thing; putting those rules into an installer is another. To be
   settled before the portfolio checkpoint (phase 8), when the first
   installer is built.
-- **How a release stores its rules.** Microsoft Defender removes a
-  compiled rule bundle outside an excluded folder, as it does the rule
-  package ([RULES.md](RULES.md#rule-files-and-your-antivirus)). An
-  installed program cannot ask for an exclusion. One way is to keep the
-  bundle under a cipher, as the quarantine keeps files. To be settled
-  before the first installer, in phase 8.
 - **MalwareBazaar import with family names.** The plain hash-list import
   exists. Importing the CSV export, which carries malware family names,
   waits until it can be tested against a real export, which needs a free

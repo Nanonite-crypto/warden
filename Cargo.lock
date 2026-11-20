@@ -2850,6 +2850,7 @@ dependencies = [
 name = "warden-yara"
 version = "0.1.0"
 dependencies = [
+ "chacha20",
  "rsa",
  "serde",
  "serde_json",

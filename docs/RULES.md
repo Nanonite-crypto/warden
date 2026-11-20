@@ -50,6 +50,11 @@ build. `--show-skipped` lists the rules that were left out with the reason.
 The built-in rules are part of every bundle unless `--no-builtin` is given,
 so a scan with a bundle catches everything a scan without one does.
 
+A bundle keeps its contents under a cipher, so that an antivirus does not
+take it for the malware its rules describe.
+[Rule files and your antivirus](#rule-files-and-your-antivirus) says what
+that is about, and `--plain` builds a bundle without it.
+
 ### Other people's rules are not in this repository
 
 Public rule sets belong to their authors and carry their own licences, some
@@ -116,24 +121,56 @@ fetch script says so and prints these two commands with the full path. With
 the folder excluded, the download, the build of the bundle and a scan of
 System32 with it ran through on the same machine.
 
-Defender objects to a compiled bundle as well. A copy of `rules.wrb` that
-was made outside that folder, on the same desktop, was blocked and then
-removed. So a bundle has to stay in the excluded folder too, and so does
-anything that holds one: the image of the
-[scan kit](TESTING.md#a-machine-the-list-was-not-written-from) is kept
-there for that reason.
-
-A freshly installed Windows 11 without a network did the same to the
-bundle on the kit's CD, and its Defender gave the reason a name:
-`Trojan:JS/Webshell.DSK1!MTB`. Going by the name, the patterns of rules
-that describe web shells are enough to be taken for one. Warden got "the
-file contains a virus or potentially unwanted software" when it opened the
-bundle, and the scan there ran without the public rules
+Defender objects to compiled rules as well. A copy of a bundle that stored
+its rules as they are, made outside that folder on the same desktop, was
+blocked and then removed. A freshly installed Windows 11 without a network
+did the same to such a bundle on the CD of the
+[scan kit](TESTING.md#a-machine-the-list-was-not-written-from), and its
+Defender gave the reason a name: `Trojan:JS/Webshell.DSK1!MTB`. Going by
+the name, the patterns of rules that describe web shells are enough to be
+taken for one. Warden got "the file contains a virus or potentially
+unwanted software" when it opened the bundle, and the scan there ran
+without the public rules
 ([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)).
 
-This is fine for development and not for a release: an installed program
-cannot ask its users to exclude a folder. How a release stores its rules
-is not decided yet.
+An exclusion is fine for development and not for a release: an installed
+program cannot ask its users to exclude a folder. So a bundle keeps its
+contents under a cipher, ChaCha20, with the key in the bundle's own header.
+Warden takes the cipher off in memory when it opens the bundle, and
+nothing is written back to disk without it. The quarantine keeps files the
+same way and for the same reason
+([QUARANTINE.md](QUARANTINE.md#what-the-cipher-is-for)).
+[The format](#the-rule-bundle-format) has the layout, and what the cipher
+is and is not good for.
+
+What has been measured of this, on 2026-11-20:
+
+- **The patterns are gone from the file.** The bundle of 5,132 rules
+  described above was built with the cipher and without. The one without
+  holds 22,920 different stretches of eight or more printable characters,
+  and none of them occurs in the other. Position by position, the two
+  agree in one byte of 259, where chance would have one in 256.
+- **Defender on the desktop left such a bundle alone for as long as it
+  was watched.** The bundle with the cipher was put on that desktop
+  outside the excluded folder, where the copy without the cipher had been
+  blocked and removed, and copied once there. Nearly eleven hours later
+  both files were still there and read back with the checksum they had
+  been written with. Whether real-time protection was on during those
+  hours was not checked, and no bundle without the cipher was put next to
+  them for comparison, because that would have raised an alarm on
+  somebody's desktop on purpose.
+- **The fresh Windows 11 has not seen such a bundle yet.** Its Defender is
+  the one that named the bundle without the cipher, so that run is the
+  comparison the desktop does not give. It needs a kit with a Windows
+  build that reads the new format, and is open.
+
+The figures and the times are in
+[2026-11-20-dev-container-sealed-bundle.txt](benchmarks/2026-11-20-dev-container-sealed-bundle.txt).
+
+One exclusion stays necessary on a Windows machine with Defender: the
+rule package is a file of rule text, and building a bundle starts with
+downloading it. Using a bundle that is already built should need none.
+The measurements above are the evidence for that so far.
 
 ## Rules that are left out
 
@@ -490,22 +527,36 @@ and the rest are counted.
 
 A bundle (`.wrb`) is one file: a fixed header, a manifest that records
 where the rules came from, and the compiled rules. All integers are
-little-endian. This is version 1.
+little-endian.
+
+There are two versions. Version 2 keeps the manifest and the rules under a
+cipher, and is what `warden rules build` writes. Version 1 stores them as
+they are; `warden rules build --plain` writes it. Warden reads both, and
+`warden rules info` says which of the two a file is.
 
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 8 | Signature: `WRDNRUL` followed by a zero byte |
-| 8 | 4 | Format version: 1 |
-| 12 | 4 | Header length: 96 |
+| 8 | 4 | Format version: 1 or 2 |
+| 12 | 4 | Header length: 96 in version 1, 128 in version 2 |
 | 16 | 4 | Flags: 0 |
 | 20 | 4 | Number of rules |
 | 24 | 8 | Creation time, seconds since the Unix epoch |
 | 32 | 8 | Length of the manifest in bytes |
 | 40 | 8 | Length of the compiled rules in bytes |
 | 48 | 16 | Reserved: zero |
-| 64 | 32 | SHA-256 of bytes 0 to 63 followed by the manifest and the rules |
+| 64 | 32 | Digest: SHA-256 of the whole file apart from these 32 bytes |
+| 96 | 32 | Version 2 only. Key: SHA-256 of the manifest followed by the compiled rules, as they are without the cipher |
 
-The manifest follows the header and is UTF-8 JSON:
+The manifest follows the header, and the compiled rules follow the
+manifest, in the form YARA-X serialises them. In version 2 the two together
+are under ChaCha20 as [RFC 8439](https://www.rfc-editor.org/rfc/rfc8439)
+defines it: the key from the header, a nonce of twelve zero bytes, and a
+block counter that starts at zero. The two lengths in the header are the
+same in both versions, because a stream cipher leaves the length of what it
+is applied to as it was.
+
+The manifest is UTF-8 JSON:
 
 ```json
 {
@@ -545,17 +596,47 @@ exclusion list. Both were added after version 1 was first written down. A
 reader that does not know them ignores them, and a bundle without them
 loads as before, so the version number did not change.
 
-The compiled rules follow the manifest, in the form YARA-X serialises them.
-
 When a bundle is opened, Warden checks in this order: the signature and
-version, that the three lengths add up to the size of the file, the digest,
-the manifest, that the bundle was built with the same YARA-X release as the
-program, and that the number of rules matches the header. A file that fails
-any check is refused as a whole.
+the version, that the header length is the one of that version, that the
+three lengths add up to the size of the file, the digest, in version 2 that
+the key is the SHA-256 of what it opens, the manifest, that the bundle was
+built with the same YARA-X release as the program, and that the number of
+rules matches the header. A file that fails any check is refused as a whole.
 
 Compiled rules load only in the YARA-X release that compiled them. A bundle
 from another release is refused with the advice to build it again; the rule
 files themselves stay valid.
+
+### What the cipher is for, and what it is not
+
+The cipher keeps the bundle from being taken for the malware its rules
+describe ([Rule files and your antivirus](#rule-files-and-your-antivirus)).
+It keeps nothing secret. The key is in the header, how to use it is
+written down above, and `warden rules build --plain` writes the same rules
+without it.
+
+The key is made from the contents, where the quarantine draws a random key
+for every entry. A bundle is something that is built, and the same rules
+should give the same file. They do: two runs of `warden rules build` with
+the same rule package, exclusion list and creation time wrote the same
+file byte for byte, with the cipher and without it. Without it, a build on
+Linux also gave the very file that the Windows build of the day before had
+written on the desktop, once it was given the exclusion list and the
+creation time of that file. A key made from the contents needs no source
+of random numbers either. And it is why the nonce can be zero: a nonce
+keeps one key from making the same stream for two texts, and here a key
+only ever belongs to one.
+
+What the cipher costs is time at every start, when the contents are
+copied, opened and checked against the key. For the bundle of 5,132 rules
+(8.7 MB) those three steps take 9 ms in the development container, where
+a start with this bundle takes half a second
+([BENCHMARKS.md](BENCHMARKS.md#what-the-cipher-on-the-rule-bundle-costs)).
+
+It does not hide the patterns from a program that reads the memory of
+others. That is no different from any other program that scans with YARA
+rules, and Defender, which removed the file without the cipher, did not
+object to Warden while it scanned the desktop with those rules loaded.
 
 ### What the digest does and does not protect
 

@@ -163,7 +163,12 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
   before a name reaches a report or a terminal, and nothing is ever written
   to a path taken from an archive.
 - The rule bundle reader is tested against truncation, damage in the header
-  and the body, and bundles written for another version of the rule engine.
+  and the body, and bundles written for another version of the rule engine,
+  in both versions of the format. For the version that keeps its contents
+  under a cipher, tests check that what the rules look for cannot be found
+  in the file, that a key which does not belong to the contents is
+  refused, that the same rules give the same file, and that the cipher is
+  ChaCha20 as RFC 8439 defines it, by the example that the RFC gives.
   A rule that does not compile is left out and named, and the rest of its
   file is kept.
 - The reader for Windows executables takes every offset, size and count
@@ -363,9 +368,11 @@ pip install pycdlib
 python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --out rules/vendor/warden-kit.iso
 ```
 
-The image goes into `rules/vendor` because it holds a rule bundle, and
-Microsoft Defender removes a bundle anywhere else
-([RULES.md](RULES.md#rule-files-and-your-antivirus)).
+The first kits had to go into `rules/vendor`: their rule bundle stored
+its rules as they are, and Microsoft Defender removes such a file anywhere
+else ([RULES.md](RULES.md#rule-files-and-your-antivirus)). A bundle keeps
+its contents under a cipher now. Until a kit with such a bundle has been
+through a run, the image stays where the bundle is.
 
 The image holds the Windows build of Warden, a rule bundle and
 `fresh-install-scan.cmd`. Attached to a virtual machine and started there
@@ -395,14 +402,17 @@ python3 scripts/read-scan-kit-output.py com1.txt --out results/
 
 Three things to know before the first run:
 
-- **Microsoft Defender on a fresh Windows blocks the rule bundle too**, as
-  it did on the desktop ([RULES.md](RULES.md#rule-files-and-your-antivirus)).
-  Warden then cannot read it: "the file contains a virus or potentially
-  unwanted software". The script notices in step 2, says so, and scans
-  with the layers that need no bundle: the built-in signature and rule,
-  and the heuristics. The result is marked as such. A scan with the public
-  rules needs the bundle excluded in that machine's Defender first. The
-  script does not do that, as no script here changes an antivirus setting.
+- **Microsoft Defender on a fresh Windows blocked the rule bundle of the
+  first kits**, as it did on the desktop
+  ([RULES.md](RULES.md#rule-files-and-your-antivirus)). That bundle stored
+  its rules as they are. Warden then cannot read it: "the file contains a
+  virus or potentially unwanted software". The script notices in step 2,
+  says so, and scans with the layers that need no bundle: the built-in
+  signature and rule, and the heuristics. The result is marked as such. A
+  bundle keeps its contents under a cipher now, so that this does not
+  happen; whether it works on that machine is not known before a kit with
+  such a bundle has run there. Whatever the bundle, the script changes no
+  antivirus setting, as no script here does.
 - **Do not click into the script's window.** A click selects text, and
   Windows holds a console program still for as long as text is selected.
   The scan then waits, without a word, until Esc is pressed.

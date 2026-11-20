@@ -795,7 +795,8 @@ fn rules_build_and_info_describe_a_bundle() {
                 ))
                 .and(predicate::str::contains("Test_Broken: "))
                 .and(predicate::str::contains("this_identifier_does_not_exist"))
-                .and(predicate::str::contains("markers.wrb")),
+                .and(predicate::str::contains("markers.wrb"))
+                .and(predicate::str::contains("contents under a cipher")),
         );
 
     warden()
@@ -805,6 +806,9 @@ fn rules_build_and_info_describe_a_bundle() {
         .success()
         .stdout(
             predicate::str::contains("Rules        3")
+                .and(predicate::str::contains(
+                    "Format       version 2, contents under a cipher",
+                ))
                 .and(predicate::str::contains(
                     "Built        2027-01-15T08:00:00Z",
                 ))
@@ -820,6 +824,7 @@ fn rules_build_and_info_describe_a_bundle() {
     ))
     .unwrap();
     assert_eq!(json["rules"], 3);
+    assert_eq!(json["format_version"], 2);
     assert_eq!(json["created_unix_secs"], 1_800_000_000u64);
     assert_eq!(json["sources"][1]["name"], "markers.yar");
     assert_eq!(json["sources"][1]["rules"], 2);
@@ -842,6 +847,109 @@ fn rules_build_and_info_describe_a_bundle() {
         .arg(dir.path().join("does-not-exist.yar"))
         .assert()
         .code(2);
+}
+
+/// Whether `needle` occurs anywhere in `haystack`.
+fn holds(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
+
+#[test]
+fn a_bundle_is_written_under_a_cipher_unless_plain_is_asked_for() {
+    let dir = tempfile::tempdir().unwrap();
+    let sealed = marker_bundle(dir.path());
+    let rules = dir.path().join("markers.yar");
+    let plain = dir.path().join("plain.wrb");
+    warden()
+        .args([
+            "rules",
+            "build",
+            "--plain",
+            "--created",
+            "1800000000",
+            "--out",
+        ])
+        .arg(&plain)
+        .arg(&rules)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("contents as they are")
+                .and(predicate::str::contains("An antivirus may take a bundle")),
+        );
+
+    // What the rules look for can be read in the plain bundle and not in
+    // the other one. That is what an antivirus goes by.
+    let sealed_bytes = fs::read(&sealed).unwrap();
+    let plain_bytes = fs::read(&plain).unwrap();
+    for pattern in [
+        &b"WARDEN-CLI-HIGH"[..],
+        b"WARDEN-CLI-MEDIUM",
+        b"markers.yar",
+    ] {
+        let shown = String::from_utf8_lossy(pattern);
+        assert!(holds(&plain_bytes, pattern), "{shown} in the plain bundle");
+        assert!(
+            !holds(&sealed_bytes, pattern),
+            "{shown} in the sealed bundle"
+        );
+    }
+
+    // `rules info` says which is which, and describes the same rules.
+    let info_of = |bundle: &Path| -> serde_json::Value {
+        serde_json::from_str(&stdout_of(
+            warden().args(["rules", "info", "--json"]).arg(bundle),
+        ))
+        .unwrap()
+    };
+    let (sealed_info, plain_info) = (info_of(&sealed), info_of(&plain));
+    assert_eq!(sealed_info["format_version"], 2);
+    assert_eq!(plain_info["format_version"], 1);
+    for field in ["rules", "created_unix_secs", "engine", "sources", "scores"] {
+        assert_eq!(sealed_info[field], plain_info[field], "{field}");
+    }
+    assert_ne!(sealed_info["digest"], plain_info["digest"]);
+    warden()
+        .args(["rules", "info"])
+        .arg(&plain)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Format       version 1, contents as they are",
+        ));
+
+    // A scan finds the same with either.
+    let tree = dir.path().join("tree");
+    fs::create_dir_all(&tree).unwrap();
+    fs::write(tree.join("high.txt"), "text with WARDEN-CLI-HIGH in it").unwrap();
+    fs::write(tree.join("clean.txt"), "text with nothing in it").unwrap();
+    for bundle in [&sealed, &plain] {
+        warden()
+            .arg("scan")
+            .arg(&tree)
+            .arg("--rules")
+            .arg(bundle)
+            .assert()
+            .code(1)
+            .stdout(
+                predicate::str::contains("Rules       3 YARA rules from 2 files")
+                    .and(predicate::str::contains("1 detection"))
+                    .and(predicate::str::contains("MALICIOUS   Test_Marker_High")),
+            );
+    }
+
+    // Built a second time, by another run of the program, a bundle comes
+    // out the same byte for byte.
+    let again = dir.path().join("again.wrb");
+    warden()
+        .args(["rules", "build", "--created", "1800000000", "--out"])
+        .arg(&again)
+        .arg(&rules)
+        .assert()
+        .success();
+    assert_eq!(fs::read(&again).unwrap(), sealed_bytes);
 }
 
 #[test]
