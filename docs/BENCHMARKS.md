@@ -50,7 +50,10 @@ See [TESTING.md](TESTING.md).
   sentence below says that so many files could not be read, that number
   is of entries, and a lower bound of what the run did not see. This was
   noticed in phase 4, see
-  [the fifth round](#with-a-second-sign-for-generated-rules).
+  [the fifth round](#with-a-second-sign-for-generated-rules). On Windows,
+  which folders a scan may open depends on how it was started, and not
+  only on the account:
+  [TESTING.md](TESTING.md#tests-that-close-a-file-or-a-folder).
 - **Micro-benchmarks** use Criterion (`cargo bench`) and report the
   estimate with its confidence interval.
 - **Hardware is always stated.** Numbers from a shared CI runner or a cloud

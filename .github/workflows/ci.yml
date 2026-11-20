@@ -55,8 +55,12 @@ jobs:
         shell: bash
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy,rustfmt --no-self-update
       - uses: Swatinem/rust-cache@v2
+      # No `shell: bash` here. On Windows this step has to start from
+      # PowerShell, the default there: Git Bash switches on the backup
+      # privilege of an administrator for every program it starts, and a
+      # process with that privilege lists a folder whatever its access
+      # rights say. The tests that close a folder have nothing to test then.
       - name: Run the test suite
-        shell: bash
         run: cargo test --workspace --locked
         env:
           # The tests that write the EICAR test file to disk are required to
@@ -66,6 +70,10 @@ jobs:
           # for them. See docs/TESTING.md.
           WARDEN_EICAR_DIR: ${{ runner.temp }}/warden-eicar
           WARDEN_REQUIRE_EICAR: "1"
+          # So are the tests that take away the right to read a file or to
+          # list a folder. Where access rights do not apply to the process,
+          # they would pass with a note.
+          WARDEN_REQUIRE_ACCESS_TESTS: "1"
       # The tests above read executables that this project builds itself.
       # Windows has a folder full of real ones: they are read with Warden's
       # reader and with a second, independent one, and the two have to agree.

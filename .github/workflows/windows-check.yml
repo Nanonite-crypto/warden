@@ -39,6 +39,9 @@ jobs:
       - name: Lint
         run: cargo clippy -p warden-engine -p warden-quarantine --all-targets --locked -- -D warnings
       # All of them, also after one has failed: a round trip through CI
-      # should say everything it can.
+      # should say everything it can. From PowerShell, the default shell
+      # here, for the reason given in ci.yml.
       - name: Test
         run: cargo test -p warden-engine -p warden-quarantine --locked --no-fail-fast
+        env:
+          WARDEN_REQUIRE_ACCESS_TESTS: "1"

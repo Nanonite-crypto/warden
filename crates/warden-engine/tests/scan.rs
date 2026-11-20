@@ -390,6 +390,28 @@ fn links_are_counted_but_not_followed() {
     assert_eq!(report.stats.files_skipped, 0);
 }
 
+/// Called by a test that took the right to read a file or to list a folder
+/// away and found that this process can do it all the same. There is
+/// nothing to test then.
+///
+/// Access rights do not apply to root on Unix. On Windows they do not apply
+/// to the listing of folders for a process whose backup privilege is
+/// switched on, and the Git Bash of an administrator switches it on for
+/// every program it starts.
+///
+/// The test passes with a note. `WARDEN_REQUIRE_ACCESS_TESTS=1` turns the
+/// note into a failure; CI sets it, so that these tests run for real there.
+#[cfg(any(unix, windows))]
+fn access_rights_do_not_apply(what: &str) {
+    let note = format!(
+        "{what} was not exercised: access rights do not apply to this process. \
+         See docs/TESTING.md."
+    );
+    let strict = std::env::var_os("WARDEN_REQUIRE_ACCESS_TESTS").is_some_and(|value| value == "1");
+    assert!(!strict, "{note}");
+    eprintln!("note: {note}");
+}
+
 #[cfg(unix)]
 #[test]
 fn unreadable_files_are_reported_with_a_reason() {
@@ -401,7 +423,7 @@ fn unreadable_files_are_reported_with_a_reason() {
     write(&dir.path().join("open.bin"), b"public");
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     if fs::read(&locked).is_ok() {
-        // Running as root: permissions do not apply, nothing to test.
+        access_rights_do_not_apply("a file that cannot be read");
         return;
     }
 
@@ -449,17 +471,65 @@ fn tree_with_a_folder_to_close(threat: &[u8]) -> (tempfile::TempDir, PathBuf) {
     (dir, closed)
 }
 
+/// Takes away the right to list a folder. Says `false` if this process
+/// can list it all the same, see [`access_rights_do_not_apply`].
 #[cfg(unix)]
+fn close_folder(folder: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
+    true
+}
+
+#[cfg(unix)]
+fn open_folder(folder: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+#[cfg(windows)]
+fn icacls(folder: &Path, arguments: &[&str]) {
+    let status = std::process::Command::new("icacls")
+        .arg(folder)
+        .args(arguments)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "icacls {arguments:?}");
+}
+
+/// Takes away the right to list a folder: everyone (S-1-1-0) is denied it,
+/// and a denial comes before every permission, an administrator's
+/// included. Says `false` if this process can list the folder all the same,
+/// see [`access_rights_do_not_apply`].
+#[cfg(windows)]
+fn close_folder(folder: &Path) -> bool {
+    icacls(folder, &["/deny", "*S-1-1-0:(RD)"]);
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
+    true
+}
+
+#[cfg(windows)]
+fn open_folder(folder: &Path) {
+    icacls(folder, &["/remove:d", "*S-1-1-0"]);
+}
+
+/// The case this was written for is on Windows: a folder like
+/// `C:\Program Files\WindowsApps`, which a program without administrator
+/// rights may see and not list.
+#[cfg(any(unix, windows))]
 #[test]
 fn a_folder_that_cannot_be_opened_is_counted_apart_from_files() {
-    use std::os::unix::fs::PermissionsExt;
-
     let threat = fixture(91, 64);
     let (dir, closed) = tree_with_a_folder_to_close(&threat);
-    fs::set_permissions(&closed, fs::Permissions::from_mode(0o000)).unwrap();
-    if fs::read_dir(&closed).is_ok() {
-        // Running as root: permissions do not apply, nothing to test.
-        fs::set_permissions(&closed, fs::Permissions::from_mode(0o700)).unwrap();
+    if !close_folder(&closed) {
+        access_rights_do_not_apply("a folder that cannot be opened");
         return;
     }
 
@@ -468,43 +538,8 @@ fn a_folder_that_cannot_be_opened_is_counted_apart_from_files() {
         ScanOptions::default(),
     );
     let report = scan(&scanner, dir.path());
-    fs::set_permissions(&closed, fs::Permissions::from_mode(0o700)).unwrap();
-
-    assert_the_closed_folder_is_told_apart(&report);
-}
-
-/// The Windows case that this was written for: a folder like
-/// `C:\Program Files\WindowsApps`, which a program without administrator
-/// rights may see and not list.
-#[cfg(windows)]
-#[test]
-fn a_folder_that_cannot_be_opened_is_counted_apart_from_files() {
-    fn icacls(folder: &Path, arguments: &[&str]) {
-        let status = std::process::Command::new("icacls")
-            .arg(folder)
-            .args(arguments)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .unwrap();
-        assert!(status.success(), "icacls {arguments:?}");
-    }
-
-    let threat = fixture(91, 64);
-    let (dir, closed) = tree_with_a_folder_to_close(&threat);
-    // Everyone (S-1-1-0) is denied the right to list the folder. A denial
-    // comes before every permission, an administrator's included.
-    icacls(&closed, &["/deny", "*S-1-1-0:(RD)"]);
-    assert!(
-        fs::read_dir(&closed).is_err(),
-        "the folder should be closed"
-    );
-
-    let scanner = hash_scanner(
-        &[(&threat, "Test.Hidden", Category::Malware)],
-        ScanOptions::default(),
-    );
-    let report = scan(&scanner, dir.path());
-    icacls(&closed, &["/remove:d", "*S-1-1-0"]);
+    // Before anything can fail: the temporary folder has to go away again.
+    open_folder(&closed);
 
     assert_the_closed_folder_is_told_apart(&report);
 }

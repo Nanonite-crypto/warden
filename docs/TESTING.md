@@ -137,6 +137,28 @@ Remove-MpPreference -ExclusionPath "$PWD\testdata\eicar-zone"
 The `testdata` folder is ignored by git. The EICAR file is generated when
 needed and deleted afterwards; it is never committed.
 
+## Tests that close a file or a folder
+
+Three tests take away the right to read a file or to list a folder, and
+check what a scan says about it. They cannot work for a process that
+access rights do not apply to:
+
+- On Linux and macOS that is root.
+- On Windows it is a process whose backup privilege is switched on. Such
+  a process lists a folder whatever the folder's access rights say. An
+  administrator's programs have that privilege switched off, unless they
+  are started from Git Bash, which switches it on for everything it
+  starts. On a hosted Windows runner, `whoami /priv` showed the privilege
+  as enabled under Git Bash and as disabled under PowerShell, and the same
+  test found its folder open under the one and closed under the other.
+
+Such a test then passes and prints a note that it was not exercised.
+`WARDEN_REQUIRE_ACCESS_TESTS=1` turns the note into a failure. CI sets it
+on both systems, and starts the tests on Windows from PowerShell.
+
+The same holds for Warden itself: which folders a scan may open on Windows
+depends on how it was started, and not only on the account.
+
 ## Hostile input
 
 Anything Warden parses is treated as hostile, because for a scanner it is.

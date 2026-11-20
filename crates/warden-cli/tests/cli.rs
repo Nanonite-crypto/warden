@@ -209,9 +209,30 @@ fn impossible_requests_exit_two_with_a_message() {
         .stderr(predicate::str::contains("not a Warden signature database"));
 }
 
+/// Called by a test that took the right to list a folder away and found
+/// that this process can list it all the same. There is nothing to test
+/// then.
+///
+/// Access rights do not apply to root on Unix. On Windows they do not apply
+/// to the listing of folders for a process whose backup privilege is
+/// switched on, and the Git Bash of an administrator switches it on for
+/// every program it starts, `warden` included.
+///
+/// The test passes with a note. `WARDEN_REQUIRE_ACCESS_TESTS=1` turns the
+/// note into a failure; CI sets it, so that these tests run for real there.
+fn access_rights_do_not_apply(what: &str) {
+    let note = format!(
+        "{what} was not exercised: access rights do not apply to this process. \
+         See docs/TESTING.md."
+    );
+    let strict = std::env::var_os("WARDEN_REQUIRE_ACCESS_TESTS").is_some_and(|value| value == "1");
+    assert!(!strict, "{note}");
+    eprintln!("note: {note}");
+}
+
 /// Makes a folder impossible to list, the way `C:\Program Files\WindowsApps`
-/// is for a program without administrator rights. Says `false` where that
-/// cannot be done: permissions do not apply to root.
+/// is for a program without administrator rights. Says `false` if this
+/// process can list it all the same, see [`access_rights_do_not_apply`].
 #[cfg(unix)]
 fn close_folder(folder: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
@@ -241,11 +262,16 @@ fn icacls(folder: &Path, arguments: &[&str]) {
 }
 
 /// Everyone (S-1-1-0) is denied the right to list the folder. A denial comes
-/// before every permission, an administrator's included.
+/// before every permission, an administrator's included. Says `false` if
+/// this process can list the folder all the same, see
+/// [`access_rights_do_not_apply`].
 #[cfg(windows)]
 fn close_folder(folder: &Path) -> bool {
     icacls(folder, &["/deny", "*S-1-1-0:(RD)"]);
-    assert!(fs::read_dir(folder).is_err(), "the folder should be closed");
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
     true
 }
 
@@ -265,7 +291,7 @@ fn a_folder_that_cannot_be_opened_is_named_and_counted_apart_from_files() {
         fs::write(closed.join(name), "three files that cannot").unwrap();
     }
     if !close_folder(&closed) {
-        eprintln!("note: running as root, so no folder can be closed; nothing to test");
+        access_rights_do_not_apply("a folder that cannot be opened");
         return;
     }
 
