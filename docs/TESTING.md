@@ -359,7 +359,12 @@ installed updates and programs), runs `warden false-positives` over the
 whole of `C:\`, and writes both results to `C:\warden-out`. If the machine
 has a serial port, it also sends them through it with a checksum each,
 which is the way out of a machine without a network: the hypervisor writes
-what arrives to a file on the host.
+what arrives to a file on the host. There, a second script takes that file
+apart and checks each result against its checksum:
+
+```
+python3 scripts/read-scan-kit-output.py com1.txt --out results/
+```
 
 `warden.exe` is built with the C runtime linked in (`.cargo/config.toml`),
 because a freshly installed Windows need not have it. A test checks that
