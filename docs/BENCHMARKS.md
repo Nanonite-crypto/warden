@@ -41,6 +41,13 @@ See [TESTING.md](TESTING.md).
   was produced with, because the count belongs to the rules as much as to
   the engine. Since phase 4 a result also lists the files with a finding
   that did not count, apart from the flagged ones: their verdict is clean.
+- **What could not be read is counted by entry, and an entry can be a
+  folder.** A folder that cannot be opened counts as one, and the files in
+  it are neither scanned nor counted. Where a table or a sentence below
+  says that so many files could not be read, the number is a lower bound
+  of what the run did not see. A result does not name these entries. This
+  was noticed in phase 4, see
+  [the fifth round](#with-a-second-sign-for-generated-rules).
 - **Micro-benchmarks** use Criterion (`cargo bench`) and report the
   estimate with its confidence interval.
 - **Hardware is always stated.** Numbers from a shared CI runner or a cloud
@@ -431,6 +438,48 @@ the later run:
 [benchmark](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32.json),
 [the run with rules](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32-false-positives.json).
 
+## Results: phase 4
+
+Phase 4 changed how findings add up to a verdict, and added the
+quarantine. Its numbers are about false positives and are under
+[the fifth round](#with-a-second-sign-for-generated-rules). This section
+has one check: how long a scan takes now.
+
+### Windows desktop
+
+The machine of the phases before, with administrator rights, on commit
+`f9aef95`, on 2026-11-19 at 00:12 UTC. This build has the C runtime linked
+in; the builds before loaded it as a library.
+
+**Scan throughput** over `C:\Windows\System32`, with
+`scripts\win\check.cmd -Rules -SkipTests`. The three benchmark passes read
+27,646 files, 10.29 GB, and could not read 34 entries; the pass with rules
+read 27,643 files, 10.12 GB, and could not read 37.
+
+| Layers | Pass | Time | Files/s | MB/s |
+|---|---|---|---|---|
+| Default: hash, the built-in rule, heuristics, archives | 1 | 21.76 s | 1,271 | 472.8 |
+| | 2 | 8.10 s | 3,412 | 1,269.4 |
+| | 3 | 8.07 s | 3,427 | 1,275.0 |
+| Hash, archives, 5,132 rules, heuristics | One, after those | 21.91 s | 1,261 | 462.0 |
+
+- From the file cache a pass took 8.1 s and read 1,269 to 1,275 MB/s. The
+  passes of phase 3 took 7.6 to 7.8 s for 0.17 GB less, and read 1,291 to
+  1,331 MB/s; that is a spread of 3 % between two runs of one build. So
+  the passes of phase 4 are 1 to 5 % slower per byte, on a machine in use.
+  The reason may be the change to the verdict, the C runtime linked in, or
+  the machine. This run cannot tell them apart.
+- The pass with rules took 21.9 s, between the 21.2 s and 22.8 s of the
+  two runs of phase 3. It ran four rules more than the later of those.
+- What linking the C runtime in changes was not measured by itself.
+- No file was flagged, and one is on record, see
+  [False positives](#with-a-second-sign-for-generated-rules).
+
+Raw results:
+[benchmark](benchmarks/2026-11-19-windows-desktop-phase4-system32.json),
+[the run with rules](benchmarks/2026-11-19-windows-desktop-phase4-system32-false-positives.json),
+[machine](benchmarks/2026-11-19-windows-desktop-phase4-machine.json).
+
 ## False positives
 
 Five rounds of runs. The first used every rule of the rule package and
@@ -694,50 +743,88 @@ list of six has 5,132 rules. A match of 205 leads to the verdict malicious
 and a match of 3,305 to suspicious; the other 1,622 are generated. The
 heuristic layer backs up such a match from a score of 14.
 
-The runs on the GitHub-hosted runner were repeated with that bundle, and
-so was the scan of `/usr`.
+Every run of the rounds before was repeated with that bundle.
 
 | Files expected to be clean | Files | Data | Files inside archives | Flagged | On record, verdict clean |
 |---|---|---|---|---|---|
 | `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,806 | 4.80 GB | 193 | 0 | 1 |
 | Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 0 | 0 |
+| `C:\Windows\System32` on the Windows 11 desktop | 27,643 | 10.12 GB | 194 | 0 | 1 |
+| `C:\Program Files` and `C:\Program Files (x86)` on that desktop | 258,274 | 64.32 GB | 328,862 | 0 | 10 |
 | `/usr` in the Linux development container | 140,429 | 7.15 GB | 88,855 | 0 | 0 |
+| All | 535,859 | 100.81 GB | 507,153 | **0** | 12 |
 
-**The one file on record is `vulkan-1.dll`**, with the rule that flagged it
-in the first round, `MALPEDIA_Win_Triback_Loader_Auto`, and with the
-SHA-256 it had then. The rule is in the bundle again and matches the file
-again. The heuristic layer has nothing to say about the file, so the match
-is kept on record and the verdict is clean. That is the case the change
-was made for, on a real file.
+**No file is flagged, and twelve are on record.** A file on record was
+matched by a generated rule and by nothing else: the heuristic layer has
+nothing to say about it, so the match is kept and the verdict is clean.
 
-A result now shows such a file. In the second round a run could not say
-whether `vulkan-1.dll` had been among the files it scanned, because a
-result listed only what was flagged.
+| On record | Rule | |
+|---|---|---|
+| `vulkan-1.dll` in System32 of the runner | `MALPEDIA_Win_Triback_Loader_Auto` | Flagged in the first round |
+| `liblouis.dll` in System32 of the desktop | the same | Flagged in the first round |
+| `libstdc++-6.dll` in Git for Windows, two copies | `MALPEDIA_Win_Bqtlock_Auto` | Flagged in the third round |
+| `zip.dll` and `unpack200.exe` of the Java runtime | `MALPEDIA_Win_Mystic_Stealer_Auto` | Flagged in the third round |
+| `ucrtbased.dll` in the Windows SDK, two copies | `MALPEDIA_Win_Yokai_Auto` | Flagged in the third round |
+| `SDL3_image.dll`, `libavif-16.dll` and `libpng16-16.dll` in Steam | `MALPEDIA_Win_Triback_Loader_Auto` | **New** |
+| `driver_VirtualDesktop.dll` of Virtual Desktop Streamer | the same | **New** |
+
+The first eight are the files that the four rules flagged before, each with
+the SHA-256 it had then. That is the exit criterion of the change: the
+clean files these rules flagged are no longer reported.
+
+**The last four were not known.** When the desktop's programs were first
+scanned, in the third round, the Triback rule was already on the exclusion
+list, so it never ran over them. Back in the bundle, it matches four more
+clean libraries on the same machine. Counted alone, each of these matches
+would make its file suspicious. With the second sign there was nothing to
+do: no list knew these files, and they are not reported.
 
 What the round shows, and what it does not:
 
-- **Nothing else was matched by a generated rule.** In 249,942 files, the
-  1,622 generated rules matched one, and no file was flagged.
-- **Three of the four rules were not put to the test.** They flagged files
-  of Git for Windows, the Java runtime and the Windows SDK on the desktop.
-  The folders scanned on the runner hold Git for Windows as well, in a
-  build that the rule did not match in the first round either, and
-  neither of the other two. Those files are on the desktop, and the
-  desktop has not been scanned with this bundle yet.
+- **How often generated rules match clean files:** twelve files in
+  535,859. Four of the 1,622 rules account for all of them, and one rule
+  for six. None of the twelve has a structure that scores 14 or more.
+- **It is the same kind of evidence as the fourth round.** The mechanism
+  was built knowing eight of these files. The four new ones are a small
+  test it did not know, and passed.
+- **The scan of the desktop's programs saw less than the ones before.** It
+  found 258,274 files where the fourth round, on 2026-11-18, had found
+  310,853, and 8 entries could not be read where 2 could not before. The
+  likely reason: this run was started from the Run box of Windows, which
+  gives a program no administrator rights. The runs before had them, and
+  they read `C:\Program Files\WindowsApps`, where the apps from the
+  Microsoft Store are: a file flagged in the third round is in it. By
+  default Windows lets an ordinary program list that folder only with
+  administrator rights, and a folder that cannot be opened counts as one
+  entry, whatever it holds. The result does not name the entries, and the
+  run did not record its rights, so this is a likely reason and not a
+  measured one. The six files that generated rules flagged among the
+  programs are in other folders, and the table shows that all six were
+  scanned again.
 - **It says nothing about detection.** A generated rule that matches
   malware with an ordinary structure is now kept on record in the same
   way. What that costs is not measured, see
   [RULES.md](RULES.md#what-the-second-sign-costs).
 
-In System32, 38 files could not be read and 2 were checked in part; in the
-software folders 7 were checked in part, and in `/usr` 8, all as before.
-This runner: AMD EPYC 9V45, 2 logical processors, 8 GB RAM, Windows Server
-2025, Microsoft Defender real-time protection off. Its runs took 5 min 22 s
-and 9 min 26 s, reading every file for the first time from the disk. The
-scan of `/usr` took 2 min 49 s on two cores.
+On the runner, in System32, 38 entries could not be read and 2 files were
+checked in part; in its software folders 7 files were checked in part. On
+the desktop, 37 entries in System32 could not be read and 5 files were
+checked in part; in the program folders 8 and 1,060. In `/usr`, 8 files
+were checked in part. This runner: AMD EPYC 9V45, 2 logical processors,
+8 GB RAM, Windows Server 2025, Microsoft Defender real-time protection
+off; its runs took 5 min 22 s and 9 min 26 s, reading every file for the
+first time from the disk. The desktop's took 22 s and 4 min 44 s, the
+second at 226 MB/s. The scan of `/usr` took 2 min 49 s on two cores.
+
+The desktop ran a build of commit `f9aef95`, which has the C runtime
+linked in. System32 was scanned on 2026-11-19 and the program folders a
+day later.
 
 Raw results:
-[System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-second-sign.json),
+runner [System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-second-sign.json),
 [software](benchmarks/2026-11-18-github-windows-runner-software-false-positives-with-second-sign.json),
-[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-second-sign-machine.json),
+[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-second-sign-machine.json);
+desktop [System32](benchmarks/2026-11-19-windows-desktop-phase4-system32-false-positives.json),
+[programs](benchmarks/2026-11-20-windows-desktop-phase4-programs-false-positives.json),
+[machine](benchmarks/2026-11-19-windows-desktop-phase4-machine.json);
 [`/usr`](benchmarks/2026-11-18-dev-container-usr-false-positives-with-second-sign.json).

@@ -345,8 +345,12 @@ so everything comes on a CD image:
 
 ```
 pip install pycdlib
-python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --out warden-kit.iso
+python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --out rules/vendor/warden-kit.iso
 ```
+
+The image goes into `rules/vendor` because it holds a rule bundle, and
+Microsoft Defender removes a bundle anywhere else
+([RULES.md](RULES.md#rule-files-and-your-antivirus)).
 
 The image holds the Windows build of Warden, a rule bundle and
 `fresh-install-scan.cmd`. Attached to a virtual machine and started there

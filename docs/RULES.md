@@ -116,8 +116,16 @@ fetch script says so and prints these two commands with the full path. With
 the folder excluded, the download, the build of the bundle and a scan of
 System32 with it ran through on the same machine.
 
-Whether Defender also objects to a compiled bundle outside that folder has
-not been tried.
+Defender objects to a compiled bundle as well. A copy of `rules.wrb` that
+was made outside that folder, on the same desktop, was blocked and then
+removed. So a bundle has to stay in the excluded folder too, and so does
+anything that holds one: the image of the
+[scan kit](TESTING.md#a-machine-the-list-was-not-written-from) is kept
+there for that reason.
+
+This is fine for development and not for a release: an installed program
+cannot ask its users to exclude a folder. How a release stores its rules
+is not decided yet.
 
 ## Rules that are left out
 
@@ -356,13 +364,30 @@ layer alone has enough, and together they do.
 
 ### What the four rules do now
 
-They are in the bundle again, and the false-positive runs were repeated
-with them ([BENCHMARKS.md](BENCHMARKS.md) has the numbers).
+They are in the bundle again, and every false-positive run was repeated
+with them
+([BENCHMARKS.md](BENCHMARKS.md#with-a-second-sign-for-generated-rules) has
+the numbers).
 
 | File | Before | Now |
 |---|---|---|
-| `vulkan-1.dll` on the CI runner | Suspicious | Verdict clean, the match on record. Nothing else in 109,513 files of the runner was matched by a generated rule |
-| `liblouis.dll`, `libstdc++-6.dll` (two copies), `zip.dll`, `unpack200.exe`, `ucrtbased.dll` (two copies) on the desktop | Suspicious | Not scanned again yet |
+| `vulkan-1.dll` on the CI runner | Suspicious | Verdict clean, the match on record |
+| `liblouis.dll` in System32 of the desktop | Suspicious | The same |
+| `libstdc++-6.dll` (two copies), `zip.dll`, `unpack200.exe` and `ucrtbased.dll` (two copies) among the desktop's programs | Suspicious | The same, all six |
+
+Each of the eight files had the SHA-256 it had when it was flagged. No
+file was flagged in these runs.
+
+**The Triback rule also showed what a list cannot do.** It went onto the
+exclusion list after the first round, before the programs of the desktop
+were scanned for the first time, so it had never run over them. Back in
+the bundle, it matched four more clean libraries there: `SDL3_image.dll`,
+`libavif-16.dll` and `libpng16-16.dll` of Steam, and
+`driver_VirtualDesktop.dll` of Virtual Desktop Streamer. No list had these
+files. The heuristic layer has nothing to say about any of them, so all
+four are on record with the verdict clean, and nothing had to be written
+down for that to happen. That makes six clean files for this one rule, on
+two machines.
 
 ### What the second sign costs
 

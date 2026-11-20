@@ -9,7 +9,11 @@ and the two scripts from `scripts/win/`.
 
     pip install pycdlib
     python3 scripts/make-scan-kit.py --warden target/release/warden.exe \\
-        --rules rules/vendor/rules.wrb --out warden-kit.iso
+        --rules rules/vendor/rules.wrb --out rules/vendor/warden-kit.iso
+
+Keep the image where the bundle is. It holds the bundle, and an antivirus
+that takes the bundle for malware may take the image for it too: see
+docs/RULES.md, "Rule files and your antivirus".
 
 Attach the image to the machine's CD drive, open the drive there, right-click
 `fresh-install-scan.cmd` and choose "Run as administrator".

@@ -8,7 +8,7 @@ and tested, and no phase starts before the previous one is accepted.
 | 1 | Engine core + hash matching | `warden scan <folder>` finds EICAR by hash and prints a report; tests pass in CI; first files/sec and MB/sec numbers | Done, accepted 2026-11-18 |
 | 2 | YARA layer + zip scanning | The same command catches an EICAR variant whose hash is not in the database, and EICAR inside a zip; the rule bundle builds from YARA Forge; first false-positive run over System32 | Done, accepted 2026-11-18 |
 | 3 | PE heuristics | `warden inspect <file>` explains a score indicator by indicator; calibration report against EMBER2024; fuzzers running | Done, accepted 2026-11-18 |
-| 4 | A second sign for generated rules, then quarantine | First: a match of an automatically generated rule makes a file suspicious only if another layer agrees, and the false-positive runs are repeated with the four generated rules that were on the exclusion list put back in. Then: `warden quarantine add / list / restore / delete` round-trips a test file with hash, timestamps and permissions intact, including a simulated crash mid-operation | Built; the repeat of the false-positive run on the desktop is still open, see below |
+| 4 | A second sign for generated rules, then quarantine | First: a match of an automatically generated rule makes a file suspicious only if another layer agrees, and the false-positive runs are repeated with the four generated rules that were on the exclusion list put back in. Then: `warden quarantine add / list / restore / delete` round-trips a test file with hash, timestamps and permissions intact, including a simulated crash mid-operation | Built, and measured on the CI runner and on the desktop; see below |
 | 5 | Persistence remediation | In a VM: a harmless dummy program registered as a test threat, with a Run key, task, service and startup shortcut pointing at it. One command removes all four; restore brings them back | |
 | 6 | Service + IPC + scheduled scans | The service is installed; a standard-user terminal drives a scan through the pipe with live progress and cancel; history, settings, exclusions and schedules survive a reboot | |
 | 7 | Desktop app | The full flow in the GUI: scan, detection with reasons, quarantine, restore; schedule settings; tray icon, notifications, installer | |
@@ -75,7 +75,7 @@ suspicious too, and not when it is plain.
 |---|---|
 | The test with inert files | Done, in the test suite |
 | The CI runner | Done: no file flagged in 109,513, and `vulkan-1.dll`, which a generated rule flagged in the first round, is on record with a clean verdict |
-| The desktop | **Open.** The files that three of the four rules matched are there, and the desktop has not been scanned with the new bundle yet |
+| The desktop | Done: no file flagged in 285,917. The seven files that the four rules flagged there are on record with a clean verdict, and so are four clean libraries that nobody knew of: the rule that matches them had been on the exclusion list since before those folders were first scanned |
 
 **What it cannot show.** What the change costs in detection. A generated
 rule that matches plain-looking malware no longer flags it alone, and
@@ -125,6 +125,12 @@ installer plug-in.
   one thing; putting those rules into an installer is another. To be
   settled before the portfolio checkpoint (phase 8), when the first
   installer is built.
+- **How a release stores its rules.** Microsoft Defender removes a
+  compiled rule bundle outside an excluded folder, as it does the rule
+  package ([RULES.md](RULES.md#rule-files-and-your-antivirus)). An
+  installed program cannot ask for an exclusion. One way is to keep the
+  bundle under a cipher, as the quarantine keeps files. To be settled
+  before the first installer, in phase 8.
 - **MalwareBazaar import with family names.** The plain hash-list import
   exists. Importing the CSV export, which carries malware family names,
   waits until it can be tested against a real export, which needs a free

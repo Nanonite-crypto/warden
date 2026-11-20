@@ -337,8 +337,8 @@ One in twenty is the choice here, and it is 250 times looser than the
 threshold's one in 5,000. It can be, because reaching the bar reports
 nothing. For a clean file to be reported, a generated rule has to match
 it by mistake and its structure has to reach the bar, and the first of the
-two is rare already: in the runs so far, generated rules matched 8 of about
-448,000 clean files.
+two is rare already: in the runs of phase 4, generated rules matched 12 of
+about 395,000 clean Windows files.
 
 What other bars would do, on programs, which are the hard case:
 
