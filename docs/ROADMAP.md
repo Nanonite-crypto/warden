@@ -124,6 +124,8 @@ installer plug-in.
 | 2026-11-19 | On Windows, the read-only bit and the security descriptor of a restored file are put back after the file has its name, through the handle the file was written with. Before, they can stop the restore itself. |
 | 2026-11-18 | The quarantine belongs to the user who runs Warden until there is a service. A quarantine for the whole machine needs a program with rights of its own, and that program must not restore to places its user could not write to. |
 | 2026-11-20 | The kit for a fresh machine does not stop when that machine's antivirus blocks the rule bundle. It says so and scans with the layers that need no bundle. It changes no antivirus setting, like every script here. |
+| 2026-11-20 | A command whose output nobody reads any more, as when it is piped into `head`, stops quietly with exit code 2. It used to end in a panic. Everything the command-line program prints goes through one place that can fail, and a lint keeps out the printing macros that cannot. |
+| 2026-11-20 | A scan counts the folders it could not open apart from the files it could not read, and a false-positive result names them. An unreadable folder used to count as one skipped entry, whatever was in it. The formats went up a version for it: scan report 4, false-positive result 3, benchmark result 3. |
 
 ## Open decisions
 
