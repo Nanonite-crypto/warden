@@ -1,0 +1,12 @@
+# Clippy reads the nearest clippy.toml only, so the workspace's one setting is
+# repeated here.
+allow-unwrap-in-tests = true
+
+# The standard macros panic when a write fails, which is what happens to
+# `warden scan … | head`. src/out.rs has the ones to use.
+disallowed-macros = [
+    { path = "std::println", reason = "it panics when the reader has left: use `outln!(…)?`" },
+    { path = "std::print", reason = "it panics when the reader has left: use `out!(…)?`" },
+    { path = "std::eprintln", reason = "it panics when standard error is closed: use `errln!(…)`" },
+    { path = "std::eprint", reason = "it panics when standard error is closed: use `errln!(…)`" },
+]

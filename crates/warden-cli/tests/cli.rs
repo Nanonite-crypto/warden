@@ -1,6 +1,9 @@
 //! Tests of the `warden` binary as a user would run it.
 
 #![allow(clippy::unwrap_used)]
+// The program itself may not print with `eprintln!` (see clippy.toml); a test
+// that says why it was skipped may.
+#![allow(clippy::disallowed_macros)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -204,6 +207,72 @@ fn impossible_requests_exit_two_with_a_message() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains("not a Warden signature database"));
+}
+
+/// Runs `warden` with a standard output, or a standard error, whose reader
+/// has already left: `warden … | head` after `head` has had enough.
+fn run_with_closed(
+    stream: fn(&mut std::process::Command, std::io::PipeWriter),
+    arguments: &[&std::ffi::OsStr],
+) -> std::process::Output {
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_warden"));
+    command
+        .args(arguments)
+        .env_remove("WARDEN_SIGDB")
+        .env_remove("WARDEN_RULES")
+        .env_remove("WARDEN_QUARANTINE")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    stream(&mut command, writer);
+    command.spawn().unwrap().wait_with_output().unwrap()
+}
+
+#[test]
+fn a_reader_that_leaves_ends_the_command_quietly() {
+    let fixture = fixture();
+    let commands: [&[&std::ffi::OsStr]; 5] = [
+        // One line.
+        &["hash".as_ref(), fixture.threat.as_os_str()],
+        // A report, as text and as JSON.
+        &["scan".as_ref(), fixture.tree.as_os_str()],
+        &["scan".as_ref(), "--json".as_ref(), fixture.tree.as_os_str()],
+        // Many lines, one write each.
+        &[
+            "sigdb".as_ref(),
+            "info".as_ref(),
+            fixture.database.as_os_str(),
+        ],
+        &["false-positives".as_ref(), fixture.tree.as_os_str()],
+    ];
+    for arguments in commands {
+        let output = run_with_closed(
+            |command, writer| {
+                command.stdout(writer);
+            },
+            arguments,
+        );
+        // Not 0 and not 1: the command did not get to say what it found.
+        // And not 101, which is how a panic ends.
+        assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), "", "{arguments:?}");
+    }
+}
+
+#[test]
+fn a_closed_error_stream_does_not_turn_an_error_into_a_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("not-here");
+    let output = run_with_closed(
+        |command, writer| {
+            command.stderr(writer);
+        },
+        &["hash".as_ref(), missing.as_os_str()],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
 }
 
 #[test]

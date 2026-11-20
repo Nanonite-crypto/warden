@@ -45,7 +45,9 @@ and of the reader for executables, tests of the rule layer and of every
 heuristic indicator, a test that fits the heuristic weights to the counts
 in `calibration/` again and compares them with the scanner's, the tests of
 the quarantine with every operation cut off at every step, and tests that
-drive the `warden` binary the way a user would.
+drive the `warden` binary the way a user would. Among the last are two that
+give the program an output nobody reads any more, as `warden scan … | head`
+does: it has to end quietly, and it used to panic.
 
 The same checks CI runs before anything is merged:
 

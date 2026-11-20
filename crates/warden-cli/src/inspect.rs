@@ -106,7 +106,7 @@ pub fn run(args: &InspectArgs) -> anyhow::Result<ExitCode> {
             facts: outcome.as_ref().ok(),
             assessment: assessment.as_ref(),
         };
-        println!("{}", serde_json::to_string_pretty(&inspection)?);
+        outln!("{}", serde_json::to_string_pretty(&inspection)?)?;
     } else {
         let mut out = String::new();
         let _ = writeln!(out, "Warden {} inspect", env!("CARGO_PKG_VERSION"));
@@ -141,7 +141,7 @@ pub fn run(args: &InspectArgs) -> anyhow::Result<ExitCode> {
             }
             (Ok(_), None) => {}
         }
-        print!("{out}");
+        out!("{out}")?;
     }
 
     let suspicious = assessment.is_some_and(|assessment| assessment.suspicious);

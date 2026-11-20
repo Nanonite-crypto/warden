@@ -134,7 +134,7 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
         let mut used_threads = 0;
         for number in 1..=args.runs {
             if !args.json {
-                eprintln!(
+                errln!(
                     "run {number} of {} with {} threads ...",
                     args.runs,
                     scanner.options().effective_threads()
@@ -179,9 +179,9 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
             .with_context(|| format!("cannot write the results to {}", path.display()))?;
     }
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        outln!("{}", serde_json::to_string_pretty(&report)?)?;
     } else {
-        print!("{}", text(&report));
+        out!("{}", text(&report))?;
     }
     Ok(ExitCode::SUCCESS)
 }

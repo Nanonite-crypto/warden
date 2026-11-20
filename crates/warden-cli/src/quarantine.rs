@@ -113,7 +113,7 @@ fn open(place: &Place) -> anyhow::Result<Quarantine> {
     };
     let (quarantine, recovered) = Quarantine::open(dir)?;
     for entry in &recovered {
-        eprintln!("note: {}.", shown(&entry.to_string()));
+        errln!("note: {}.", shown(&entry.to_string()));
     }
     Ok(quarantine)
 }
@@ -167,26 +167,26 @@ fn add(files: &[PathBuf], reason: Option<&String>, place: &Place) -> anyhow::Res
         let reason = reason.map_or_else(Reason::default, Reason::note);
         match quarantine.add(file, reason) {
             Ok(entry) => {
-                println!("Quarantined  {}", shown(&entry.info.original_path));
-                println!("  entry      {}", entry.info.id);
-                println!(
+                outln!("Quarantined  {}", shown(&entry.info.original_path))?;
+                outln!("  entry      {}", entry.info.id)?;
+                outln!(
                     "  sha256     {} ({} bytes)",
                     entry.info.sha256,
                     group_digits(entry.info.size)
-                );
+                )?;
             }
             Err(error) => {
                 failed = true;
-                eprintln!("error: {}", shown(&error.to_string()));
+                errln!("error: {}", shown(&error.to_string()));
             }
         }
     }
     if failed {
         return Ok(ExitCode::from(EXIT_ERROR));
     }
-    println!(
+    outln!(
         "`warden quarantine restore <entry>` puts a file back. The first few characters of the entry are enough."
-    );
+    )?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -223,50 +223,50 @@ fn list(json: bool, place: &Place) -> anyhow::Result<ExitCode> {
                 })
                 .collect(),
         };
-        println!(
+        outln!(
             "{}",
             serde_json::to_string_pretty(&listed).context("cannot write the list as JSON")?
-        );
+        )?;
         return Ok(ExitCode::SUCCESS);
     }
 
-    println!("Quarantine  {}", shown_path(quarantine.dir()));
+    outln!("Quarantine  {}", shown_path(quarantine.dir()))?;
     match listing.entries.len() {
-        0 => println!("Nothing is in quarantine."),
-        1 => println!("1 entry"),
-        count => println!("{} entries", group_digits(count as u64)),
+        0 => outln!("Nothing is in quarantine.")?,
+        1 => outln!("1 entry")?,
+        count => outln!("{} entries", group_digits(count as u64))?,
     }
     for Entry { info, .. } in &listing.entries {
-        println!();
-        println!(
+        outln!()?;
+        outln!(
             "  {}  {}  {} bytes",
             info.id,
             when(info.quarantined_unix_ms),
             group_digits(info.size)
-        );
-        println!("    {}", shown(&info.original_path));
+        )?;
+        outln!("    {}", shown(&info.original_path))?;
         if !info.reason.detections.is_empty() {
-            println!(
+            outln!(
                 "    detected as {}",
                 shown(&info.reason.detections.join(", "))
-            );
+            )?;
         }
         if let Some(note) = &info.reason.note {
-            println!("    reason: {}", shown(note));
+            outln!("    reason: {}", shown(note))?;
         }
     }
     if !listing.damaged.is_empty() {
-        println!();
-        println!(
+        outln!()?;
+        outln!(
             "{} that cannot be read:",
             if listing.damaged.len() == 1 {
                 "1 entry file".to_owned()
             } else {
                 format!("{} entry files", listing.damaged.len())
             }
-        );
+        )?;
         for damaged in &listing.damaged {
-            println!("  {}", damaged_line(damaged));
+            outln!("  {}", damaged_line(damaged))?;
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -276,52 +276,54 @@ fn info(id: &str, json: bool, place: &Place) -> anyhow::Result<ExitCode> {
     let quarantine = open(place)?;
     let Entry { info, file } = quarantine.find(id)?;
     if json {
-        println!(
+        outln!(
             "{}",
             serde_json::to_string_pretty(&info).context("cannot write the record as JSON")?
-        );
+        )?;
         return Ok(ExitCode::SUCCESS);
     }
-    println!("Entry        {}", info.id);
-    println!("Quarantined  {}", when(info.quarantined_unix_ms));
-    println!("Was at       {}", shown(&info.original_path));
-    println!("Size         {} bytes", group_digits(info.size));
-    println!("SHA-256      {}", info.sha256);
-    println!("Modified     {}", stamp(info.times.modified));
-    println!("Last read    {}", stamp(info.times.accessed));
-    println!("Created      {}", stamp(info.times.created));
+    outln!("Entry        {}", info.id)?;
+    outln!("Quarantined  {}", when(info.quarantined_unix_ms))?;
+    outln!("Was at       {}", shown(&info.original_path))?;
+    outln!("Size         {} bytes", group_digits(info.size))?;
+    outln!("SHA-256      {}", info.sha256)?;
+    outln!("Modified     {}", stamp(info.times.modified))?;
+    outln!("Last read    {}", stamp(info.times.accessed))?;
+    outln!("Created      {}", stamp(info.times.created))?;
     if let Some(unix) = info.unix {
-        println!(
+        outln!(
             "Permissions  {:04o}, user {}, group {}",
-            unix.mode, unix.uid, unix.gid
-        );
+            unix.mode,
+            unix.uid,
+            unix.gid
+        )?;
     }
     if let Some(windows) = &info.windows {
-        println!("Attributes   {}", attributes(windows.attributes));
+        outln!("Attributes   {}", attributes(windows.attributes))?;
         match &windows.security_descriptor {
-            Some(descriptor) => println!(
+            Some(descriptor) => outln!(
                 "Access       owner, group and access-control list recorded ({} bytes)",
                 descriptor.len() / 2
-            ),
-            None => println!("Access       not recorded: it could not be read"),
+            )?,
+            None => outln!("Access       not recorded: it could not be read")?,
         }
-        println!(
+        outln!(
             "Internet     {}",
             if windows.zone_identifier.is_some() {
                 "the file carried the mark of a download, and gets it back"
             } else {
                 "the file carried no mark of a download"
             }
-        );
+        )?;
     }
     if !info.reason.detections.is_empty() {
-        println!("Detected as  {}", shown(&info.reason.detections.join(", ")));
+        outln!("Detected as  {}", shown(&info.reason.detections.join(", ")))?;
     }
     if let Some(note) = &info.reason.note {
-        println!("Reason       {}", shown(note));
+        outln!("Reason       {}", shown(note))?;
     }
-    println!("Made by      Warden {}", shown(&info.warden_version));
-    println!("Kept in      {}", shown_path(&file));
+    outln!("Made by      Warden {}", shown(&info.warden_version))?;
+    outln!("Kept in      {}", shown_path(&file))?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -339,24 +341,24 @@ fn restore(
             overwrite,
         },
     )?;
-    println!("Restored  {}", shown_path(&restored.path));
-    println!(
+    outln!("Restored  {}", shown_path(&restored.path))?;
+    outln!(
         "  sha256  {} ({} bytes), as recorded",
         restored.info.sha256,
         group_digits(restored.info.size)
-    );
+    )?;
     if restored.notes.is_empty() {
-        println!("  Its timestamps and permissions are what they were.");
+        outln!("  Its timestamps and permissions are what they were.")?;
         if !cfg!(windows) {
             // Only Windows lets a program set the time a file was made.
-            println!(
+            outln!(
                 "  The time it was made is the exception: this system gives a file that time itself, so it is the time of the restore."
-            );
+            )?;
         }
     } else {
-        println!("  Not everything is what it was:");
+        outln!("  Not everything is what it was:")?;
         for note in &restored.notes {
-            println!("  - {}", shown(note));
+            outln!("  - {}", shown(note))?;
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -367,18 +369,18 @@ fn delete(ids: &[String], place: &Place) -> anyhow::Result<ExitCode> {
     let mut failed = false;
     for id in ids {
         match quarantine.delete(id) {
-            Ok(Some(info)) => println!("Deleted  {}  {}", info.id, shown(&info.original_path)),
-            Ok(None) => println!("Deleted  {}  (its record could not be read)", shown(id)),
+            Ok(Some(info)) => outln!("Deleted  {}  {}", info.id, shown(&info.original_path))?,
+            Ok(None) => outln!("Deleted  {}  (its record could not be read)", shown(id))?,
             Err(error) => {
                 failed = true;
-                eprintln!("error: {}", shown(&error.to_string()));
+                errln!("error: {}", shown(&error.to_string()));
             }
         }
     }
     if failed {
         return Ok(ExitCode::from(EXIT_ERROR));
     }
-    println!("What was deleted cannot be brought back.");
+    outln!("What was deleted cannot be brought back.")?;
     Ok(ExitCode::SUCCESS)
 }
 

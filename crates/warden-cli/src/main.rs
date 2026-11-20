@@ -4,9 +4,14 @@
 //!
 //! - `0`: the command succeeded and, for a scan, nothing was detected;
 //! - `1`: a scan found at least one detection (or a lookup found nothing);
-//! - `2`: the command could not be carried out.
+//! - `2`: the command could not be carried out, or whoever was reading
+//!   its output stopped reading before the end.
 
 #![forbid(unsafe_code)]
+
+// First, because the modules after it print with its macros.
+#[macro_use]
+mod out;
 
 mod bench;
 mod fp;
@@ -108,7 +113,14 @@ fn main() -> ExitCode {
     match outcome {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("error: {error:#}");
+            // `warden scan … | head`: nobody is left to tell.
+            let reader_has_left = error
+                .chain()
+                .filter_map(|cause| cause.downcast_ref::<out::OutputError>())
+                .any(out::OutputError::reader_has_left);
+            if !reader_has_left {
+                errln!("error: {error:#}");
+            }
             ExitCode::from(EXIT_ERROR)
         }
     }

@@ -125,7 +125,9 @@ has the format, the reasoning and the limits.
 | `warden hash <file>...` | Prints SHA-256 digests. |
 | `warden eicar write <dir>` | Writes the harmless EICAR test file in three forms, for demos. |
 
-Every command has `--help`.
+Every command has `--help`. A command whose output is cut off, as in
+`warden hash * | head -1`, stops quietly with exit code 2: it did not get
+to say everything it had found.
 
 ## Building
 

@@ -388,9 +388,9 @@ pub fn run(args: &FpArgs) -> anyhow::Result<ExitCode> {
             .with_context(|| format!("cannot write the results to {}", path.display()))?;
     }
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        outln!("{}", serde_json::to_string_pretty(&report)?)?;
     } else {
-        print!("{}", text(&report, scan.duration));
+        out!("{}", text(&report, scan.duration))?;
     }
     Ok(
         if report.flagged_malicious + report.flagged_suspicious == 0 {

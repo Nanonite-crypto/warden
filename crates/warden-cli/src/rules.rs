@@ -122,7 +122,7 @@ fn build(
     write_bundle(out, &built.bytes)?;
 
     let report = &built.report;
-    println!(
+    outln!(
         "Compiled {} from {} {} in {}",
         rule_count(report.rules),
         group_digits(report.sources.len() as u64),
@@ -132,7 +132,7 @@ fn build(
             "files"
         },
         human_duration(report.compile_time)
-    );
+    )?;
     for source in &report.sources {
         let mut line = format!("  {}: {}", shown(&source.name), rule_count(source.rules));
         if source.skipped > 0 {
@@ -144,60 +144,60 @@ fn build(
         if source.replaced_invalid_text {
             line.push_str(", contained bytes that are not valid text");
         }
-        println!("{line}");
+        outln!("{line}")?;
     }
     let generated = built.bundle.generated_rules();
     if generated > 0 {
-        println!(
+        outln!(
             "A tool generated {} of them. A match of one counts only together with a sign from another layer.",
             group_digits(generated)
-        );
+        )?;
     }
     if let Some(path) = exclusions {
         if report.excluded.is_empty() {
-            println!(
+            outln!(
                 "The exclusion list {} names no rule that is in these files.",
                 path.display()
-            );
+            )?;
         } else {
-            println!(
+            outln!(
                 "Excluded {}, named in {}:",
                 rule_count(report.excluded.len() as u64),
                 path.display()
-            );
+            )?;
             for entry in &report.excluded {
-                println!("  {} (in {})", shown(&entry.rule), shown(&entry.source));
+                outln!("  {} (in {})", shown(&entry.rule), shown(&entry.source))?;
             }
         }
         if !report.unused_exclusions.is_empty() {
-            println!(
+            outln!(
                 "The list also names {} that no rule file declares:",
                 rule_count(report.unused_exclusions.len() as u64)
-            );
+            )?;
             for name in &report.unused_exclusions {
-                println!("  {}", shown(name));
+                outln!("  {}", shown(name))?;
             }
-            println!("Check the spelling, or remove the entry if the rule set dropped the rule.");
+            outln!("Check the spelling, or remove the entry if the rule set dropped the rule.")?;
         }
     }
     if report.skipped_total > 0 {
-        println!(
+        outln!(
             "Left out {} that could not be used.",
             rule_count(report.skipped_total)
-        );
+        )?;
         if show_skipped {
             for skipped in &report.skipped {
-                println!("  {}: {}", shown(&skipped.rule), shown(&skipped.reason));
+                outln!("  {}: {}", shown(&skipped.rule), shown(&skipped.reason))?;
             }
             if report.skipped_total > report.skipped.len() as u64 {
-                println!("  ... and more; the list was cut short.");
+                outln!("  ... and more; the list was cut short.")?;
             }
         } else {
-            println!("Run again with --show-skipped to list them with the reason.");
+            outln!("Run again with --show-skipped to list them with the reason.")?;
         }
     }
     if report.warnings > 0 {
-        println!(
+        outln!(
             "The compiler issued {} {} about rules it did compile.",
             group_digits(report.warnings),
             if report.warnings == 1 {
@@ -205,15 +205,15 @@ fn build(
             } else {
                 "warnings"
             }
-        );
+        )?;
     }
-    println!(
+    outln!(
         "Wrote {} ({}), digest {}",
         out.display(),
         human_bytes(built.bundle.size_bytes()),
         hex::encode(&built.bundle.digest())
-    );
-    println!("Rules keep the licences their authors gave them. `warden rules info` lists them.");
+    )?;
+    outln!("Rules keep the licences their authors gave them. `warden rules info` lists them.")?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -295,47 +295,47 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
     if json {
         let text = serde_json::to_string_pretty(&description)
             .context("cannot describe the bundle as JSON")?;
-        println!("{text}");
+        outln!("{text}")?;
         return Ok(ExitCode::SUCCESS);
     }
 
-    println!("Rule bundle  {}", description.path);
-    println!(
+    outln!("Rule bundle  {}", description.path)?;
+    outln!(
         "Rules        {}",
         group_digits(u64::from(description.rules))
-    );
-    println!("Built        {}", description.created);
-    println!("Engine       {}", description.engine);
-    println!("Size         {}", human_bytes(description.size_bytes));
-    println!("Digest       {}", description.digest);
-    println!();
-    println!("A match is reported as");
-    println!(
+    )?;
+    outln!("Built        {}", description.created)?;
+    outln!("Engine       {}", description.engine)?;
+    outln!("Size         {}", human_bytes(description.size_bytes))?;
+    outln!("Digest       {}", description.digest)?;
+    outln!()?;
+    outln!("A match is reported as")?;
+    outln!(
         "  malicious      for {} (score 80 and above)",
         rule_count(description.scores.malicious)
-    );
-    println!(
+    )?;
+    outln!(
         "  suspicious     for {} (score 60 to 79)",
         rule_count(description.scores.suspicious)
-    );
-    println!(
+    )?;
+    outln!(
         "  recorded only  for {} (score below 60)",
         rule_count(description.scores.recorded_only)
-    );
+    )?;
     if description.scores.with_second_sign > 0 {
-        println!(
+        outln!(
             "  suspicious, and only with a second sign from another layer,\n                 for {} that a tool generated",
             rule_count(description.scores.with_second_sign)
-        );
+        )?;
     }
     if description.scores.unscored > 0 {
-        println!(
+        outln!(
             "  {} state no score and count as 75.",
             rule_count(description.scores.unscored)
-        );
+        )?;
     }
-    println!();
-    println!("Rule files");
+    outln!()?;
+    outln!("Rule files")?;
     for source in description.sources {
         let mut line = format!("  {}: {}", shown(&source.name), rule_count(source.rules));
         if source.skipped > 0 {
@@ -344,43 +344,43 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
         if source.excluded > 0 {
             line.push_str(&format!(", {} excluded", group_digits(source.excluded)));
         }
-        println!("{line}");
-        println!("    sha256 {}", source.sha256);
+        outln!("{line}")?;
+        outln!("    sha256 {}", source.sha256)?;
     }
-    println!();
+    outln!()?;
     if let Some(exclusions) = description.exclusions {
-        println!("Excluded on purpose");
+        outln!("Excluded on purpose")?;
         if exclusions.rules.is_empty() {
-            println!("  (nothing: the exclusion list named no rule that was in the rule files)");
+            outln!("  (nothing: the exclusion list named no rule that was in the rule files)")?;
         }
         for rule in &exclusions.rules {
-            println!("  {}", shown(rule));
+            outln!("  {}", shown(rule))?;
         }
-        println!(
+        outln!(
             "  named by the exclusion list with sha256 {}",
             exclusions.sha256
-        );
-        println!();
+        )?;
+        outln!()?;
     }
-    println!("Licences named by the rules");
+    outln!("Licences named by the rules")?;
     for entry in description.licences.iter().take(LICENCES_SHOWN) {
         let name = if entry.licence.is_empty() {
             "(none named)".to_owned()
         } else {
             shown(&entry.licence)
         };
-        println!("  {:>7}  {name}", group_digits(entry.rules));
+        outln!("  {:>7}  {name}", group_digits(entry.rules))?;
     }
     if description.licences.len() > LICENCES_SHOWN {
         let rest: u64 = description.licences[LICENCES_SHOWN..]
             .iter()
             .map(|entry| entry.rules)
             .sum();
-        println!(
+        outln!(
             "  {:>7}  under {} other licences (use --json for all of them)",
             group_digits(rest),
             description.licences.len() - LICENCES_SHOWN
-        );
+        )?;
     }
     Ok(ExitCode::SUCCESS)
 }

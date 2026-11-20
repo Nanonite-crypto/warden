@@ -75,12 +75,12 @@ pub fn eicar(command: &EicarCommand) -> anyhow::Result<ExitCode> {
                 let path = dir.join(name);
                 std::fs::write(&path, bytes)
                     .with_context(|| format!("cannot write {}", path.display()))?;
-                println!("Wrote {}", path.display());
+                outln!("Wrote {}", path.display())?;
             }
-            println!(
+            outln!(
                 "This is the harmless EICAR test file. If it disappears, your resident \
                  antivirus removed it: see docs/TESTING.md."
-            );
+            )?;
             Ok(ExitCode::SUCCESS)
         }
     }
@@ -96,7 +96,7 @@ pub fn hash(files: &[PathBuf]) -> anyhow::Result<ExitCode> {
     for path in files {
         let digest =
             sha256_of_file(path).with_context(|| format!("cannot read {}", path.display()))?;
-        println!("{}  {}", hex::encode(&digest), path.display());
+        outln!("{}  {}", hex::encode(&digest), path.display())?;
     }
     Ok(ExitCode::SUCCESS)
 }
