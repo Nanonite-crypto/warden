@@ -156,7 +156,7 @@ fn json_output_is_the_full_report() {
             .arg(&report_file),
     );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(json["schema"], 3);
+    assert_eq!(json["schema"], 4);
     assert_eq!(json["stats"]["files_scanned"], 3);
     assert_eq!(json["stats"]["detections"], 1);
     assert_eq!(json["detections"][0]["verdict"], "malicious");
@@ -207,6 +207,147 @@ fn impossible_requests_exit_two_with_a_message() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains("not a Warden signature database"));
+}
+
+/// Makes a folder impossible to list, the way `C:\Program Files\WindowsApps`
+/// is for a program without administrator rights. Says `false` where that
+/// cannot be done: permissions do not apply to root.
+#[cfg(unix)]
+fn close_folder(folder: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
+    true
+}
+
+#[cfg(unix)]
+fn open_folder(folder: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+#[cfg(windows)]
+fn icacls(folder: &Path, arguments: &[&str]) {
+    let status = std::process::Command::new("icacls")
+        .arg(folder)
+        .args(arguments)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "icacls {arguments:?}");
+}
+
+/// Everyone (S-1-1-0) is denied the right to list the folder. A denial comes
+/// before every permission, an administrator's included.
+#[cfg(windows)]
+fn close_folder(folder: &Path) -> bool {
+    icacls(folder, &["/deny", "*S-1-1-0:(RD)"]);
+    assert!(fs::read_dir(folder).is_err(), "the folder should be closed");
+    true
+}
+
+#[cfg(windows)]
+fn open_folder(folder: &Path) {
+    icacls(folder, &["/remove:d", "*S-1-1-0"]);
+}
+
+#[test]
+fn a_folder_that_cannot_be_opened_is_named_and_counted_apart_from_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    let closed = tree.join("closed");
+    fs::create_dir_all(closed.join("deeper")).unwrap();
+    fs::write(tree.join("open.txt"), "one file that can be read").unwrap();
+    for name in ["a.txt", "b.txt", "deeper/c.txt"] {
+        fs::write(closed.join(name), "three files that cannot").unwrap();
+    }
+    if !close_folder(&closed) {
+        eprintln!("note: running as root, so no folder can be closed; nothing to test");
+        return;
+    }
+
+    let check = warden()
+        .arg("false-positives")
+        .arg(&tree)
+        .arg("--json")
+        .output()
+        .unwrap();
+    let check_text = warden()
+        .arg("false-positives")
+        .arg(&tree)
+        .arg("--no-progress")
+        .output()
+        .unwrap();
+    let scan = warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--show-skipped")
+        .output()
+        .unwrap();
+    let bench = warden()
+        .arg("bench")
+        .arg(&tree)
+        .args(["--runs", "1", "--json"])
+        .output()
+        .unwrap();
+    // Before anything can fail: the temporary folder has to go away again.
+    open_folder(&closed);
+
+    // One file was scanned. The folder is one entry, and it is not a file.
+    assert_eq!(check.status.code(), Some(0));
+    let json: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
+    assert_eq!(json["files_scanned"], 1);
+    assert_eq!(json["files_skipped"], 0);
+    assert_eq!(json["folders_skipped"], 1);
+    let skipped = json["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["folder"], true);
+    assert_eq!(skipped[0]["reason"], "access_denied");
+    assert!(skipped[0]["path"].as_str().unwrap().ends_with("closed"));
+    assert!(!skipped[0]["detail"].as_str().unwrap().is_empty());
+    assert_eq!(json["skipped_truncated"], false);
+
+    let text = String::from_utf8(check_text.stdout).unwrap();
+    assert!(
+        text.contains("Not covered 1 folder could not be opened\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("was not scanned and is not counted."),
+        "{text}"
+    );
+    let listed = text
+        .split("Folders that could not be opened\n")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(listed.starts_with("  access_denied  "), "{text}");
+    assert!(listed.lines().next().unwrap().ends_with("closed"), "{text}");
+    assert!(!text.contains("Files that could not be read"), "{text}");
+
+    assert_eq!(scan.status.code(), Some(0));
+    let text = String::from_utf8(scan.stdout).unwrap();
+    assert!(
+        text.contains("Skipped     1 folder (access_denied: 1)\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("What is in a folder that could not be opened was not scanned."),
+        "{text}"
+    );
+    assert!(
+        text.contains("Folders that could not be opened\n  access_denied  "),
+        "{text}"
+    );
+    assert!(!text.contains("Skipped files"), "{text}");
+
+    let json: serde_json::Value = serde_json::from_slice(&bench.stdout).unwrap();
+    let run = &json["configurations"][0]["runs"][0];
+    assert_eq!(run["files_scanned"], 1);
+    assert_eq!(run["files_skipped"], 0);
+    assert_eq!(run["folders_skipped"], 1);
 }
 
 /// Runs `warden` with a standard output, or a standard error, whose reader
@@ -527,7 +668,7 @@ fn bench_reports_every_run_as_json_and_text() {
             .arg(&results_file),
     );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(json["schema"], 2);
+    assert_eq!(json["schema"], 3);
     assert_eq!(json["label"], "unit test");
     assert!(json["system"]["logical_cpus"].as_u64().unwrap() >= 1);
     let configurations = json["configurations"].as_array().unwrap();
@@ -853,7 +994,7 @@ fn false_positives_reports_what_was_flagged_in_clean_files() {
         );
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&results).unwrap()).unwrap();
-    assert_eq!(json["schema"], 2);
+    assert_eq!(json["schema"], 3);
     assert_eq!(json["label"], "unit test");
     assert_eq!(json["files_scanned"], 8);
     assert_eq!(json["flagged_malicious"], 0);
@@ -861,6 +1002,10 @@ fn false_positives_reports_what_was_flagged_in_clean_files() {
     assert_eq!(json["recorded_files"], 0);
     assert_eq!(json["recorded"], serde_json::json!([]));
     assert_eq!(json["recorded_truncated"], false);
+    assert_eq!(json["files_skipped"], 0);
+    assert_eq!(json["folders_skipped"], 0);
+    assert_eq!(json["skipped"], serde_json::json!([]));
+    assert_eq!(json["skipped_truncated"], false);
     assert!(json["system"]["logical_cpus"].as_u64().unwrap() >= 1);
 
     // Two files that the rules flag although they are "clean" by decree.
@@ -1598,7 +1743,7 @@ fn a_generated_rule_counts_only_together_with_an_unusual_structure() {
     // The check of clean files counts both kinds, and keeps them apart.
     assert_eq!(check.status.code(), Some(1));
     let check: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
-    assert_eq!(check["schema"], 2);
+    assert_eq!(check["schema"], 3);
     assert_eq!(check["flagged_suspicious"], 2);
     assert_eq!(check["flagged_malicious"], 0);
     assert_eq!(check["recorded_files"], 2);

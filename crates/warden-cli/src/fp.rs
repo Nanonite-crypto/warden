@@ -13,7 +13,7 @@ use std::process::ExitCode;
 use anyhow::{Context, bail};
 use clap::Args;
 use serde::Serialize;
-use warden_engine::{DetectorInfo, ENGINE_VERSION, Finding, ScanReport, Verdict};
+use warden_engine::{DetectorInfo, ENGINE_VERSION, Finding, ScanReport, SkipReason, Verdict};
 
 use crate::EXIT_FOUND;
 use crate::render::{
@@ -82,9 +82,21 @@ struct RecordedFile {
     names: Vec<String>,
 }
 
+/// A file that could not be read, or a folder that could not be opened.
+#[derive(Debug, Serialize)]
+struct NotRead {
+    path: String,
+    /// A folder hides what is in it: none of that was scanned or counted.
+    folder: bool,
+    reason: SkipReason,
+    /// What the operating system said.
+    detail: String,
+}
+
 /// Version of the JSON layout below. Version 2 added the files with
-/// findings on record.
-const FP_SCHEMA: u32 = 2;
+/// findings on record. Version 3 lists what could not be read and counts
+/// folders apart from files: `files_skipped` used to count both.
+const FP_SCHEMA: u32 = 3;
 
 #[derive(Debug, Serialize)]
 struct FpReport {
@@ -98,7 +110,12 @@ struct FpReport {
     duration_ms: u64,
     files_scanned: u64,
     bytes_scanned: u64,
+    /// Files that could not be read.
     files_skipped: u64,
+    /// Folders that could not be opened. Nothing in them was scanned or
+    /// counted, so the check covers less than its numbers say, by an amount
+    /// that nobody knows.
+    folders_skipped: u64,
     files_partially_scanned: u64,
     archive_members_scanned: u64,
     files_per_second: f64,
@@ -121,6 +138,10 @@ struct FpReport {
     /// Those files, sorted by path. At most 1000 are listed.
     recorded: Vec<RecordedFile>,
     recorded_truncated: bool,
+    /// What could not be read: the folders first, then the files, each
+    /// sorted by path. At most 1000 are listed.
+    skipped: Vec<NotRead>,
+    skipped_truncated: bool,
 }
 
 /// The names of the findings, each once, in the order they were found.
@@ -198,6 +219,27 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
         }
     }
 
+    // Folders first: one of them can stand for more than all the files
+    // after it together.
+    let mut skipped: Vec<NotRead> = report
+        .skipped
+        .iter()
+        .map(|entry| NotRead {
+            path: entry.path.to_string_lossy().into_owned(),
+            folder: entry.folder,
+            reason: entry.reason,
+            detail: entry.detail.clone(),
+        })
+        .collect();
+    skipped.sort_by(|left, right| {
+        right
+            .folder
+            .cmp(&left.folder)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    let skipped_truncated = report.skipped_truncated || skipped.len() > MAX_LISTED;
+    skipped.truncate(MAX_LISTED);
+
     let flagged_total = malicious + suspicious;
     FpReport {
         schema: FP_SCHEMA,
@@ -219,6 +261,7 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
         files_scanned: stats.files_scanned,
         bytes_scanned: stats.bytes_scanned,
         files_skipped: stats.files_skipped,
+        folders_skipped: stats.folders_skipped,
         files_partially_scanned: stats.files_partially_scanned,
         archive_members_scanned: stats.archive_members_scanned,
         files_per_second: stats.files_per_second,
@@ -237,6 +280,8 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
         recorded_by_name: ranked(recorded_by_name),
         recorded_truncated: stats.files_recorded > recorded.len() as u64,
         recorded,
+        skipped,
+        skipped_truncated,
     }
 }
 
@@ -280,12 +325,18 @@ fn text(report: &FpReport, duration: std::time::Duration) -> String {
             group_digits(report.archive_members_scanned)
         );
     }
-    if report.files_skipped > 0 || report.files_partially_scanned > 0 {
+    if let Some(line) = not_covered(
+        report.folders_skipped,
+        report.files_skipped,
+        report.files_partially_scanned,
+    ) {
+        let _ = writeln!(out, "Not covered {line}");
+    }
+    if report.folders_skipped > 0 {
         let _ = writeln!(
             out,
-            "Not covered {} skipped, {} not checked in full",
-            group_digits(report.files_skipped),
-            group_digits(report.files_partially_scanned)
+            "            What is in a folder that could not be opened was not scanned \
+             and is not counted."
         );
     }
     let _ = writeln!(out);
@@ -367,7 +418,61 @@ fn text(report: &FpReport, duration: std::time::Duration) -> String {
             let _ = writeln!(out, "  ... and more; the list was cut short.");
         }
     }
+
+    for (folders, title) in [
+        (true, "Folders that could not be opened"),
+        (false, "Files that could not be read"),
+    ] {
+        let mut entries = report
+            .skipped
+            .iter()
+            .filter(|entry| entry.folder == folders)
+            .peekable();
+        if entries.peek().is_none() {
+            continue;
+        }
+        let _ = writeln!(out);
+        let _ = writeln!(out, "{title}");
+        for entry in entries {
+            let _ = writeln!(
+                out,
+                "  {}  {}",
+                entry.reason.as_str(),
+                shown_path(std::path::Path::new(&entry.path))
+            );
+        }
+    }
+    if report.skipped_truncated {
+        let _ = writeln!(out, "  ... and more; the list was cut short.");
+    }
     out
+}
+
+/// What a check did not cover, in words, or `None` if it covered everything.
+fn not_covered(folders: u64, files: u64, partial: u64) -> Option<String> {
+    let mut parts = Vec::new();
+    if folders > 0 {
+        parts.push(format!(
+            "{} {} could not be opened",
+            group_digits(folders),
+            if folders == 1 { "folder" } else { "folders" }
+        ));
+    }
+    if files > 0 {
+        parts.push(format!(
+            "{} {} could not be read",
+            group_digits(files),
+            if files == 1 { "file" } else { "files" }
+        ));
+    }
+    if partial > 0 {
+        parts.push(format!(
+            "{} {} not checked in full",
+            group_digits(partial),
+            if partial == 1 { "file" } else { "files" }
+        ));
+    }
+    (!parts.is_empty()).then(|| parts.join(", "))
 }
 
 pub fn run(args: &FpArgs) -> anyhow::Result<ExitCode> {
@@ -399,4 +504,29 @@ pub fn run(args: &FpArgs) -> anyhow::Result<ExitCode> {
             ExitCode::from(EXIT_FOUND)
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::not_covered;
+
+    #[test]
+    fn what_was_not_covered_is_said_kind_by_kind() {
+        assert_eq!(not_covered(0, 0, 0), None);
+        assert_eq!(
+            not_covered(1, 0, 0).as_deref(),
+            Some("1 folder could not be opened")
+        );
+        assert_eq!(
+            not_covered(3, 1, 1_060).as_deref(),
+            Some(
+                "3 folders could not be opened, 1 file could not be read, \
+                 1,060 files not checked in full"
+            )
+        );
+        assert_eq!(
+            not_covered(0, 34, 0).as_deref(),
+            Some("34 files could not be read")
+        );
+    }
 }

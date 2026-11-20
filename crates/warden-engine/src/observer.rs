@@ -30,7 +30,7 @@ pub trait ScanObserver {
     /// A file kept its clean verdict and has findings on record.
     fn on_recorded(&mut self, _recorded: &Recorded) {}
 
-    /// A file could not be read.
+    /// A file could not be read, or a folder could not be opened.
     fn on_skipped(&mut self, _skipped: &Skipped) {}
 
     /// Called a few times per second, and once more when the scan ends.

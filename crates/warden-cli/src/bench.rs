@@ -52,7 +52,10 @@ struct Run {
     duration_ms: f64,
     files_scanned: u64,
     bytes_scanned: u64,
+    /// Files that could not be read.
     files_skipped: u64,
+    /// Folders that could not be opened; what is in them was not scanned.
+    folders_skipped: u64,
     detections: u64,
     files_per_second: f64,
     megabytes_per_second: f64,
@@ -66,6 +69,7 @@ impl Run {
             files_scanned: report.stats.files_scanned,
             bytes_scanned: report.stats.bytes_scanned,
             files_skipped: report.stats.files_skipped,
+            folders_skipped: report.stats.folders_skipped,
             detections: report.stats.detections,
             files_per_second: report.stats.files_per_second,
             megabytes_per_second: report.stats.megabytes_per_second,
@@ -82,6 +86,12 @@ struct Configuration {
     repeat_median_files_per_second: Option<f64>,
     repeat_median_megabytes_per_second: Option<f64>,
 }
+
+/// Version of the JSON layout below. Version 2 marked the first run and
+/// took the median over the runs after it. Version 3 counts folders that
+/// could not be opened apart from files that could not be read:
+/// `files_skipped` used to count both.
+const BENCH_SCHEMA: u32 = 3;
 
 #[derive(Debug, Serialize)]
 struct BenchReport {
@@ -162,7 +172,7 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
     }
 
     let report = BenchReport {
-        schema: 2,
+        schema: BENCH_SCHEMA,
         label: args.label.clone(),
         path: std::path::absolute(&args.path)
             .unwrap_or_else(|_| args.path.clone())
@@ -271,6 +281,7 @@ mod tests {
             files_scanned: 1,
             bytes_scanned: 1,
             files_skipped: 0,
+            folders_skipped: 0,
             detections: 0,
             files_per_second,
             megabytes_per_second: files_per_second / 10.0,

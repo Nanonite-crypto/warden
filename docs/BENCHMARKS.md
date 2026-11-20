@@ -42,12 +42,14 @@ See [TESTING.md](TESTING.md).
   was produced with, because the count belongs to the rules as much as to
   the engine. Since phase 4 a result also lists the files with a finding
   that did not count, apart from the flagged ones: their verdict is clean.
-- **What could not be read is counted by entry, and an entry can be a
-  folder.** A folder that cannot be opened counts as one, and the files in
-  it are neither scanned nor counted. Where a table or a sentence below
-  says that so many files could not be read, the number is a lower bound
-  of what the run did not see. A result does not name these entries. This
-  was noticed in phase 4, see
+- **What could not be read.** A folder that cannot be opened hides what is
+  in it: its files are neither scanned nor counted. A result written
+  since the end of phase 4 (`"schema": 3`) counts such folders apart from
+  the files that could not be read, and names both. The results before
+  have one number for the two and name nothing. Where a table or a
+  sentence below says that so many files could not be read, that number
+  is of entries, and a lower bound of what the run did not see. This was
+  noticed in phase 4, see
   [the fifth round](#with-a-second-sign-for-generated-rules).
 - **Micro-benchmarks** use Criterion (`cargo bench`) and report the
   estimate with its confidence interval.

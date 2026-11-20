@@ -93,7 +93,12 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Version 3 added `counts` to the findings that do not count by
 /// themselves, and the list of files that kept a clean verdict with
 /// findings on record.
-pub const REPORT_SCHEMA: u32 = 3;
+///
+/// Version 4 tells folders from files among what could not be scanned.
+/// `files_skipped` used to count both and counts files only now; the
+/// folders are in `folders_skipped`, and every entry of `skipped` says
+/// which of the two it is.
+pub const REPORT_SCHEMA: u32 = 4;
 
 /// Computes the SHA-256 of a byte slice.
 #[must_use]

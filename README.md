@@ -118,7 +118,7 @@ has the format, the reasoning and the limits.
 | `warden inspect <file>` | Shows what the heuristics see in one Windows executable: its sections, imports and header, every indicator that applies with its weight, the score and the threshold. |
 | `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. |
 | `warden rules info <file>` | Shows what a bundle holds: how many rules lead to which verdict, the rule files it was built from, the rules that were left out on purpose, the licences the rules name. |
-| `warden false-positives <path>...` | Scans files that are expected to be clean and lists every one that was flagged. |
+| `warden false-positives <path>...` | Scans files that are expected to be clean and lists every one that was flagged, and what it could not read. |
 | `warden sigdb build` | Builds a signature database from lists of SHA-256 hashes. |
 | `warden sigdb info` / `lookup` | Inspects a database, or looks up one hash. |
 | `warden bench <folder>` | Measures scan throughput: files/sec and MB/sec over several runs. |
@@ -232,7 +232,9 @@ Today's layers work like this:
    not flagged?" has an answer too.
 8. Files that could not be read, and files that could only be checked in
    part (too large, a password-protected member, a limit reached), are
-   listed with the reason, never silently dropped.
+   listed with the reason, never silently dropped. A folder that could not
+   be opened is listed as a folder and counted apart: what is in it was
+   not scanned, and nobody knows how much that is.
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/RULES.md](docs/RULES.md), [docs/HEURISTICS.md](docs/HEURISTICS.md),

@@ -283,18 +283,39 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
             human_bytes(stats.archive_member_bytes),
         );
     }
-    if stats.files_skipped > 0 {
+    if stats.files_skipped > 0 || stats.folders_skipped > 0 {
         let reasons: Vec<String> = stats
             .skipped_by_reason
             .iter()
             .map(|(reason, count)| format!("{}: {}", reason.as_str(), group_digits(*count)))
             .collect();
+        let mut kinds = Vec::new();
+        if stats.folders_skipped > 0 {
+            kinds.push(format!(
+                "{} {}",
+                group_digits(stats.folders_skipped),
+                plural(stats.folders_skipped, "folder", "folders")
+            ));
+        }
+        if stats.files_skipped > 0 {
+            kinds.push(format!(
+                "{} {}",
+                group_digits(stats.files_skipped),
+                plural(stats.files_skipped, "file", "files")
+            ));
+        }
         let _ = writeln!(
             out,
             "Skipped     {} ({})",
-            group_digits(stats.files_skipped),
+            kinds.join(" and "),
             reasons.join(", ")
         );
+        if stats.folders_skipped > 0 {
+            let _ = writeln!(
+                out,
+                "            What is in a folder that could not be opened was not scanned."
+            );
+        }
     }
     if stats.files_partially_scanned > 0 {
         let reasons: Vec<String> = stats
@@ -390,12 +411,26 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
         }
     }
 
-    let anything_to_list = stats.files_skipped > 0 || stats.files_partially_scanned > 0;
+    let anything_to_list =
+        stats.files_skipped > 0 || stats.folders_skipped > 0 || stats.files_partially_scanned > 0;
     if show_skipped {
-        if !report.skipped.is_empty() {
+        // The folders first: one of them can hide more than all the files
+        // that follow.
+        for (folders, title) in [
+            (true, "Folders that could not be opened"),
+            (false, "Skipped files"),
+        ] {
+            let mut entries = report
+                .skipped
+                .iter()
+                .filter(|skipped| skipped.folder == folders)
+                .peekable();
+            if entries.peek().is_none() {
+                continue;
+            }
             let _ = writeln!(out);
-            let _ = writeln!(out, "Skipped files");
-            for skipped in &report.skipped {
+            let _ = writeln!(out, "{title}");
+            for skipped in entries {
                 let _ = writeln!(
                     out,
                     "  {}  {}  ({})",
@@ -404,9 +439,9 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
                     shown(&skipped.detail)
                 );
             }
-            if report.skipped_truncated {
-                let _ = writeln!(out, "  ... and more; the list was cut short.");
-            }
+        }
+        if report.skipped_truncated {
+            let _ = writeln!(out, "  ... and more; the list was cut short.");
         }
         if !report.partially_scanned.is_empty() {
             let _ = writeln!(out);
@@ -428,7 +463,7 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "Run again with --show-skipped to list the files that were skipped or not checked in full."
+            "Run again with --show-skipped to list what was skipped or not checked in full."
         );
     }
     out

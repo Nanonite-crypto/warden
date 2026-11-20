@@ -95,6 +95,8 @@ elevated caller.
    phase 3 on. A file that cannot be read is reported as skipped with a
    reason, and a file that could only be checked in part is reported as
    such, with what was left out. Neither is ever silently dropped. A
+   folder that cannot be opened is reported as a folder and counted apart
+   from files, because nobody knows how many files it stands for. A
    detector that panics costs one file, not the scan.
 
 ## Workspace layout

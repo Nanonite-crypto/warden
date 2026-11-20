@@ -303,6 +303,19 @@ JSON. Files with a finding that did not count are listed apart: their
 verdict is clean, and the list shows that they were scanned and why they
 were not reported.
 
+A result also says what it did not cover. Files that could not be read are
+listed, and folders that could not be opened are listed and counted apart
+from them. The difference matters: a file that cannot be read is one file,
+and a folder that cannot be opened is everything in it. Windows, for one,
+lets a program without administrator rights see
+`C:\Program Files\WindowsApps` and not list it. A run in phase 4 that
+found 52,579 files fewer than the run before it, with six more entries it
+could not read, is what made this visible
+([BENCHMARKS.md](BENCHMARKS.md#with-a-second-sign-for-generated-rules)).
+Tests close a folder on purpose, with permissions on Unix and with a
+denial for everyone on Windows, and check that a scan, a check of clean
+files and a benchmark each say so.
+
 A count is only meaningful together with the rule set that produced it, so
 every result records the bundle's digest, and the bundle records which rule
 files it was built from and which rules were left out of it on purpose.

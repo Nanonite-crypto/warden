@@ -109,12 +109,16 @@ pub struct PartialScan {
     pub detail: String,
 }
 
-/// A file or directory that could not be scanned.
+/// A file or folder that could not be scanned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Skipped {
     /// The path that was skipped.
     #[serde(serialize_with = "lossy_path")]
     pub path: PathBuf,
+    /// Whether this is a folder. A folder that could not be opened hides
+    /// what is in it: none of that was scanned, and none of it is counted
+    /// anywhere, so one such entry can stand for any number of files.
+    pub folder: bool,
     /// Why it was skipped.
     pub reason: SkipReason,
     /// The underlying error message, when there is one.
@@ -175,9 +179,13 @@ pub struct ScanStats {
     pub detections: u64,
     /// Files whose verdict is clean and that have findings on record.
     pub files_recorded: u64,
-    /// Files and directories that could not be scanned.
+    /// Files that could not be scanned.
     pub files_skipped: u64,
-    /// The same, broken down by reason.
+    /// Folders that could not be opened. What is in them was neither
+    /// scanned nor counted, so this is not a number of files: one folder
+    /// can hide any number of them.
+    pub folders_skipped: u64,
+    /// Both together, broken down by reason.
     pub skipped_by_reason: BTreeMap<SkipReason, u64>,
     /// Symbolic links and junctions that were not followed. Their targets
     /// are scanned if they lie inside the scan roots themselves.
@@ -236,7 +244,7 @@ pub struct ScanReport {
     pub recorded: Vec<Recorded>,
     /// Whether `recorded` was cut short. The counters are always complete.
     pub recorded_truncated: bool,
-    /// Files and directories that could not be scanned, sorted by path.
+    /// Files and folders that could not be scanned, sorted by path.
     pub skipped: Vec<Skipped>,
     /// Whether `skipped` was cut short. The counters are always complete.
     pub skipped_truncated: bool,

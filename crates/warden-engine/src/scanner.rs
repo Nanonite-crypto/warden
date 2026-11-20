@@ -255,6 +255,7 @@ impl Scanner {
                 },
                 Ok(Err((reason, detail))) => Outcome::Skipped(Skipped {
                     path,
+                    folder: false,
                     reason,
                     detail,
                 }),
@@ -264,6 +265,7 @@ impl Scanner {
                     session = self.session();
                     Outcome::Skipped(Skipped {
                         path,
+                        folder: false,
                         reason: SkipReason::InternalError,
                         detail: format!(
                             "checking this file panicked: {}",
@@ -314,9 +316,25 @@ fn walk_guarded(
     if let Err(payload) = attempt {
         let _ = outcomes.send(Outcome::Skipped(Skipped {
             path: PathBuf::new(),
+            folder: false,
             reason: SkipReason::InternalError,
             detail: format!("directory traversal panicked: {}", panic_message(&*payload)),
         }));
+    }
+}
+
+/// Whether an error of the traversal is about a folder.
+///
+/// The usual case is a folder that may not be listed. What it is can still
+/// be asked, because that is written in the folder above it. An error
+/// without a path comes from reading the entries of a folder, so it is
+/// about a folder too: its listing broke off. A path that cannot be asked
+/// about at all, a root that does not exist for one, is not counted as a
+/// folder.
+fn about_a_folder(error: &walkdir::Error) -> bool {
+    match error.path() {
+        Some(path) => std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()),
+        None => true,
     }
 }
 
@@ -348,6 +366,7 @@ fn walk(
                     };
                     let skipped = Skipped {
                         path: error.path().map(Path::to_path_buf).unwrap_or_default(),
+                        folder: about_a_folder(&error),
                         reason,
                         detail: error.to_string(),
                     };
@@ -380,6 +399,7 @@ fn walk(
             if !file_type.is_file() {
                 let skipped = Skipped {
                     path: entry.into_path(),
+                    folder: false,
                     reason: SkipReason::SpecialFile,
                     detail: "not a regular file".to_owned(),
                 };
@@ -398,6 +418,7 @@ fn walk(
             {
                 let skipped = Skipped {
                     path: entry.into_path(),
+                    folder: false,
                     reason,
                     detail: "content is not stored on this disk".to_owned(),
                 };
@@ -508,7 +529,11 @@ impl Tally {
                 }
             }
             Outcome::Skipped(skipped) => {
-                self.stats.files_skipped += 1;
+                if skipped.folder {
+                    self.stats.folders_skipped += 1;
+                } else {
+                    self.stats.files_skipped += 1;
+                }
                 *self
                     .stats
                     .skipped_by_reason

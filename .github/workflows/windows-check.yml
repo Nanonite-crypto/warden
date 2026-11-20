@@ -1,10 +1,13 @@
 name: Windows check
 
-# Runs the tests of the crates that have code for Windows only, on Windows
-# and nowhere else. That code cannot be compiled on another system, so a
-# change to it gets its first answer here, in a few minutes, before the
-# whole of CI is spent on it. Start it by hand, or push a branch named
+# Runs the tests of the crates that have code or tests for Windows only, on
+# Windows and nowhere else. That code cannot be compiled on another system,
+# so a change to it gets its first answer here, in a few minutes, before
+# the whole of CI is spent on it. Start it by hand, or push a branch named
 # win-check/<anything>.
+#
+# The engine and the quarantine are here. The crates that need the rule
+# engine are not: building it takes most of the time CI takes.
 on:
   workflow_dispatch:
   push:
@@ -24,7 +27,7 @@ env:
 
 jobs:
   test:
-    name: Quarantine on Windows
+    name: Engine and quarantine on Windows
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -34,8 +37,8 @@ jobs:
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy --no-self-update
       - uses: Swatinem/rust-cache@v2
       - name: Lint
-        run: cargo clippy -p warden-quarantine --all-targets --locked -- -D warnings
+        run: cargo clippy -p warden-engine -p warden-quarantine --all-targets --locked -- -D warnings
       # All of them, also after one has failed: a round trip through CI
       # should say everything it can.
       - name: Test
-        run: cargo test -p warden-quarantine --locked --no-fail-fast
+        run: cargo test -p warden-engine -p warden-quarantine --locked --no-fail-fast

@@ -410,10 +410,103 @@ fn unreadable_files_are_reported_with_a_reason() {
 
     assert_eq!(report.stats.files_scanned, 1);
     assert_eq!(report.stats.files_skipped, 1);
+    assert_eq!(report.stats.folders_skipped, 0);
     assert_eq!(report.stats.skipped_by_reason[&SkipReason::AccessDenied], 1);
     assert_eq!(report.skipped[0].reason, SkipReason::AccessDenied);
+    assert!(!report.skipped[0].folder);
     assert!(report.skipped[0].path.ends_with("locked.bin"));
     assert!(!report.skipped[0].detail.is_empty());
+}
+
+/// What a scan says about a folder it may not open: one entry, marked as a
+/// folder and counted apart from the files, because nobody knows how many
+/// files it stands for. Here it stands for three.
+fn assert_the_closed_folder_is_told_apart(report: &ScanReport) {
+    assert_eq!(report.stats.files_scanned, 1, "only the file next to it");
+    assert_eq!(report.stats.folders_skipped, 1);
+    assert_eq!(report.stats.files_skipped, 0);
+    assert_eq!(report.stats.skipped_by_reason[&SkipReason::AccessDenied], 1);
+    assert_eq!(report.skipped.len(), 1);
+    assert!(report.skipped[0].folder);
+    assert_eq!(report.skipped[0].reason, SkipReason::AccessDenied);
+    assert!(report.skipped[0].path.ends_with("closed"));
+    assert!(!report.skipped[0].detail.is_empty());
+    assert!(
+        report.detections.is_empty(),
+        "what is in it was not scanned"
+    );
+}
+
+/// A folder with three files in it, one of them a registered threat, next
+/// to one ordinary file.
+fn tree_with_a_folder_to_close(threat: &[u8]) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let closed = dir.path().join("closed");
+    write(&closed.join("one.bin"), b"first");
+    write(&closed.join("two.bin"), b"second");
+    write(&closed.join("deeper/threat.bin"), threat);
+    write(&dir.path().join("open.bin"), b"public");
+    (dir, closed)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_folder_that_cannot_be_opened_is_counted_apart_from_files() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let threat = fixture(91, 64);
+    let (dir, closed) = tree_with_a_folder_to_close(&threat);
+    fs::set_permissions(&closed, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read_dir(&closed).is_ok() {
+        // Running as root: permissions do not apply, nothing to test.
+        fs::set_permissions(&closed, fs::Permissions::from_mode(0o700)).unwrap();
+        return;
+    }
+
+    let scanner = hash_scanner(
+        &[(&threat, "Test.Hidden", Category::Malware)],
+        ScanOptions::default(),
+    );
+    let report = scan(&scanner, dir.path());
+    fs::set_permissions(&closed, fs::Permissions::from_mode(0o700)).unwrap();
+
+    assert_the_closed_folder_is_told_apart(&report);
+}
+
+/// The Windows case that this was written for: a folder like
+/// `C:\Program Files\WindowsApps`, which a program without administrator
+/// rights may see and not list.
+#[cfg(windows)]
+#[test]
+fn a_folder_that_cannot_be_opened_is_counted_apart_from_files() {
+    fn icacls(folder: &Path, arguments: &[&str]) {
+        let status = std::process::Command::new("icacls")
+            .arg(folder)
+            .args(arguments)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "icacls {arguments:?}");
+    }
+
+    let threat = fixture(91, 64);
+    let (dir, closed) = tree_with_a_folder_to_close(&threat);
+    // Everyone (S-1-1-0) is denied the right to list the folder. A denial
+    // comes before every permission, an administrator's included.
+    icacls(&closed, &["/deny", "*S-1-1-0:(RD)"]);
+    assert!(
+        fs::read_dir(&closed).is_err(),
+        "the folder should be closed"
+    );
+
+    let scanner = hash_scanner(
+        &[(&threat, "Test.Hidden", Category::Malware)],
+        ScanOptions::default(),
+    );
+    let report = scan(&scanner, dir.path());
+    icacls(&closed, &["/remove:d", "*S-1-1-0"]);
+
+    assert_the_closed_folder_is_told_apart(&report);
 }
 
 /// A detector that reads content: flags files that contain a marker.
@@ -784,7 +877,7 @@ fn the_report_serialises_to_the_documented_json_shape() {
     let report = scan(&scanner, dir.path());
     let json = serde_json::to_value(&report).unwrap();
 
-    assert_eq!(json["schema"], 3);
+    assert_eq!(json["schema"], 4);
     assert_eq!(json["engine_version"], env!("CARGO_PKG_VERSION"));
     assert!(json["started_at"].as_str().unwrap().contains('T'));
     assert!(json["finished_at"].is_string());
@@ -807,6 +900,8 @@ fn the_report_serialises_to_the_documented_json_shape() {
 
     assert_eq!(json["stats"]["files_scanned"], 1);
     assert_eq!(json["stats"]["bytes_scanned"], 16);
+    assert_eq!(json["stats"]["files_skipped"], 0);
+    assert_eq!(json["stats"]["folders_skipped"], 0);
     assert!(json["stats"]["skipped_by_reason"].is_object());
     assert!(json["stats"]["files_per_second"].is_f64());
 
