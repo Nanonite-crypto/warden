@@ -38,3 +38,56 @@ note = """\
 Read with Windows' own Get-AuthenticodeSignature, before Warden could check \
 a signature: valid, embedded, signed for Microsoft Corporation. The SHA-256 \
 is the one the scan of 2026-11-20 recorded for the file at this path."""
+
+[[publisher.evidence]]
+file = 'C:\Program Files\PowerShell\7\pwsh.exe'
+sha256 = "e94166ed9f376559c1359bafb08bc49e463a494c330f67644ec1d9f1ffeb5ee5"
+route = "embedded"
+seen = 2026-11-21
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+note = """\
+Checked with warden trust check in CI. The chain is Microsoft Corporation, \
+Microsoft Code Signing PCA 2024, Microsoft Root Certificate Authority 2011, \
+and revocation was checked."""
+
+[[publisher]]
+name = "Microsoft Windows"
+common_name = "Microsoft Windows"
+organization = "Microsoft Corporation"
+anchor = "microsoft-root"
+signs = """\
+Windows itself: its system files, most of them through the catalogues that \
+Windows keeps and some in the file. Not Microsoft's applications, which are \
+signed as Microsoft Corporation, and not the drivers and components of \
+other companies, which Microsoft signs under other names."""
+reason = """\
+The files of Windows are the largest body of clean files on any machine, \
+and published rules have flagged files in System32 on a hosted runner and \
+on a desktop (docs/BENCHMARKS.md). Decided on 2026-11-21: the list starts \
+with Microsoft and the Windows catalogue."""
+added = 2026-11-21
+
+[[publisher.evidence]]
+file = 'C:\Windows\System32\ntdll.dll'
+sha256 = "4092c01cb70e15a956d76ca43366a6e324f1154eab7bf7636fe13236215c578a"
+route = "embedded"
+seen = 2026-11-21
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+note = """\
+Checked with warden trust check in CI. The chain is Microsoft Windows, \
+Microsoft Windows Production PCA 2026 RSA2048-SHA256, Microsoft Root \
+Certificate Authority 2010, and revocation was checked."""
+
+[[publisher.evidence]]
+file = 'C:\Windows\System32\whoami.exe'
+sha256 = "23240ef9f8b0a9a324110b1c2331de31dc1b0e08f5359cb707e51a939af56cd3"
+route = "windows_catalog"
+seen = 2026-11-21
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+note = """\
+Checked with warden trust check in CI. The file carries no signature and \
+is listed in the catalogue \
+Microsoft-Windows-Utilities-Package~31bf3856ad364e35~amd64~~10.0.26100.4202.cat, \
+which is signed for Microsoft Windows. The chain is Microsoft Windows, \
+Microsoft Windows Production PCA 2011, Microsoft Root Certificate Authority \
+2010, and revocation was checked."""

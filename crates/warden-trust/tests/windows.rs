@@ -94,6 +94,13 @@ fn reason(examination: &Examination) -> Reason {
     }
 }
 
+fn reason_or_none(examination: &Examination) -> Option<Reason> {
+    match &examination.trust {
+        Trust::NotTrusted { reason, .. } => Some(*reason),
+        Trust::Trusted { .. } => None,
+    }
+}
+
 fn detail(examination: &Examination) -> &str {
     match &examination.trust {
         Trust::NotTrusted { detail, .. } => detail,
@@ -160,9 +167,20 @@ fn files_of_windows_are_signed_under_a_root_of_microsofts_in_the_file_or_in_a_ca
             "{name} is signed under a root that is not Microsoft's"
         );
         assert!(signer.chain.len() >= 2, "{name}: {:?}", signer.chain);
-        assert!(signer.common_name.starts_with("Microsoft"), "{name}");
-        if strict() {
-            assert_eq!(signer.revocation, Revocation::Checked, "{name}");
+        assert_eq!(signer.common_name, "Microsoft Windows", "{name}");
+        assert_eq!(signer.organization, "Microsoft Corporation", "{name}");
+        // Trust takes one thing more than the signature: Windows has to
+        // have found out that no certificate was revoked, which it cannot
+        // on a machine without a network and without stored answers.
+        if strict() || signer.revocation == Revocation::Checked {
+            assert_eq!(
+                examination.trust,
+                Trust::Trusted {
+                    publisher: "Microsoft Windows".to_owned(),
+                    route,
+                },
+                "{name}"
+            );
         }
         match route {
             Route::Embedded => embedded += 1,
@@ -235,6 +253,41 @@ fn the_answer_is_about_the_content_that_was_scanned() {
     let changed = verifier.examine(&path, Some(&scanned), false);
     assert_eq!(reason(&changed), Reason::Changed);
     assert!(changed.routes.is_empty(), "nothing was asked about it");
+}
+
+#[test]
+fn the_evidence_on_the_trust_list_holds_where_it_can_be_checked() {
+    // Every entry of the list names files that were seen with the
+    // publisher's signature. Where such a file is on this machine, with
+    // the same content, the check has to come to the same result.
+    let list = TrustList::builtin().unwrap();
+    let verifier = verifier();
+    let mut checked = 0;
+    for publisher in list.publishers() {
+        for evidence in &publisher.evidence {
+            let path = Path::new(&evidence.file);
+            let examination = verifier.examine(path, None, false);
+            if examination.sha256.as_deref() != Some(evidence.sha256.as_str()) {
+                println!("{}: not here, or another version", evidence.file);
+                continue;
+            }
+            println!("{}: {:?}", evidence.file, examination.trust);
+            if !strict() && reason_or_none(&examination) == Some(Reason::RevocationUnknown) {
+                continue;
+            }
+            assert_eq!(
+                examination.trust,
+                Trust::Trusted {
+                    publisher: publisher.name.clone(),
+                    route: evidence.route,
+                },
+                "{}",
+                evidence.file
+            );
+            checked += 1;
+        }
+    }
+    println!("{checked} pieces of evidence could be checked on this machine");
 }
 
 // --- Files that CI makes ------------------------------------------------------

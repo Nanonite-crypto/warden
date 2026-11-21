@@ -110,6 +110,14 @@ fn a_rule_match_is_reported_unless_a_trusted_publisher_signed_the_file() {
     fs::create_dir_all(&tree).unwrap();
     // A copy keeps its signature: the signature is part of the file.
     fs::copy(&microsofts, tree.join("from-microsoft.exe")).unwrap();
+    // Two files of Windows itself. On a current Windows the first is
+    // signed in the file and the second in a catalogue, which lists it by
+    // its hash, so a copy anywhere is still found there.
+    let system32 =
+        PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into()))
+            .join("System32");
+    fs::copy(system32.join("ntdll.dll"), tree.join("from-windows.dll")).unwrap();
+    fs::copy(system32.join("whoami.exe"), tree.join("from-windows.exe")).unwrap();
     // Two bytes of a program and nothing of a signature.
     fs::write(
         tree.join("from-nobody.exe"),
@@ -151,19 +159,31 @@ fn a_rule_match_is_reported_unless_a_trusted_publisher_signed_the_file() {
     println!("{}", serde_json::to_string_pretty(&check).unwrap());
 
     // Every file matched the rule, so every file was asked about.
-    let files = expected_flagged.len() as u64 + 1;
+    let files = expected_flagged.len() as u64 + 3;
     assert_eq!(check["files_scanned"], files);
     assert_eq!(check["trust_check"]["available"], true);
     assert_eq!(check["trust_checks"], files);
-    assert_eq!(check["files_trusted"], 1);
+    assert_eq!(check["files_trusted"], 3);
 
-    // The program of Microsoft's is on record and not flagged.
-    assert_eq!(check["recorded_files"], 1);
+    // The program of Microsoft's and the two files of Windows are on
+    // record and not flagged.
+    assert_eq!(check["recorded_files"], 3);
     let recorded = entry(&check["recorded"], "from-microsoft.exe");
     assert_eq!(recorded["names"][0], "Test_Any_Windows_Program");
     assert_eq!(recorded["trust"]["answer"], "trusted");
     assert_eq!(recorded["trust"]["publisher"], "Microsoft Corporation");
     assert_eq!(recorded["trust"]["route"], "embedded");
+    let mut routes = Vec::new();
+    for name in ["from-windows.dll", "from-windows.exe"] {
+        let recorded = entry(&check["recorded"], name);
+        assert_eq!(recorded["trust"]["answer"], "trusted", "{recorded}");
+        assert_eq!(recorded["trust"]["publisher"], "Microsoft Windows");
+        routes.push(recorded["trust"]["route"].as_str().unwrap().to_owned());
+    }
+    if required() {
+        // On the runner both ways of signing Windows are covered.
+        assert_eq!(routes, ["embedded", "windows_catalog"]);
+    }
 
     // Everything else is flagged, each for its own reason.
     let flagged: Vec<&str> = check["flagged"]
@@ -217,6 +237,10 @@ fn a_rule_match_is_reported_unless_a_trusted_publisher_signed_the_file() {
             "does not change the verdict: signed for Microsoft Corporation, found in the file \
              itself"
         ),
+        "{text}"
+    );
+    assert!(
+        text.contains("does not change the verdict: signed for Microsoft Windows, found in"),
         "{text}"
     );
     assert!(
