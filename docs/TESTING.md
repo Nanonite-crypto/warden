@@ -339,6 +339,9 @@ lets a program without administrator rights see
 found 52,579 files fewer than the run before it, with six more entries it
 could not read, is what made this visible
 ([BENCHMARKS.md](BENCHMARKS.md#with-a-second-sign-for-generated-rules)).
+The repeat with administrator rights listed that folder and found 52,631
+files in it
+([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-again-with-administrator-rights)).
 Tests close a folder on purpose, with permissions on Unix and with a
 denial for everyone on Windows, and check that a scan, a check of clean
 files and a benchmark each say so.

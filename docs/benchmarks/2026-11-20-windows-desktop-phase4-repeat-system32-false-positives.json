@@ -1,0 +1,304 @@
+{
+  "schema": 3,
+  "label": "local machine",
+  "withheld": "The paths of two of the files that could not be read were replaced after the run: they would show which programs are installed on a private machine. Everything else is as the tool wrote it.",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\WINDOWS\\System32"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795197190,
+        "bundle_digest": "8430532c2a7107f5898bb1211bb0c3c6e9eac41687a30cb1531fe31a57e52ad7",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5132,
+        "rules_excluded": 6,
+        "rules_generated": 1622
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "threads": 16,
+  "duration_ms": 16258,
+  "files_scanned": 27649,
+  "bytes_scanned": 10124571315,
+  "files_skipped": 34,
+  "folders_skipped": 3,
+  "files_partially_scanned": 5,
+  "archive_members_scanned": 194,
+  "files_per_second": 1700.6087858386431,
+  "megabytes_per_second": 622.7326460681726,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false,
+  "recorded_files": 1,
+  "recorded_by_name": [
+    {
+      "name": "MALPEDIA_Win_Triback_Loader_Auto",
+      "files": 1
+    }
+  ],
+  "recorded": [
+    {
+      "path": "C:\\WINDOWS\\System32\\liblouis.dll",
+      "size": 742264,
+      "sha256": "5f294b822e0311edb896e4783417fbf5eab69c48b2fee7347ab305a06c967db1",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    }
+  ],
+  "recorded_truncated": false,
+  "skipped": [
+    {
+      "path": "C:\\WINDOWS\\System32\\LogFiles\\WMI\\RtBackup",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\WINDOWS\\System32\\LogFiles\\WMI\\RtBackup: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\WebThreatDefSvc",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\WINDOWS\\System32\\WebThreatDefSvc: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\BFS",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\WINDOWS\\System32\\config\\BFS: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\BBI",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\BBI.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\BBI.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\DEFAULT",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\DEFAULT.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\DEFAULT.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SAM",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SAM.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SAM.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SECURITY",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SECURITY.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SECURITY.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SOFTWARE",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SOFTWARE.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SOFTWARE.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SYSTEM",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SYSTEM.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\SYSTEM.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\DataSharing\\Storage\\DSS.log",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\DataSharing\\Storage\\DSStmp.log",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\DataSharing\\Storage\\DSTokenDB2.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\DataSharing\\Storage\\DSTokenDB2.jfm",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\ActionsMcpHost.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\ActionsMcpHost.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.Core_cw5n1h2txyewy\\ShellMcpServers.Packaging.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\ShellMcpServers.Packaging.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\Windows\\Notifications\\WPNPRMRY.tmp",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "withheld: a file that an installed program keeps in the profile of the system account",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "withheld: another file of the same program",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\sru\\SRU.log",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\sru\\SRUDB.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\WINDOWS\\System32\\sru\\SRUDB.jfm",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    }
+  ],
+  "skipped_truncated": false
+}

@@ -87,14 +87,22 @@ that reason a bundle now keeps its contents under a cipher
 rules is still open: it needs a kit with such a bundle, or the machine's
 owner to let Defender leave the old one alone.
 
+The desktop's programs were also scanned once more, with administrator
+rights, which open the folder of the apps from the Microsoft Store. One
+file of 310,910 was flagged there: a clean one, by a rule that was written
+by hand. The four generated rules flagged nothing, and four more of their
+matches are on record. The hand-written rule is the seventh on the
+exclusion list now, and the run has not been repeated with that list
+([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-again-with-administrator-rights)).
+
 **What it cannot show.** What the change costs in detection. A generated
 rule that matches plain-looking malware no longer flags it alone, and
 without malware samples, which this project does not handle, that cost
 cannot be measured. It is stated as a limit.
 
-The exclusion list stays, with six entries. It is still the right tool for
-a rule that is wrong in a way of its own, such as one that recognises an
-installer plug-in.
+The exclusion list stays, with seven entries by the end of the phase. It
+is still the right tool for a rule that is wrong in a way of its own, such
+as one that recognises an installer plug-in.
 
 ## Decisions
 
@@ -130,6 +138,8 @@ installer plug-in.
 | 2026-11-20 | A command whose output nobody reads any more, as when it is piped into `head`, stops quietly with exit code 2. It used to end in a panic. Everything the command-line program prints goes through one place that can fail, and a lint keeps out the printing macros that cannot. |
 | 2026-11-20 | A scan counts the folders it could not open apart from the files it could not read, and a false-positive result names them. An unreadable folder used to count as one skipped entry, whatever was in it. The formats went up a version for it: scan report 4, false-positive result 3, benchmark result 3. |
 | 2026-11-20 | A rule bundle keeps its contents under ChaCha20 with the key in its header, as the quarantine keeps files, so that an antivirus does not take the bundle for the malware its rules describe. The key is the SHA-256 of the contents, so that the same rules give the same file. Bundles written before stay readable, and `warden rules build --plain` still writes one. This settles how a release stores its rules. |
+| 2026-11-20 | `RUSSIANPANDA_Purecrypter`, a rule written by hand, is the seventh on the exclusion list. It flagged a file of the Microsoft Defender app when the desktop's programs were scanned with administrator rights. |
+| 2026-11-21 | A result names what it could not read. Where such a path would show which programs are installed on a private machine, the copy kept here replaces it and says so at its top, as evidence on the exclusion list may. Four paths in two results from the desktop are replaced. |
 
 ## Open decisions
 

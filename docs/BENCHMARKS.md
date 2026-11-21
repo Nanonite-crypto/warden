@@ -873,6 +873,75 @@ desktop [System32](benchmarks/2026-11-19-windows-desktop-phase4-system32-false-p
 [machine](benchmarks/2026-11-19-windows-desktop-phase4-machine.json);
 [`/usr`](benchmarks/2026-11-18-dev-container-usr-false-positives-with-second-sign.json).
 
+### The desktop's programs again, with administrator rights
+
+The scan of the desktop's programs in the round above had seen 52,579
+files fewer than the one before it, and the likely reason was that it ran
+without administrator rights. On 2026-11-20 it was repeated with them:
+a build of commit `2a625c1`, the same 5,132 rules, this time in a bundle
+under the cipher. A script asked Windows for the rights and wrote down
+what it could list before and after.
+
+| | |
+|---|---|
+| `C:\Program Files\WindowsApps` without administrator rights | Cannot be listed |
+| The same folder with them | 52,631 files, 9.45 GB, and no folder in it that could not be opened |
+| Scanned in `C:\Program Files` and `C:\Program Files (x86)` | 310,910 files, 74.31 GB, 344,996 files inside archives |
+| Could not be read | 2 files and no folder |
+| Checked in part | 1,069 files |
+| Time | 4 min 54 s, at 253 MB/s |
+| Flagged | **1**, as suspicious |
+| On record, verdict clean | 14 |
+
+**The likely reason was the reason.** Without administrator rights, the
+folder that holds the apps from the Microsoft Store cannot be listed, and
+it holds about as many files as the run before had missed. This result is
+of the format that counts folders apart from files, and it has no folder
+that could not be opened.
+
+**One file is flagged, and it is clean.** `xpdAgent.exe` belongs to the
+Microsoft Defender app from the Microsoft Store. The rule,
+`RUSSIANPANDA_Purecrypter`, was written by hand for PureCrypter, a malware
+loader that is itself a .NET program. It asks for four of five short
+sequences of .NET instructions, three of them ordinary, in a program under
+6 MB with exactly one embedded resource of more than 300 KB. The rule was
+in the bundle when these folders were first scanned, on 2026-11-18, and
+flagged nothing then. It is the seventh rule on the exclusion list now
+([RULES.md](RULES.md#rules-that-are-left-out)), and a bundle built with
+that list has 5,131 rules.
+
+**That bundle has not been over these folders yet.** Leaving a rule out
+can take findings away and cannot add one, so the expected result is no
+flagged file in 310,910. It stays an expectation until the run is
+repeated.
+
+**Four more files are on record**, all of them in the folder that the run
+before could not list, and all through the Triback rule:
+`NativeHostNE.dll` of Phone Link, and `pyshellext.exe`, `launcher-64.exe`
+and `launcherw-64.exe` of the Python install manager. The other ten are
+the ten of the round above. On the runner and the desktop together that
+makes sixteen clean files that a generated rule matches, and none of them
+is reported.
+
+The same day the desktop's check was repeated with that build. System32
+with the 5,132 rules: none of 27,649 files flagged, `liblouis.dll` on
+record as before, 34 files and 3 folders that could not be read. The
+passes without rules took 19.3 s, 8.7 s and 9.5 s, and the pass with them
+16.3 s; on 2026-11-19 they had taken 21.8 s, 8.1 s, 8.1 s and 21.9 s. The
+machine was in use both times.
+
+A result now names what it could not read. Four of those files are not
+named in the two results of that day, the two among the programs and two
+of the 34 in System32: their paths would show which programs are installed
+on a private machine. Each raw result says so at its top.
+
+Raw results:
+[programs](benchmarks/2026-11-20-windows-desktop-phase4-programs-administrator-false-positives.json),
+[what the script wrote down](benchmarks/2026-11-20-windows-desktop-phase4-programs-administrator-rights.txt);
+System32 [benchmark](benchmarks/2026-11-20-windows-desktop-phase4-repeat-system32.json),
+[with rules](benchmarks/2026-11-20-windows-desktop-phase4-repeat-system32-false-positives.json),
+[machine](benchmarks/2026-11-20-windows-desktop-phase4-repeat-machine.json).
+
 ### On a freshly installed Windows 11
 
 The machines of the rounds above have shaped Warden: the exclusion list
