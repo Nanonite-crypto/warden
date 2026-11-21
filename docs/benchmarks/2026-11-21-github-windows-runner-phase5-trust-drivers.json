@@ -1,0 +1,178 @@
+{
+  "schema": 1,
+  "label": "GitHub-hosted Windows runner, C:\\Windows\\System32\\drivers",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "Intel64 Family 6 Model 106 Stepping 6, GenuineIntel"
+  },
+  "paths": [
+    "C:\\Windows\\System32\\drivers"
+  ],
+  "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+  "publishers_listed": 2,
+  "network": true,
+  "threads": 2,
+  "duration_ms": 25674,
+  "files": 610,
+  "executables": 602,
+  "could_not_list": 0,
+  "files_trusted": 587,
+  "executables_trusted": 587,
+  "trusted": [
+    {
+      "publisher": "Microsoft Windows",
+      "route": "embedded",
+      "files": 291,
+      "executables": 291,
+      "example": {
+        "path": "C:\\Windows\\System32\\drivers\\amdsbs.sys",
+        "sha256": "afa0a9eaccc36cfc88ac41dcd0149ac6f9763d12c898397e831d80f202ef4402"
+      }
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "windows_catalog",
+      "files": 296,
+      "executables": 296,
+      "example": {
+        "path": "C:\\Windows\\System32\\drivers\\1394ohci.sys",
+        "sha256": "9df5d0ebdbcaf08e3f376ae993aca8aedef266228d8f1dd41d6f79f294840b2f"
+      }
+    }
+  ],
+  "not_trusted": [
+    {
+      "reason": "no_signature",
+      "files": 7,
+      "executables": 0,
+      "example": "C:\\Windows\\System32\\drivers\\etc\\hosts"
+    },
+    {
+      "reason": "not_listed",
+      "files": 15,
+      "executables": 15,
+      "example": "C:\\Windows\\System32\\drivers\\AziHsmVf.sys"
+    },
+    {
+      "reason": "not_checked",
+      "files": 1,
+      "executables": 0,
+      "example": "C:\\Windows\\System32\\drivers\\DriverData\\LogFiles\\WMI\\Microsoft-Windows-Rdp-Graphics-RdpIdd-Trace.etl"
+    }
+  ],
+  "details": [
+    {
+      "reason": "not_checked",
+      "detail": "the file cannot be opened in a way that keeps it from changing during the check: The process cannot access the file because it is being used by another process. (os error 32)",
+      "files": 1,
+      "example": "C:\\Windows\\System32\\drivers\\DriverData\\LogFiles\\WMI\\Microsoft-Windows-Rdp-Graphics-RdpIdd-Trace.etl"
+    }
+  ],
+  "details_truncated": false,
+  "signers": [
+    {
+      "common_name": "Microsoft Windows",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Windows",
+      "files": 587,
+      "embedded": 291,
+      "windows_catalog": 296,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Windows Hardware Compatibility Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 7,
+      "embedded": 7,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Windows Hardware Abstraction Layer Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 5,
+      "embedded": 5,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Windows Early Launch Anti-malware Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 2,
+      "embedded": 2,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Intel Corporation - Client Components Group",
+      "organization": "Intel Corporation",
+      "microsoft_root": false,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 1,
+      "root": "AddTrust External CA Root",
+      "root_sha256": "687fa451382278fff0c8b11f8d43d576671c6eb2bceab413fb83d965d06d2ff2"
+    }
+  ],
+  "signers_not_listed": {
+    "signers": 4,
+    "files": 15,
+    "signers_under_a_microsoft_root": 3,
+    "files_under_a_microsoft_root": 14
+  },
+  "timing": [
+    {
+      "outcome": "all",
+      "files": 610,
+      "mean_ms": 84.09579180327869,
+      "median_ms": 11.348,
+      "p95_ms": 348.277,
+      "max_ms": 762.457
+    },
+    {
+      "outcome": "embedded",
+      "files": 291,
+      "mean_ms": 11.13361855670103,
+      "median_ms": 6.083,
+      "p95_ms": 18.616,
+      "max_ms": 279.569
+    },
+    {
+      "outcome": "windows_catalog",
+      "files": 296,
+      "mean_ms": 159.73315202702705,
+      "median_ms": 153.614,
+      "p95_ms": 505.167,
+      "max_ms": 762.457
+    },
+    {
+      "outcome": "not_trusted",
+      "files": 23,
+      "mean_ms": 33.80595652173913,
+      "median_ms": 6.016,
+      "p95_ms": 76.128,
+      "max_ms": 451.891
+    }
+  ]
+}

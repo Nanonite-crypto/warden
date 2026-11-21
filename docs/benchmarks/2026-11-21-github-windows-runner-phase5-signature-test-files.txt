@@ -1,0 +1,215 @@
+What the signature check said about the test files and about files of Windows,
+on a GitHub-hosted Windows runner on 2026-11-21. Printed by the step "Show what
+the signature check finds" of the CI run of commit 66269f3, with the debug build
+that the tests had just used. The test files are made by
+.github/scripts/signed-test-files.ps1 in the same job.
+
+== What Windows said about the test files (Get-AuthenticodeSignature) ==
+{
+    "folder":  "D:\\a\\_temp\\warden-signed",
+    "publisher":  "CN=Warden Test Publisher, O=Warden Test",
+    "lookalike":  "CN=Microsoft Corporation, O=Microsoft Corporation",
+    "lookalike_root":  "CN=Warden Test Root, O=Warden Test",
+    "trusted_roots":  [
+                          "13CA2B96574E13E2B691DCFAF2B66695BEDBF12F",
+                          "88DC0D054C81E440E8668EC6601CD673EB976FC8"
+                      ],
+    "has_package":  true,
+    "windows_says":  [
+                         {
+                             "file":  "plain.exe",
+                             "windows_says":  "NotSigned",
+                             "signer":  null
+                         },
+                         {
+                             "file":  "signed.exe",
+                             "windows_says":  "Valid",
+                             "signer":  "CN=Warden Test Publisher, O=Warden Test"
+                         },
+                         {
+                             "file":  "tampered.exe",
+                             "windows_says":  "HashMismatch",
+                             "signer":  "CN=Warden Test Publisher, O=Warden Test"
+                         },
+                         {
+                             "file":  "padded.exe",
+                             "windows_says":  "Valid",
+                             "signer":  "CN=Warden Test Publisher, O=Warden Test"
+                         },
+                         {
+                             "file":  "lookalike.exe",
+                             "windows_says":  "Valid",
+                             "signer":  "CN=Microsoft Corporation, O=Microsoft Corporation"
+                         }
+                     ],
+    "package_says":  {
+                         "file":  "test.msix",
+                         "windows_says":  "Valid",
+                         "signer":  "CN=Warden Test Publisher, O=Warden Test"
+                     }
+}
+
+== warden trust list ==
+2 publishers on the trust list that is part of this program (SHA-256 6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778)
+
+Microsoft Corporation
+  Certificate  name "Microsoft Corporation", organisation "Microsoft Corporation"
+  Chain        has to pass through one of Microsoft's own root certificates
+  Signs        Microsoft's own applications, and the packages of the apps that Microsoft itself publishes in the Microsoft Store. Not the apps of other publishers in the Store, which are signed for an identity of their own, and not other companies' drivers and components, which Microsoft signs under other names.
+  Why          A rule written by hand flagged a file of the Microsoft Defender app among the programs of a desktop. Without this entry the rule had to be left out of the bundle, for every file.
+  Added        2026-11-21
+  Seen         2026-11-21 on Windows 11 desktop, found in the file itself:
+               C:\Program Files\WindowsApps\Microsoft.6365217CE6EB4_102.2611.9002.0_x64__8wekyb3d8bbwe\MicrosoftSecurityApp\xpdAgent.exe
+               SHA-256 86f95974cb32af876d64a85b647b042e5aa3d215d8daff481d1f876b1373a8ec
+  Seen         2026-11-21 on GitHub-hosted Windows runner (Windows Server 2025), found in the file itself:
+               C:\Program Files\PowerShell\7\pwsh.exe
+               SHA-256 e94166ed9f376559c1359bafb08bc49e463a494c330f67644ec1d9f1ffeb5ee5
+
+Microsoft Windows
+  Certificate  name "Microsoft Windows", organisation "Microsoft Corporation"
+  Chain        has to pass through one of Microsoft's own root certificates
+  Signs        Windows itself: its system files, most of them through the catalogues that Windows keeps and some in the file. Not Microsoft's applications, which are signed as Microsoft Corporation, and not the drivers and components of other companies, which Microsoft signs under other names.
+  Why          The files of Windows are the largest body of clean files on any machine, and published rules have flagged files in System32 on a hosted runner and on a desktop (docs/BENCHMARKS.md). Decided on 2026-11-21: the list starts with Microsoft and the Windows catalogue.
+  Added        2026-11-21
+  Seen         2026-11-21 on GitHub-hosted Windows runner (Windows Server 2025), found in the file itself:
+               C:\Windows\System32\ntdll.dll
+               SHA-256 4092c01cb70e15a956d76ca43366a6e324f1154eab7bf7636fe13236215c578a
+  Seen         2026-11-21 on GitHub-hosted Windows runner (Windows Server 2025), found in a catalogue of Windows:
+               C:\Windows\System32\whoami.exe
+               SHA-256 23240ef9f8b0a9a324110b1c2331de31dc1b0e08f5359cb707e51a939af56cd3
+
+== warden trust check, file by file ==
+D:\a\_temp\warden-signed\plain.exe
+  Trusted     no: no signature was found: not in the file, not in a catalogue of Windows, and not in a package
+  SHA-256     fda96035664883a00d672d2cf75b4db2012cbe951812bf55daced6f4ba04e8a3
+  In the file no signature
+  Catalogue   no signature
+  Package     no signature
+
+D:\a\_temp\warden-signed\signed.exe
+  Trusted     no: signed for Warden Test Publisher (Warden Test), found in the file itself; that publisher is not on the trust list
+  SHA-256     6c6c0a3dda9d2441560a26beb60c35d930237025ab7c29fc695bd7aa4d93fc40
+  In the file a signature that holds
+              signed for Warden Test Publisher (Warden Test)
+              chain: Warden Test Publisher
+              the chain ends in a root of Microsoft's: no; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+D:\a\_temp\warden-signed\tampered.exe
+  Trusted     no: the file was changed after it was signed (Windows error 0x80096010)
+  SHA-256     a7e172fff9cbd98971bc1fab874f0371410c3b0d7c8f2b0fc2c9e997a5dbc6e5
+  In the file does not hold: the file was changed after it was signed (Windows error 0x80096010)
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+D:\a\_temp\warden-signed\padded.exe
+  Trusted     no: bytes follow the signature inside its entry, so what the file carries as a signature does not count
+  SHA-256     5c2a6f31f4652657b41d79ef647f722d0c563d593f4ee5f7dbc3267b298c02c3
+  In the file does not hold: bytes follow the signature inside its entry, so what the file carries as a signature does not count
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+D:\a\_temp\warden-signed\lookalike.exe
+  Trusted     no: signed for Microsoft Corporation, found in the file itself; the trust list has a publisher with these names, but only with a chain that ends in one of Microsoft's own root certificates, which this signature does not have
+  SHA-256     eff004b4ae5bd10333cfbbaa08d3dd8b3da09dbf513710c7c8400dad8fc5c96a
+  In the file a signature that holds
+              signed for Microsoft Corporation
+              chain: Microsoft Corporation < Warden Test Root
+              the chain ends in a root of Microsoft's: no; revocation: could not be checked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+D:\a\_temp\warden-signed\package\notes.txt
+  Trusted     no: signed for Warden Test Publisher (Warden Test), found in the signature of the file's package; that publisher is not on the trust list
+  SHA-256     a43a6edb32c7eb907e9d36b6b939a04dfd657cab315307633e3b6588d2384691
+  In the file not tried: the file is no Windows executable, and a signature inside a file is only looked for in those
+  Catalogue   not tried: the file is no Windows executable, and only those are looked up in the catalogues
+  Package     a signature that holds, in D:\a\_temp\warden-signed\package
+              signed for Warden Test Publisher (Warden Test)
+              chain: Warden Test Publisher
+              the chain ends in a root of Microsoft's: no; revocation: checked, nothing revoked
+
+D:\a\_temp\warden-signed\package\tools\tool.exe
+  Trusted     no: signed for Warden Test Publisher (Warden Test), found in the signature of the file's package; that publisher is not on the trust list
+  SHA-256     fda96035664883a00d672d2cf75b4db2012cbe951812bf55daced6f4ba04e8a3
+  In the file no signature
+  Catalogue   no signature
+  Package     a signature that holds, in D:\a\_temp\warden-signed\package
+              signed for Warden Test Publisher (Warden Test)
+              chain: Warden Test Publisher
+              the chain ends in a root of Microsoft's: no; revocation: checked, nothing revoked
+
+D:\a\_temp\warden-signed\package-changed\notes.txt
+  Trusted     no: the file is not the one that the block map of its package describes
+  SHA-256     9881fa0ce6d8677467840bb6a5de7a7c0a9ec0302311ad1ab15a2eee87b420e6
+  In the file not tried: the file is no Windows executable, and a signature inside a file is only looked for in those
+  Catalogue   not tried: the file is no Windows executable, and only those are looked up in the catalogues
+  Package     does not hold: the file is not the one that the block map of its package describes
+
+D:\a\_temp\warden-signed\package-added\added.txt
+  Trusted     no: the block map of the file's package does not list the file
+  SHA-256     89ee204d3fcb8eed9446b0460f9186c41b0953665f5f6ab83880c4a57b681854
+  In the file not tried: the file is no Windows executable, and a signature inside a file is only looked for in those
+  Catalogue   not tried: the file is no Windows executable, and only those are looked up in the catalogues
+  Package     does not hold: the block map of the file's package does not list the file
+
+C:\Windows\System32\ntdll.dll
+  Trusted     yes: signed for Microsoft Windows, a publisher on the trust list, found in the file itself
+  SHA-256     4092c01cb70e15a956d76ca43366a6e324f1154eab7bf7636fe13236215c578a
+  In the file a signature that holds
+              signed for Microsoft Windows (Microsoft Corporation)
+              chain: Microsoft Windows < Microsoft Windows Production PCA 2026 RSA2048-SHA256 < Microsoft Root Certificate Authority 2010
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+C:\Windows\System32\whoami.exe
+  Trusted     yes: signed for Microsoft Windows, a publisher on the trust list, found in a catalogue of Windows
+  SHA-256     23240ef9f8b0a9a324110b1c2331de31dc1b0e08f5359cb707e51a939af56cd3
+  In the file no signature
+  Catalogue   a signature that holds, in Microsoft-Windows-Utilities-Package~31bf3856ad364e35~amd64~~10.0.26100.4202.cat (by SHA-256)
+              signed for Microsoft Windows (Microsoft Corporation)
+              chain: Microsoft Windows < Microsoft Windows Production PCA 2011 < Microsoft Root Certificate Authority 2010
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Package     no signature
+
+C:\Windows\System32\notepad.exe
+  Trusted     yes: signed for Microsoft Windows, a publisher on the trust list, found in a catalogue of Windows
+  SHA-256     84b484fd3636f2ca3e468d2821d97aacde8a143a2724a3ae65f48a33ca2fd258
+  In the file no signature
+  Catalogue   a signature that holds, in Microsoft-Windows-Notepad-FoD-Package~31bf3856ad364e35~amd64~~10.0.26100.33828.cat (by SHA-256)
+              signed for Microsoft Windows (Microsoft Corporation)
+              chain: Microsoft Windows < Microsoft Windows Production PCA 2026 RSA2048-SHA256 < Microsoft Root Certificate Authority 2010
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Package     no signature
+
+C:\Windows\explorer.exe
+  Trusted     yes: signed for Microsoft Windows, a publisher on the trust list, found in the file itself
+  SHA-256     1dd1c316be478af73c23934282d8c575186b4eb52411abb16a05864cd708db3f
+  In the file a signature that holds
+              signed for Microsoft Windows (Microsoft Corporation)
+              chain: Microsoft Windows < Microsoft Windows Production PCA 2026 RSA2048-SHA256 < Microsoft Root Certificate Authority 2010
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+C:\Program Files\PowerShell\7\pwsh.exe
+  Trusted     yes: signed for Microsoft Corporation, a publisher on the trust list, found in the file itself
+  SHA-256     e94166ed9f376559c1359bafb08bc49e463a494c330f67644ec1d9f1ffeb5ee5
+  In the file a signature that holds
+              signed for Microsoft Corporation
+              chain: Microsoft Corporation < Microsoft Code Signing PCA 2024 < Microsoft Root Certificate Authority 2011
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+C:\Program Files\dotnet\dotnet.exe
+  Trusted     no: signed for .NET (Microsoft Corporation), found in the file itself; that publisher is not on the trust list
+  SHA-256     0a1b7ca731245de1f267a9c3c4d1ef8705e0821923fcdd6e0d61c31132f51240
+  In the file a signature that holds
+              signed for .NET (Microsoft Corporation)
+              chain: .NET < Microsoft Code Signing PCA 2024 < Microsoft Root Certificate Authority 2011
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature

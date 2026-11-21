@@ -489,8 +489,10 @@ and `launcherw-64.exe` of the Python install manager. And on the Windows
 it matched five: `vulkan-1.dll`, which is the runner's file, `liblouis.dll`
 in another build than the desktop's, and `NativeDprt.dll` of Defender's
 own sensor, the last two each with a copy in the component store. All
-nine are on record too. That makes fifteen clean files for this one rule,
-on three machines, and none of them reported.
+nine are on record too. That made fifteen clean files for this one rule,
+on three machines, and none of them reported. A run in phase 5 added two
+on the CI runner, `node_js2c.exe` and `nop.exe` in a tool pack of .NET
+that the runner's image had gained since: seventeen.
 
 ### What the second sign costs
 

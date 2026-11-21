@@ -6,13 +6,15 @@ Warden is a portfolio project by Vevang Technologies. It is built in phases,
 each ending with something that can be run and tested. The aim is depth in
 the scan engine, a clean architecture and measured results.
 
-> **Status: phase 4 of 10.** The scan engine has three detection layers:
-> hash matching, YARA rules, and heuristics that judge a Windows executable
-> by its structure. It looks inside zip archives. A file can be moved into
-> a quarantine and put back exactly as it was. Everything is driven from
-> the command line: there is no GUI, no background service and no
-> real-time protection yet. Warden is not a replacement for your
-> antivirus; it runs next to Microsoft Defender.
+> **Status: phase 5 of 10, first of its two pieces.** The scan engine has
+> three detection layers: hash matching, YARA rules, and heuristics that
+> judge a Windows executable by its structure. It looks inside zip
+> archives. On Windows it checks who signed a file before it reports the
+> match of a published rule. A file can be moved into a quarantine and put
+> back exactly as it was. Everything is driven from the command line: there
+> is no GUI, no background service and no real-time protection yet. Warden
+> is not a replacement for your antivirus; it runs next to Microsoft
+> Defender.
 
 ## What works today
 
@@ -111,9 +113,48 @@ quarantine is opened; the tests stop every operation after every step,
 the way a program that dies would. [docs/QUARANTINE.md](docs/QUARANTINE.md)
 has the format, the reasoning and the limits.
 
+A published rule is sometimes wrong about clean software, and for a file
+of Windows there is better evidence than a rule: its signature.
+`warden trust check` shows what Warden makes of one, here for two files on
+a Windows runner in CI. The first is a file of Windows that carries no
+signature at all; Windows lists it in a catalogue. The second was made for
+the test: it is validly signed, Windows says so too, and the certificate
+names Microsoft Corporation, but the root above it was made on the spot.
+
+```
+C:\Windows\System32\whoami.exe
+  Trusted     yes: signed for Microsoft Windows, a publisher on the trust list, found in a catalogue of Windows
+  SHA-256     23240ef9f8b0a9a324110b1c2331de31dc1b0e08f5359cb707e51a939af56cd3
+  In the file no signature
+  Catalogue   a signature that holds, in Microsoft-Windows-Utilities-Package~31bf3856ad364e35~amd64~~10.0.26100.4202.cat (by SHA-256)
+              signed for Microsoft Windows (Microsoft Corporation)
+              chain: Microsoft Windows < Microsoft Windows Production PCA 2011 < Microsoft Root Certificate Authority 2010
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Package     no signature
+
+D:\a\_temp\warden-signed\lookalike.exe
+  Trusted     no: signed for Microsoft Corporation, found in the file itself; the trust list has a publisher with these names, but only with a chain that ends in one of Microsoft's own root certificates, which this signature does not have
+  SHA-256     eff004b4ae5bd10333cfbbaa08d3dd8b3da09dbf513710c7c8400dad8fc5c96a
+  In the file a signature that holds
+              signed for Microsoft Corporation
+              chain: Microsoft Corporation < Warden Test Root
+              the chain ends in a root of Microsoft's: no; revocation: could not be checked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+```
+
+A valid signature is not trust: malware is signed too. Warden trusts a
+short list of publishers that is part of the program, today Microsoft
+Corporation and Microsoft Windows, each by its names and by the root its
+chain has to end in. With such a signature, the match of a rule from a
+rule bundle is put on record and not reported. A hash match is reported
+whoever signed the file. [docs/TRUST.md](docs/TRUST.md) has the three
+routes to a signature, the list, and the limits.
+
 | Command | What it does |
 |---|---|
-| `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report. |
+| `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report, `--no-trust` reports every rule match whoever signed the file. |
+| `warden trust check <file>...` / `list` / `survey <folder>` | Says who signed a file, by which of three routes, and whether that publisher is on the trust list; prints the list; or checks every file of a folder and counts. Windows only. |
 | `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. |
 | `warden inspect <file>` | Shows what the heuristics see in one Windows executable: its sections, imports and header, every indicator that applies with its weight, the score and the threshold. |
 | `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. The bundle keeps its contents under a cipher, so that an antivirus does not take it for the malware its rules describe. |
@@ -231,7 +272,12 @@ Today's layers work like this:
    flagged?". Some findings count only together with a second sign from
    another layer; one that stays alone is kept on record, so "why was this
    not flagged?" has an answer too.
-8. Files that could not be read, and files that could only be checked in
+8. Before the match of a rule from a bundle is reported, Warden asks who
+   signed the file: in the file, in a catalogue of Windows, or in the
+   signature of its app package. If that is a publisher on the trust
+   list, the match is put on record and not reported. Nothing else yields
+   to a signature, and a file inside an archive is never asked about.
+9. Files that could not be read, and files that could only be checked in
    part (too large, a password-protected member, a limit reached), are
    listed with the reason, never silently dropped. A folder that could not
    be opened is listed as a folder and counted apart: what is in it was
@@ -239,8 +285,8 @@ Today's layers work like this:
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 [docs/RULES.md](docs/RULES.md), [docs/HEURISTICS.md](docs/HEURISTICS.md),
-[docs/QUARANTINE.md](docs/QUARANTINE.md) and
-[docs/SIGDB_FORMAT.md](docs/SIGDB_FORMAT.md).
+[docs/TRUST.md](docs/TRUST.md), [docs/QUARANTINE.md](docs/QUARANTINE.md)
+and [docs/SIGDB_FORMAT.md](docs/SIGDB_FORMAT.md).
 
 ## What Warden is not
 
@@ -269,7 +315,7 @@ the labelled feature records of the EMBER2024 dataset. See
 ## Benchmarks
 
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the numbers and how they were
-produced. In short, as of phase 4:
+produced. In short, as of the first piece of phase 5:
 
 - **Speed.** A 16-thread desktop with Microsoft Defender running scans its
   System32 folder (27,646 files, 10 GB) from the file cache in 8 seconds
@@ -297,11 +343,28 @@ produced. In short, as of phase 4:
   bundle: Microsoft signed that file, and the match of a public rule in a
   file that a trusted publisher signed is recorded and not reported.
   Across all runs,
-  generated rules match 21 clean files on three machines, and all are on
+  generated rules match 23 clean files on three machines, and all are on
   record with a clean verdict. Eight are the files that such rules had
-  flagged before; the other thirteen came up after the change, and nothing
+  flagged before; the other fifteen came up after the change, and nothing
   had to be done about them. What the second sign costs in detection is
   not measured.
+- **Who signed what.** On a GitHub-hosted Windows runner, Warden finds a
+  signature of a trusted publisher for 97.5 % of the 8,760 executables in
+  System32: for 19 % in the file itself, and for 78 % only through a
+  catalogue of Windows. In the folder of the apps from the Microsoft
+  Store it covers all 1,054 executables and 1,091 of 1,124 other files,
+  1,505 of the two together through the signature of their package. Among
+  the software installed there, 99 % of the executables are validly
+  signed and 28 % are trusted: the trust list names two signing
+  identities of Microsoft's and nobody else. A check takes 4 to 8 ms at
+  the median, and 154 ms through a catalogue on a machine that is asked
+  for the first time. A scan asks only about a file with a rule match
+  that it would otherwise report, which was no file of 112,675 on that
+  runner.
+- **Signatures that have to be turned down.** CI makes them: Windows'
+  own tool calls a signed program with bytes added next to its signature
+  "Valid", and one that is signed for "Microsoft Corporation" under a
+  root made on the spot as well. Warden trusts neither, and says why.
 - **On a Windows 11 that was installed for the test**, with nothing else
   on it, no file is flagged: none of 153,317 with the built-in rule and
   the heuristic layer, and none of 153,370 with the 5,132 public rules as

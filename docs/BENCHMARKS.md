@@ -15,6 +15,9 @@ Every number on this page comes from a run that is recorded in
 | How many clean files a generated rule matches, with and without counting such a match alone | Phase 4 |
 | False positives on a Windows that was installed for the test, without the public rules and with them | Phase 4 |
 | What Microsoft Defender does with a rule bundle, with its contents under a cipher and without | Phase 4 |
+| What the signature check says about signatures that were made to be turned down | Phase 5 |
+| Who signed the files of a Windows installation, by which of three routes that is found out, and what one check costs | Phase 5 |
+| What the signature check changes about the false positives | Phase 5 |
 | Real-time time-to-detect | From phase 9 |
 
 **Not measured, by design:** detection rates on live malware samples. Warden
@@ -523,6 +526,217 @@ without (8.7 MB each):
 Raw figures, with what can and cannot be read in the two files:
 [2026-11-20-dev-container-sealed-bundle.txt](benchmarks/2026-11-20-dev-container-sealed-bundle.txt).
 
+## Results: phase 5
+
+The first piece of phase 5 is the check of who signed a file
+([TRUST.md](TRUST.md)). Its numbers answer three questions. Does the check
+say the right thing about signatures that were made to be turned down? How
+many files of a Windows installation does each of its three routes reach,
+and who signed them? What does one check cost? What the check changes
+about a scan is a question of false positives, and is under
+[With the signature check](#with-the-signature-check).
+
+Everything in this section was measured on GitHub-hosted Windows runners
+on 2026-11-21: Windows Server 2025 (10.0.26100, runner image
+`windows-2025-vs2026` 20261116.315), 2 logical processors, 8 GB RAM. The
+trust list had its two publishers, and the runners had a network, over
+which Windows asks whether a certificate was revoked.
+
+### Who signed what
+
+#### Signatures made to be turned down
+
+A step of the Windows CI job makes test files with signatures of its own
+([TESTING.md](TESTING.md#signatures)). The middle column is the `Status`
+that PowerShell's `Get-AuthenticodeSignature` printed for each file on the
+runner; the right one is what `warden trust check` said.
+
+| File | Windows says | Warden says |
+|---|---|---|
+| `plain.exe`, a small program, not signed | NotSigned | No signature, by any of the three routes |
+| `signed.exe`, the same, signed for "Warden Test Publisher" | Valid | The signature holds. Not trusted: "that publisher is not on the trust list" |
+| `tampered.exe`, that file with one byte changed | HashMismatch | Not trusted: "the file was changed after it was signed" |
+| `padded.exe`, that file with 40 bytes added inside the table that holds the signature | **Valid** | Not trusted: "bytes follow the signature inside its entry, so what the file carries as a signature does not count" |
+| `lookalike.exe`, signed for "Microsoft Corporation" under a root that was made on the spot | **Valid** | The signature holds. Not trusted: "the trust list has a publisher with these names, but only with a chain that ends in one of Microsoft's own root certificates, which this signature does not have" |
+| A text file and a program in the folder of a signed app package | Valid, for the package | Both covered by the package's signature. Not trusted: its publisher is not on the list |
+| The same folder with the text file changed | | Not trusted: "the file is not the one that the block map of its package describes" |
+| The same folder with a file added | | Not trusted: "the block map of the file's package does not list the file" |
+
+- **Windows calls two of these valid that Warden turns down for a reason
+  of its own.** `padded.exe` is the gap of
+  [CVE-2013-3900](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2013-3900):
+  the bytes were added where no signature reaches, and Windows accepts
+  that unless an administrator has switched a stricter check on. The
+  runner's Windows had not. `lookalike.exe` is validly signed, by a
+  certificate that says Microsoft Corporation twice. The machine trusts
+  the root above it, because the test put that root there, as any program
+  with administrator rights could. What the certificate cannot have is a
+  root with Microsoft's key.
+- **A valid signature alone changes nothing.** `signed.exe` and the files
+  of the package are signed and the signature holds, and they are not
+  trusted: nobody put "Warden Test Publisher" on the list.
+- For `lookalike.exe` Windows could not find out whether the certificate
+  was revoked: it names no place to ask. That alone would have kept it
+  from being trusted, had its names and its root been right.
+
+The same step asked about files that came with the machine:
+
+| File | Route | Signed for | Trusted |
+|---|---|---|---|
+| `C:\Windows\System32\ntdll.dll` | In the file | Microsoft Windows | Yes |
+| `C:\Windows\explorer.exe` | In the file | Microsoft Windows | Yes |
+| `C:\Windows\System32\whoami.exe` | Catalogue `Microsoft-Windows-Utilities-Package~...~10.0.26100.4202.cat`; the file carries nothing | Microsoft Windows | Yes |
+| `C:\Windows\System32\notepad.exe` | Catalogue `Microsoft-Windows-Notepad-FoD-Package~...~10.0.26100.33828.cat`; the file carries nothing | Microsoft Windows | Yes |
+| `C:\Program Files\PowerShell\7\pwsh.exe` | In the file | Microsoft Corporation | Yes |
+| `C:\Program Files\dotnet\dotnet.exe` | In the file | .NET, an identity of Microsoft's that is not on the list | No |
+
+Every one of these chains ends in a root of Microsoft's, and revocation
+was checked for each. `dotnet.exe` shows that this is not what decides:
+the list names signing identities, and ".NET" is not one of the two.
+
+Raw output, with the chains:
+[2026-11-21-github-windows-runner-phase5-signature-test-files.txt](benchmarks/2026-11-21-github-windows-runner-phase5-signature-test-files.txt).
+
+#### By which route
+
+`warden trust survey` checks every file of a folder and counts. A scan
+asks about very few files; a survey asks about all of them, to show what
+the check would say. Three folders of one runner:
+
+| | `C:\Windows\System32` | Software installed on the runner | `C:\Program Files\WindowsApps` |
+|---|---|---|---|
+| Files | 21,567 | 91,144 | 2,178 |
+| Windows executables among them | 8,760 | 48,235 | 1,054 |
+| **Trusted executables** | **8,544 (97.5 %)** | **13,636 (28.3 %)** | **1,054 (100 %)** |
+| by the signature in the file | 1,673 (19.1 %) | 13,636 | 640 |
+| through a catalogue of Windows | 6,871 (78.4 %) | 0 | 0 |
+| through the signature of their app package | 0 | 0 | 414 |
+| Signed, by a publisher that is not on the list | 127 | 33,954 (70.4 %) | 0 |
+| No signature by any route | 85 | 643 | 0 |
+| A signature that does not hold | 4 | 2 | 0 |
+| Other files that are trusted | 0 of 12,807 | 0 of 42,909 | 1,091 of 1,124 |
+
+The software is what the false-positive runs scan: 7-Zip, Git, Chrome,
+Firefox, PowerShell, .NET and Node.js.
+
+- **Each route is needed.** In System32, 78 % of the executables carry no
+  signature of their own and are vouched for in a catalogue. A check that
+  only looks inside the file would trust 19 % of that folder's executables
+  and call most of the rest unsigned. In the folder of the app packages,
+  414 executables are trusted through the signature of their package.
+  399 of them also carry a signature of their own, from a signer that is
+  not on the list, most often .NET.
+- **Other files are trusted only as part of a package**, and there nearly
+  all of them are. The 33 that are not are 20 signature files, which
+  nothing can cover, and 13 files that sit in a package's folder without
+  being in its block map. The one that the survey names as an example is
+  in `microsoft.system.package.metadata`, a folder that Windows adds to
+  an installed package.
+- **In the software, the list is what decides.** 47,590 of its 48,235
+  executables carry a valid signature. Two in seven are trusted, because
+  Microsoft Corporation signed them. The rest are signed by somebody the
+  list does not name, and a rule match in one of them is reported as it
+  always was.
+- **Signatures that do not hold are rare and real.** Four files in
+  System32 are signed under a root that the machine does not trust. In
+  Git for Windows, the header of `git-bash.exe` points to a signature
+  beyond the end of the file, and for `wintoast.exe` Windows says that a
+  certificate of the chain was not valid at the time that counts.
+- In System32, 236 files could not be checked. The check has to keep
+  others from writing to a file while it looks, and 232 files were in use
+  by Windows, registry files and logs among them. The other 4 are aliases
+  of Store apps, which cannot be opened like a file. A scan asks for less
+  and could not read 36 files of the folder.
+
+#### Who is not on the list
+
+The surveys on the runner name every signer, because the machine is the
+same for everybody. These are the signers of executables that the list
+does not name, with the number of files each signed:
+
+| Signer | System32 | Software | WindowsApps |
+|---|---|---|---|
+| .NET | | 33,430 | 375 |
+| Microsoft 3rd Party Application Component | 4 | 248 | 4 |
+| Microsoft Windows Software Compatibility Publisher | 46 | 16 | |
+| Microsoft Windows Hardware Compatibility Publisher | 30 | | |
+| .NET DAC | | 30 | 3 |
+| Microsoft Windows Hardware Abstraction Layer Publisher | 18 | | |
+| Microsoft Windows Publisher | 15 | | 4 |
+| Windows Phone | | | 11 |
+| Five more names of Microsoft's | 11 | | |
+| **Under a root of Microsoft's, together** | **124** | **33,724** | **397** |
+| Publishers under other roots: the .NET Foundation's projects, Mozilla, Google, the maintainer of Git for Windows, the Python Software Foundation, GitHub, the OpenJS Foundation, Intel and others | 3 | 230 | 2 |
+
+- **"Microsoft signed it" is not one thing.** All the names in the upper
+  part are in certificates that chain to a root of Microsoft's, with
+  Microsoft Corporation as the organisation. Some stand for Microsoft's
+  own code, such as .NET. Others exist to say the opposite: the hardware
+  compatibility publisher signs other companies' drivers, and the
+  third-party component names sign other people's code that Microsoft
+  ships. A list that trusted the root would trust all of it.
+- **A root with Microsoft's name is not a root of Microsoft's.** The files
+  signed for the maintainer of Git for Windows, the Python Software
+  Foundation, the OpenJS Foundation and GitHub have chains that end in
+  "Microsoft Identity Verification Root Certificate Authority 2020".
+  Windows' own check does not count that root among Microsoft's own, and
+  the anchor of the two entries on the list rests on that check.
+- **The largest gap is .NET.** One identity signs 69 % of the executables
+  in the software folders. Whether it goes on the list is a decision, and
+  the list's own rule says what it takes: a clean file of that publisher
+  that a rule flagged. Today no rule flags a file on this runner.
+- In the folder of the app packages every one of these files is trusted
+  anyway, through the package it belongs to.
+
+#### What a check costs
+
+For every file, a survey measures the time from opening it to the answer.
+The file is read twice in that time: once for its SHA-256, and once by
+whatever checks the signature.
+
+| Survey | Answer | Files | Half under | 95 % under | Longest |
+|---|---|---|---|---|---|
+| System32 | Trusted, signature in the file | 1,673 | 6.0 ms | 36 ms | 3.5 s |
+| | Trusted, through a catalogue | 6,871 | 5.5 ms | 28 ms | 0.3 s |
+| | Not trusted | 13,023 | 0.5 ms | 3.2 ms | 0.9 s |
+| Software | Trusted, signature in the file | 13,636 | 4.0 ms | 7.2 ms | 0.6 s |
+| | Not trusted | 77,508 | 1.1 ms | 8.8 ms | 2.1 s |
+| WindowsApps | Trusted, signature in the file | 640 | 8.1 ms | 71 ms | 0.6 s |
+| | Trusted, through the package | 1,505 | 4.4 ms | 20 ms | 1.2 s |
+| The drivers folder, on another runner, as the first thing that asked there | Trusted, signature in the file | 291 | 6.1 ms | 19 ms | 0.3 s |
+| | Trusted, through a catalogue | 296 | 154 ms | 505 ms | 0.8 s |
+
+The whole surveys took 55 s for System32, 3 min 12 s for the software and
+13 s for the app packages, on two threads.
+
+- **A check costs milliseconds.** A file without a signature costs about
+  one, which is reading it. A file with a signature costs 4 to 8 ms at the
+  median, by whichever route.
+- **Except the first time a machine is asked about its catalogues.** The
+  same route took 5.5 ms in one survey and 154 ms in the other. The likely
+  reason is what had been read before. Windows keeps its catalogues in
+  System32, and before the survey of that folder two scans had read all
+  of it. On the other runner nothing had read them, and a runner reads
+  a file for the first time slowly: the first scan of System32 ran at
+  14.7 MB/s. This was not measured apart, so it stays a likely reason.
+- **A scan pays for very few checks.** The check is asked only about a
+  file with a rule match that would otherwise be reported. In the scans
+  of these folders that was no file of 112,675, see
+  [With the signature check](#with-the-signature-check).
+
+Hardware: the three large surveys ran on an AMD EPYC 9V74 with 2 logical
+processors, the drivers folder on an Intel Xeon Platinum 8370C with 2.
+Shared machines, so the times are for comparing the routes with each
+other.
+
+Raw results:
+[System32](benchmarks/2026-11-21-github-windows-runner-phase5-trust-system32.json),
+[software](benchmarks/2026-11-21-github-windows-runner-phase5-trust-software.json),
+[app packages](benchmarks/2026-11-21-github-windows-runner-phase5-trust-windowsapps.json),
+[machine](benchmarks/2026-11-21-github-windows-runner-phase5-machine.json);
+[drivers](benchmarks/2026-11-21-github-windows-runner-phase5-trust-drivers.json),
+[its machine](benchmarks/2026-11-21-github-windows-runner-phase5-trust-drivers-machine.json).
+
 ## False positives
 
 Five rounds of runs. The first used every rule of the rule package and
@@ -538,6 +752,8 @@ comes [a repeat of one run](#the-desktops-programs-again-with-administrator-righ
 which put a seventh rule on the list and was run once more with it, and
 then two runs of another kind, on
 [a Windows that was installed for them](#on-a-freshly-installed-windows-11).
+In phase 5 that seventh rule came off the list again, and the runs are
+repeated [with the signature check](#with-the-signature-check).
 
 ### With every rule of the package
 
@@ -1099,3 +1315,59 @@ Of the second:
 [the capture](benchmarks/2026-11-21-windows11-fresh-vm-serial-capture.txt).
 Each capture holds a checksum for every result that was read from it:
 `python3 scripts/read-scan-kit-output.py <capture> --out <folder>`.
+
+### With the signature check
+
+Since phase 5 the match of a rule from a bundle yields to the signature of
+a trusted publisher ([TRUST.md](TRUST.md)), and
+`RUSSIANPANDA_Purecrypter` is back in the bundle
+([RULES.md](RULES.md#a-rule-that-came-off-the-list-again)). That makes
+5,132 rules with six left out, as in the fifth round. On 2026-11-21 the
+runner's folders were scanned with that bundle twice, with the check and
+with `--no-trust`:
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged | On record, verdict clean | Files the check was asked about |
+|---|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,531 | 4.69 GB | 193 | 0 | 1 | 0 |
+| The same without the check | 21,531 | 4.69 GB | 193 | 0 | 1 | |
+| Software installed on that runner | 91,144 | 15.32 GB | 91,927 | 0 | 2 | 0 |
+| The same without the check | 91,144 | 15.32 GB | 91,927 | 0 | 2 | |
+
+- **On the runner the check changes nothing, and that is what was to be
+  expected.** No file is flagged there without it, so it has nothing to
+  take away. It was asked about no file: it is asked only when a rule
+  match would otherwise be reported, and none got that far.
+- **So it cost nothing either.** The scans with the check ran first and
+  read the files from the disk, in 5 min 20 s and 11 min 33 s. The scans
+  without it came second and took 1 min 37 s and 8 min 53 s. With nobody
+  asked, that difference is the file cache and nothing else.
+- **Three files are on record**, all through the generated rule
+  `MALPEDIA_Win_Triback_Loader_Auto` without a second sign: `vulkan-1.dll`
+  as in every run, and two new ones, `node_js2c.exe` and `nop.exe` in a
+  tool pack of .NET. The runner's image has grown since the fifth round,
+  from 87,707 files in the software folders to 91,144. With these two,
+  generated rules match 23 clean files on the three machines, 17 of them
+  through this one rule, and none is reported.
+- **Where the check does change a result is tested, not measured here.**
+  In CI a test rule that matches every Windows program runs over copies
+  of files that Microsoft signed and over the test files of
+  [Who signed what](#signatures-made-to-be-turned-down): the first are on
+  record, the rest are reported, each with its reason
+  ([TESTING.md](TESTING.md#signatures)).
+
+In System32, 36 files and 2 folders could not be read and 2 files were
+checked in part; in the software folders 7 files were checked in part.
+This runner: AMD EPYC 9V74, 2 logical processors, 8 GB RAM, Windows
+Server 2025, Microsoft Defender real-time protection off.
+
+The file that `RUSSIANPANDA_Purecrypter` flagged is on no runner. It is on
+the desktop, in a folder that opens only with administrator rights, and
+the scan that proves this change has to run there. It had not run when
+this was written.
+
+Raw results:
+System32 [with the check](benchmarks/2026-11-21-github-windows-runner-phase5-system32-false-positives.json)
+and [without](benchmarks/2026-11-21-github-windows-runner-phase5-system32-false-positives-without-trust.json),
+software [with](benchmarks/2026-11-21-github-windows-runner-phase5-software-false-positives.json)
+and [without](benchmarks/2026-11-21-github-windows-runner-phase5-software-false-positives-without-trust.json),
+[machine](benchmarks/2026-11-21-github-windows-runner-phase5-machine.json).

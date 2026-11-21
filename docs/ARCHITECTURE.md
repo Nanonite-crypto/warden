@@ -3,10 +3,11 @@
 This document describes the design Warden is being built towards and marks
 what exists today. The phases are in [ROADMAP.md](ROADMAP.md).
 
-**Implemented so far (phases 1 to 4):** the engine library, the signature
-database, hash matching, YARA rules, zip scanning, the heuristic layer, a
-verdict policy in which a finding can depend on a second sign, the
-quarantine, and the command-line tool.
+**Implemented so far (phases 1 to 4, and the first piece of phase 5):** the
+engine library, the signature database, hash matching, YARA rules, zip
+scanning, the heuristic layer, a verdict policy in which a finding can
+depend on a second sign and can yield to a trusted signature, the
+quarantine, the check of who signed a file, and the command-line tool.
 
 ## Scope
 
@@ -77,7 +78,9 @@ elevated caller.
 
 1. **The engine is a plain library.** No user interface, no service code and
    no Windows-only APIs beyond a few file-opening hints. It can be tested,
-   benchmarked and fuzzed in isolation, on any platform.
+   benchmarked and fuzzed in isolation, on any platform. Where it needs
+   something only Windows can answer, such as who signed a file, it says
+   what it needs as a trait and a client hands it the answer.
 2. **Detectors report, a policy decides.** A detector returns findings, each
    with a confidence and human-readable reasons. A separate verdict policy
    turns the findings for a file into clean, suspicious or malicious. Every
@@ -89,8 +92,9 @@ elevated caller.
 3. **Nothing is destroyed.** Quarantine is journaled and reversible. A
    guard that refuses to quarantine signed Windows system files belongs to
    this rule, because a false positive there can stop Windows from
-   starting. It is not built yet: it needs signature checking. Until it
-   exists, nothing is quarantined unless a person names the file.
+   starting. It is not built yet. What it was waiting for exists now:
+   `warden-trust` can tell a file that Windows itself signed. Until the
+   guard exists, nothing is quarantined unless a person names the file.
 4. **Files are hostile input.** Parsers get limits, and fuzz targets from
    phase 3 on. A file that cannot be read is reported as skipped with a
    reason, and a file that could only be checked in part is reported as
@@ -114,6 +118,8 @@ crates/
                     the quarantine: the entry format, the journal that
                     settles interrupted operations, and what a file has
                     besides its content on Unix and on Windows
+  warden-trust/     who signed a file: the three routes to a signature,
+                    the trust list, and the one module that asks Windows
   warden-cli/       the `warden` command-line tool
   warden-calibrate/ development tool: measures the indicators on a public
                     dataset and fits their weights; not part of the scanner
@@ -122,6 +128,8 @@ docs/               this document, the roadmap, format specs, testing, benchmark
 fuzz/               fuzz targets for the parsers
 rules/              which public rule release the rule bundle is built from,
                     and which of its rules are left out, with the evidence
+trust/              the publishers whose signature Warden trusts, with the
+                    evidence
 scripts/            fetch and check scripts, for Linux and Windows
 ```
 
@@ -134,6 +142,11 @@ so the calibration tool and the fuzzers can use it without the rest.
 The quarantine depends on neither the engine nor the detection layers: it
 moves files, whoever asks. Of the other crates it uses one function, the
 signature database's helper that writes bytes as hexadecimal.
+
+The signature check is a crate of its own because it is the one part of a
+scan that talks to Windows at length, through functions that need `unsafe`
+code. It implements a trait of the engine, as the detection layers do, and
+the engine never learns what a certificate is.
 
 Crates planned for later phases: `remediation`, `realtime`, `ipc`,
 `service`, and the Tauri app.
@@ -169,7 +182,9 @@ flowchart LR
    through the same detectors, see [Archives](#archives).
 6. The **verdict policy** first settles which findings count, then
    decides clean, suspicious or malicious from those, the file's members
-   included. See [the verdict policy](#the-verdict-policy).
+   included. See [the verdict policy](#the-verdict-policy). If a finding
+   that yields to a trusted signature would be reported, the worker first
+   asks [who signed the file](#who-signed-a-file).
 7. The **calling thread** collects outcomes, so an observer (a progress
    line today, the service's event stream later) needs no locking.
 
@@ -192,8 +207,12 @@ a file suspicious and never malicious.
 
 Whether a file carries a signature is not part of the heuristic score,
 because the presence of a signature proves nothing: one can be appended to
-any file. Checking signatures properly is later work. A valid one may then
-lower a heuristic score; it will never cancel a hash or YARA hit.
+any file. A signature that Windows has checked is another matter, and since
+phase 5 Warden has such a check. What it changes is narrow: the valid
+signature of a publisher on a short list sets aside the match of a rule
+that came with a bundle. It does not lower a heuristic score, and it does
+not touch a hash match or the match of a built-in rule. See
+[Who signed a file](#who-signed-a-file).
 
 How a rule match becomes a verdict, where rules come from, which rules are
 left out because they flag clean files, and what a rule bundle looks like on
@@ -214,6 +233,15 @@ Two rules keep this honest. A detector does not back itself: two generated
 rules that match one file are one layer saying the same thing twice. And
 it is settled per file, and inside an archive per member: a rule match in
 one member and an odd structure in another do not add up.
+
+A finding can also say that it **yields to a trusted signature**. That is
+for evidence that is known to be wrong about clean software now and then:
+the match of a rule from a bundle says it, and nothing else does. If such a
+finding would be reported, the worker asks who signed the file. With the
+signature of a trusted publisher, the yielding findings are set aside
+before anything else is settled: they stay on record with low confidence,
+say why, and are nobody's second sign. Every other finding counts as it
+would without the signature.
 
 After that the strongest finding that counts decides, as before: high
 confidence is malicious, medium is suspicious, low changes nothing.
@@ -300,6 +328,36 @@ Known gaps, by decision:
   entries. That overlap is not detected as such either: each entry is
   unpacked as a member of its own, and the limits above end it.
 
+## Who signed a file
+
+Implemented in `warden-trust`, behind the engine's `TrustCheck` trait.
+[TRUST.md](TRUST.md) has the details; in short:
+
+- **Three routes to a signature**, tried in order: inside the executable,
+  in a catalogue of Windows, and in the signature of the app package the
+  file belongs to. Most of Windows is signed only the second way, and the
+  files of apps from the Microsoft Store only the third.
+- **Windows answers what only Windows can**: whether a signature holds,
+  whether a certificate was revoked, whether a chain ends in a root of
+  Microsoft's, which catalogue lists a file. Warden asks through
+  `WinVerifyTrust` and the catalogue functions, in one module, the only
+  one in the crate with `unsafe` code.
+- **Warden does what Windows does not**: it holds the file open against
+  writing and compares its SHA-256 with the scan's, so that the answer is
+  about the bytes that were scanned. It looks through the part of an
+  executable that no signature covers. It follows a package's signature
+  down to the bytes of the file.
+- **A valid signature is not trust.** A list that is compiled into the
+  program names the publishers that count, each by the two names in its
+  certificate and by what its chain has to pass through, each with a real
+  file as evidence. Today those are Microsoft Corporation and Microsoft
+  Windows.
+- **It is asked rarely.** Only about a file with a rule match that would
+  otherwise be reported, never about a file inside an archive.
+
+Everything but the module that calls Windows runs and is tested on any
+system, with a stand-in that answers for Windows.
+
 ## Signature database
 
 Implemented in `warden-sigdb`. A sorted table of SHA-256 digests with a
@@ -384,6 +442,9 @@ drivers that strip dangerous rights from handles opened to their processes.
 
 ## References
 
+- [Microsoft: WinVerifyTrust](https://learn.microsoft.com/en-us/windows/win32/api/wintrust/nf-wintrust-winverifytrust)
+- [Microsoft: CertVerifyCertificateChainPolicy, with the policy for Microsoft's own roots](https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-certverifycertificatechainpolicy)
+- [Microsoft: CVE-2013-3900, data added next to a signature](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2013-3900)
 - [Microsoft: Driver signing](https://learn.microsoft.com/windows-hardware/drivers/install/driver-signing)
 - [Microsoft: Protecting anti-malware services](https://learn.microsoft.com/en-us/windows/desktop/Services/protecting-anti-malware-services-)
 - [Microsoft: Early launch antimalware prerequisites](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/elam-prerequisites)

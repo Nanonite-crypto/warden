@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "label": "GitHub-hosted Windows runner, common software",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 25 Model 17 Stepping 1, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Program Files\\7-Zip",
+    "C:\\Program Files\\Git",
+    "C:\\Program Files\\Google\\Chrome",
+    "C:\\Program Files\\Mozilla Firefox",
+    "C:\\Program Files\\PowerShell",
+    "C:\\Program Files\\dotnet",
+    "C:\\Program Files\\nodejs"
+  ],
+  "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+  "publishers_listed": 2,
+  "network": true,
+  "threads": 2,
+  "duration_ms": 191518,
+  "files": 91144,
+  "executables": 48235,
+  "could_not_list": 0,
+  "files_trusted": 13636,
+  "executables_trusted": 13636,
+  "trusted": [
+    {
+      "publisher": "Microsoft Corporation",
+      "route": "embedded",
+      "files": 13635,
+      "executables": 13635,
+      "example": {
+        "path": "C:\\Program Files\\Git\\ucrt64\\bin\\Atlassian.Bitbucket.dll",
+        "sha256": "3a9dd735b3e0fc2e4b3f83ed94d11cbfe3e72b86e0a957a0c419f90ce12ab5f4"
+      }
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "embedded",
+      "files": 1,
+      "executables": 1,
+      "example": {
+        "path": "C:\\Program Files\\Mozilla Firefox\\Microsoft.Internal.FrameworkUdk.dll",
+        "sha256": "76fa4a93d1ae9c77f8c89222fbe7870e9b7c6eccf8d35d91ec43404df180e29c"
+      }
+    }
+  ],
+  "not_trusted": [
+    {
+      "reason": "no_signature",
+      "files": 43552,
+      "executables": 643,
+      "example": "C:\\Program Files\\7-Zip\\7-zip.chm"
+    },
+    {
+      "reason": "invalid",
+      "files": 2,
+      "executables": 2,
+      "example": "C:\\Program Files\\Git\\git-bash.exe"
+    },
+    {
+      "reason": "not_listed",
+      "files": 33954,
+      "executables": 33954,
+      "example": "C:\\Program Files\\Git\\bin\\bash.exe"
+    }
+  ],
+  "details": [
+    {
+      "reason": "invalid",
+      "detail": "a certificate of the signer's chain was not valid at the time that counts (Windows error 0x800B0101)",
+      "files": 1,
+      "example": "C:\\Program Files\\Git\\ucrt64\\bin\\wintoast.exe"
+    },
+    {
+      "reason": "invalid",
+      "detail": "the signature table reaches beyond the end of the file, so what the file carries as a signature does not count",
+      "files": 1,
+      "example": "C:\\Program Files\\Git\\git-bash.exe"
+    }
+  ],
+  "details_truncated": false,
+  "signers": [
+    {
+      "common_name": ".NET",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 33430,
+      "embedded": 33430,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft Corporation",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Corporation",
+      "files": 13635,
+      "embedded": 13635,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft 3rd Party Application Component",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 248,
+      "embedded": 248,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Json.NET (.NET Foundation)",
+      "organization": "Json.NET (.NET Foundation)",
+      "microsoft_root": false,
+      "files": 99,
+      "embedded": 99,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert CS RSA4096 Root G5",
+      "root_sha256": "7353b6d6c2d6da4247773f3f07d075decb5134212bead0928ef1f46115260941"
+    },
+    {
+      "common_name": "Mozilla Corporation",
+      "organization": "Mozilla Corporation",
+      "microsoft_root": false,
+      "files": 36,
+      "embedded": 36,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert Assured ID Root CA",
+      "root_sha256": "3e9099b5015e8f486c00bcea9d111ee721faba355a89bcf1df69561e3dc6325c"
+    },
+    {
+      "common_name": "Johannes Schindelin",
+      "organization": "Johannes Schindelin",
+      "microsoft_root": false,
+      "files": 32,
+      "embedded": 32,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Identity Verification Root Certificate Authority 2020",
+      "root_sha256": "5367f20c7ade0e2bca790915056d086b720c33c1fa2a2661acf787e3292e1270"
+    },
+    {
+      "common_name": ".NET DAC",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 30,
+      "embedded": 30,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Humanizer (.NET Foundation)",
+      "organization": "Humanizer (.NET Foundation)",
+      "microsoft_root": false,
+      "files": 30,
+      "embedded": 30,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert High Assurance EV Root CA",
+      "root_sha256": "7431e5f4c3c1ce4690774f0b61e05440883ba9a01ed00ba6abd7806ed3b118cf"
+    },
+    {
+      "common_name": "Google LLC",
+      "organization": "Google LLC",
+      "microsoft_root": false,
+      "files": 22,
+      "embedded": 22,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert Assured ID Root CA",
+      "root_sha256": "3e9099b5015e8f486c00bcea9d111ee721faba355a89bcf1df69561e3dc6325c"
+    },
+    {
+      "common_name": "Microsoft Windows Software Compatibility Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 16,
+      "embedded": 16,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Python Software Foundation",
+      "organization": "Python Software Foundation",
+      "microsoft_root": false,
+      "files": 3,
+      "embedded": 3,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Identity Verification Root Certificate Authority 2020",
+      "root_sha256": "5367f20c7ade0e2bca790915056d086b720c33c1fa2a2661acf787e3292e1270"
+    },
+    {
+      "common_name": "Legion of the Bouncy Castle Inc.",
+      "organization": "Legion of the Bouncy Castle Inc.",
+      "microsoft_root": false,
+      "files": 2,
+      "embedded": 2,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Sectigo Public Code Signing Root R46",
+      "root_sha256": "7e76260ae69a55d3f060b0fd18b2a8c01443c87b60791030c9fa0b0585101a38"
+    },
+    {
+      "common_name": "MQTTNET (.NET Foundation)",
+      "organization": "MQTTNET (.NET Foundation)",
+      "microsoft_root": false,
+      "files": 2,
+      "embedded": 2,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert CS RSA4096 Root G5",
+      "root_sha256": "7353b6d6c2d6da4247773f3f07d075decb5134212bead0928ef1f46115260941"
+    },
+    {
+      "common_name": "Reactive Extensions for .NET (.NET Foundation)",
+      "organization": "Reactive Extensions for .NET (.NET Foundation)",
+      "microsoft_root": false,
+      "files": 2,
+      "embedded": 2,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert High Assurance EV Root CA",
+      "root_sha256": "7431e5f4c3c1ce4690774f0b61e05440883ba9a01ed00ba6abd7806ed3b118cf"
+    },
+    {
+      "common_name": "GitHub, Inc.",
+      "organization": "GitHub, Inc.",
+      "microsoft_root": false,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Identity Verification Root Certificate Authority 2020",
+      "root_sha256": "5367f20c7ade0e2bca790915056d086b720c33c1fa2a2661acf787e3292e1270"
+    },
+    {
+      "common_name": "Microsoft Windows",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Windows",
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "OpenJS Foundation",
+      "organization": "OpenJS Foundation",
+      "microsoft_root": false,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Identity Verification Root Certificate Authority 2020",
+      "root_sha256": "5367f20c7ade0e2bca790915056d086b720c33c1fa2a2661acf787e3292e1270"
+    }
+  ],
+  "signers_not_listed": {
+    "signers": 15,
+    "files": 33954,
+    "signers_under_a_microsoft_root": 4,
+    "files_under_a_microsoft_root": 33724
+  },
+  "timing": [
+    {
+      "outcome": "all",
+      "files": 91144,
+      "mean_ms": 4.112721923549548,
+      "median_ms": 3.758,
+      "p95_ms": 8.595,
+      "max_ms": 2095.676
+    },
+    {
+      "outcome": "embedded",
+      "files": 13636,
+      "mean_ms": 5.037987312995013,
+      "median_ms": 3.988,
+      "p95_ms": 7.233,
+      "max_ms": 580.538
+    },
+    {
+      "outcome": "not_trusted",
+      "files": 77508,
+      "mean_ms": 3.949939773958817,
+      "median_ms": 1.135,
+      "p95_ms": 8.827,
+      "max_ms": 2095.676
+    }
+  ]
+}

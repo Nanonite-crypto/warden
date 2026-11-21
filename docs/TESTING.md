@@ -44,7 +44,8 @@ archives, property tests of the signature database, of the archive unpacker
 and of the reader for executables, tests of the rule layer and of every
 heuristic indicator, a test that fits the heuristic weights to the counts
 in `calibration/` again and compares them with the scanner's, the tests of
-the quarantine with every operation cut off at every step, and tests that
+the quarantine with every operation cut off at every step, the tests of the
+signature check with a stand-in that answers for Windows, and tests that
 drive the `warden` binary the way a user would. Among the last are two that
 give the program an output nobody reads any more, as `warden scan … | head`
 does: it has to end quietly, and it used to panic.
@@ -59,10 +60,10 @@ cargo test --workspace --locked
 ```
 
 On Windows, `scripts\win\check.cmd` builds the release binary, checks EICAR
-detection, runs the tests and measures scan speed in one go. It writes its
-results to `target\check\`. With `-Rules` it also downloads the pinned rule
-package, builds the rule bundle and counts false positives in the Windows
-system folder.
+detection, asks who signed two files of Windows, runs the tests and
+measures scan speed in one go. It writes its results to `target\check\`.
+With `-Rules` it also downloads the pinned rule package, builds the rule
+bundle and counts false positives in the Windows system folder.
 
 ## EICAR in three forms
 
@@ -207,6 +208,17 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
   neither a hash nor a stated reason for withholding it, and an entry that
   would take out a rule that has to stay. A test loads the list in this
   repository, so a mistake in it fails in CI.
+- The signature check reads three things before anybody has vouched for
+  them: the signature file of an app package, its block map, and the
+  table of an executable that holds its signature. Each reader states
+  its limits, and one test feeds each of them a well-formed input cut off
+  at every length, with every byte changed three ways, and with four
+  thousand random changes. A block map with a document type declaration
+  is refused: that is where XML keeps its ways of blowing up.
+- The trust list is edited by hand as well, and is as strict: an entry
+  without evidence, an unknown field, a hash of the wrong length or two
+  entries for one identity are refused. A test loads the list in this
+  repository, so a mistake in it fails in CI.
 - A rule set that takes more than 30 seconds on one file is stopped, and
   the file is reported as checked in part.
 - In the scan pipeline, a detector that panics costs one file, which is
@@ -216,7 +228,7 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
 
 The tests above try the damage somebody thought of. A fuzzer tries what
 nobody thought of: it runs a function millions of times on inputs it
-mutates, and keeps the mutations that reach new code. `fuzz/` holds three
+mutates, and keeps the mutations that reach new code. `fuzz/` holds six
 targets for [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
 
 | Target | What it runs | What must hold |
@@ -224,6 +236,9 @@ targets for [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
 | `pe_read` | The reader for executables and every indicator, on arbitrary bytes | No panic, no hang, and the facts stay within the reader's limits |
 | `scan_bytes` | The scan pipeline on one in-memory file, with the hash layer and the heuristic layer, archives included | No panic, no hang |
 | `sigdb` | The signature database reader | No panic; it only reaches the checks in front of the digest, because a mutated database fails that first |
+| `trust_signature_file` | The reader that digs the signed digests out of a package's signature file | No panic |
+| `trust_block_map` | The reader of a package's block map, and the comparison of a file with its entry | No panic, no hang |
+| `trust_signature_area` | The look through the table of an executable that holds its signature | No panic |
 
 The YARA layer has no target here: YARA-X fuzzes its own parsers and
 compiler upstream.
@@ -233,7 +248,10 @@ each for a minute, seeded with the inert executables, on every pull request
 that touches the code they cover. A minute finds shallow mistakes, which is
 what a change is most likely to add; a longer run can be started by hand.
 The first run, on 2026-11-18, made 123,277 executions of `pe_read`, 54,970
-of `scan_bytes` and 18.2 million of `sigdb`, and found nothing. To run a
+of `scan_bytes` and 18.2 million of `sigdb`, and found nothing. The three
+targets of the signature check ran first on 2026-11-21: 12.9 million
+executions of `trust_signature_file`, 1.9 million of `trust_block_map` and
+15.1 million of `trust_signature_area`, and nothing found either. To run a
 target yourself (Linux or macOS, nightly toolchain):
 
 ```
@@ -316,6 +334,88 @@ systems other than the runner's NTFS and the Linux container's; a Windows
 user without administrator rights, which the user of the CI runner has;
 restoring a file that belongs to another user.
 
+## Signatures
+
+[TRUST.md](TRUST.md) describes the check of who signed a file. Nearly all
+of it is tested without Windows, and the part that is not is tested
+against signatures that are made for the purpose.
+
+**Without Windows.** What Warden asks of Windows is three questions, and
+in the tests a stand-in answers them: "the signature in this file is
+valid and was made by so-and-so", or whatever the test needs. Everything
+else is the same code as on Windows. That covers, on every system:
+
+- **The policy alone**, on findings written out by hand: a finding that
+  yields is set aside by a trusted signature, backs up nothing afterwards,
+  and counts with any other answer; a finding that does not yield is
+  untouched.
+- **The scan pipeline**, with stand-in detectors and a check that goes by
+  file names: who is asked about, and who never is. A file without
+  findings, a file inside an archive and bytes in memory are never asked
+  about.
+- **The check itself**: the order of the routes, the look through the
+  signature table, the package arithmetic with real block maps and
+  hashes, a file that changed since it was scanned, and the trust list:
+  a valid signature of somebody else, the right names under another root,
+  revocation that could not be checked.
+- **The rule layer, the engine and the check together.** A test rule, a
+  file that passes for an executable, and a stand-in that says Microsoft
+  signed it: the match is on record and not reported. A hash match on the
+  same file and the match of a built-in rule are reported.
+
+**On Windows, in CI.** A signature check has to be tested against
+signatures, and the ones that matter are the ones it has to turn down.
+Nobody hands those out. A step of the Windows job makes them,
+[`signed-test-files.ps1`](../.github/scripts/signed-test-files.ps1), and
+the tests then ask the real Windows about them:
+
+| File | What Windows says | What Warden has to say |
+|---|---|---|
+| A small program, unsigned | Not signed | No signature, by any route |
+| The same, signed by a test publisher | Valid | A valid signature, of a publisher that is on no list: not trusted |
+| That file with one byte changed | Hash mismatch | Does not hold: changed after it was signed |
+| That file with bytes added inside the signature table | **Valid** | Does not hold: bytes follow the signature inside its entry |
+| The program signed for "Microsoft Corporation", twice in the certificate, under a root made on the spot | **Valid** | A valid signature that says Microsoft Corporation, and no root of Microsoft's: not trusted, and the reason names the chain the list asks for |
+| A text file and a program in a signed app package | Valid, for the package | Vouched for by the package's signature; the publisher is on no list |
+| The package's block map and `[Content_Types].xml` | | Vouched for by the digests the signature names |
+| The package's signature file | | Nothing covers it |
+| A file of the package changed, and a file added | | Not vouched for |
+
+The two lines with a bold "Valid" are the reason for the list and for the
+look through the signature table. "What Windows says" is what PowerShell's
+`Get-AuthenticodeSignature` printed on the runner when the files were
+made.
+
+For Windows to call these signatures valid, the script tells the machine
+to trust two root certificates of its own making. That is a change to the
+security settings of the machine it runs on. So it runs on a GitHub-hosted
+runner, which is deleted after the job, and refuses to run anywhere else.
+It takes the roots out again at the end, and nothing it makes is uploaded.
+**Do not run it on a machine you keep.**
+
+The same job tests against files that need no making: files of Windows
+that carry their signature and files that are listed in a catalogue have
+to come back trusted as Microsoft Windows, and a program of Microsoft's
+as Microsoft Corporation. Where a file that the trust list names as
+evidence is on the machine with the same content, the check has to come
+to what the list claims. And one test goes the whole way with the real
+program: a rule that matches every Windows program, a folder with copies
+of files that Microsoft signed next to the test files, and a scan that
+has to put the first on record and report the rest, each with its reason.
+
+These tests print a note and pass where their files are missing.
+`WARDEN_SIGNED_FIXTURES` names the folder of the test files, and
+`WARDEN_REQUIRE_SIGNED_FIXTURES=1` turns the notes into failures, as CI
+does. On a developer's Windows machine, `cargo test` runs the ones that
+need only Windows; they use the network, because Windows asks over it
+whether a certificate was revoked.
+
+**Not tested:** a certificate that was revoked, which nobody hands out
+either; what is tested is a certificate that names no place to ask. A
+catalogue that lists a file by SHA-1 only. A machine without a network.
+A package of a publisher other than Microsoft from the Store. In CI, no
+Windows other than the runner's Windows Server 2025.
+
 ## False positives
 
 ```
@@ -352,13 +452,17 @@ files it was built from and which rules were left out of it on purpose.
 Results are in [BENCHMARKS.md](BENCHMARKS.md#false-positives).
 
 A flagged file is not the end of a run but the start of a small
-investigation: what is the file, and what in it does the rule match? A rule
-that cannot tell a clean file from its target goes on the exclusion list,
+investigation: what is the file, who signed it, and what in it does the
+rule match? If the file comes from a publisher that belongs on the
+[trust list](TRUST.md#the-trust-list), that is the remedy: the rule keeps
+working on everybody else's files. Otherwise a rule that cannot tell a
+clean file from its target goes on the exclusion list,
 [`rules/exclusions.toml`](../rules/exclusions.toml), with that file as
-evidence, and the run is repeated. [RULES.md](RULES.md#rules-that-are-left-out)
-describes the list. The scripts and workflows below build the bundle with
-it; `scripts\win\check.cmd -Rules -AllRules` builds it without, which is
-how the numbers from before an entry can be measured again.
+evidence. Either way the run is repeated.
+[RULES.md](RULES.md#rules-that-are-left-out) describes the list. The
+scripts and workflows below build the bundle with it;
+`scripts\win\check.cmd -Rules -AllRules` builds it without, which is how
+the numbers from before an entry can be measured again.
 
 The heuristic layer has a second check of its own. Its threshold is set on
 the benign files of a dataset, which are files that somebody uploaded to a
@@ -373,7 +477,12 @@ result.
 Windows system files are scanned on a GitHub-hosted runner by the
 `False positives` workflow. It reads many gigabytes from a slow disk, so it
 runs when started by hand or when a branch named `fp-run/...` is pushed,
-not on every change.
+not on every change. Since phase 5 it scans everything twice, with the
+signature check and with `--no-trust`, so that the difference is what the
+check took off the list of flagged files. It asks who signed the files
+that the exclusion list names, where the runner has them. And it runs
+`warden trust survey` over the same folders, which checks every file and
+counts who signed what, by which route, and how long a check took.
 
 On your own Windows machine, `scripts\win\check.cmd -Rules` does the same
 for the System32 folder. Microsoft Defender blocks the rule package it
