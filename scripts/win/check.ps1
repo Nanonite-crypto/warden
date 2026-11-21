@@ -4,8 +4,9 @@
 
 .DESCRIPTION
     Builds the release binary, checks that the EICAR antivirus test file is
-    detected in each of its forms, runs the test suite and measures scan
-    throughput. With -Rules it also builds a rule bundle from YARA Forge,
+    detected in each of its forms and that Warden can tell who signed two
+    files of Windows, runs the test suite and measures scan throughput.
+    With -Rules it also builds a rule bundle from YARA Forge,
     without the rules that rules\exclusions.toml names, and counts false
     positives over the benchmark folder.
 
@@ -21,12 +22,14 @@
       rules\yara-forge.pin, checked against the SHA-256 recorded there.
     - The benchmark and the false-positive check read the folder they are
       pointed at and change nothing.
+    - The check of signatures lets Windows ask over the network whether a
+      certificate was revoked, as Windows does whenever it checks one.
     - It never changes a Windows or antivirus setting, and it never updates
       rustup.
 
     Results are written to target\check\ so they can be read back later:
-    summary.json, system.json, bench.json, eicar-scan.json, fp.json and one
-    log per step.
+    summary.json, system.json, bench.json, eicar-scan.json, trust.json,
+    fp.json and one log per step.
 
 .PARAMETER BenchPath
     Folder to benchmark and, with -Rules, to check for false positives.
@@ -357,7 +360,40 @@ if ($detected) {
     Write-Host 'With another antivirus, add the same folder to its exclusions instead.' -ForegroundColor Yellow
 }
 
-# --- 4. Test suite --------------------------------------------------------------------
+# --- 4. Signatures ------------------------------------------------------------------
+# Two files that every Windows has and that Windows signs in two different
+# ways: one in the file, one in a catalogue. If Warden trusts both, it can
+# read signatures on this machine, and Windows could find out that their
+# certificates were not revoked.
+Write-Heading 'Signatures'
+$system32 = Join-Path $env:SystemRoot 'System32'
+$signedFiles = @((Join-Path $system32 'ntdll.dll'), (Join-Path $system32 'whoami.exe'))
+& $warden trust check @signedFiles
+$trustJson = (& $warden trust check --json @signedFiles) -join "`n"
+Write-Utf8 (Join-Path $out 'trust.json') $trustJson
+try {
+    $checked = @($trustJson | ConvertFrom-Json)
+    $trusted = @($checked | Where-Object { $_.trust.answer -eq 'trusted' -and $_.trust.publisher -eq 'Microsoft Windows' })
+    $offline = @($checked | Where-Object { $_.trust.reason -eq 'revocation_unknown' })
+    if ($trusted.Count -eq $signedFiles.Count) {
+        $steps.signatures = 'passed'
+        $routes = @($trusted | ForEach-Object { $_.trust.route } | Sort-Object -Unique)
+        $notes.signatures = "two files of Windows, found by: $($routes -join ', ')"
+    } elseif ($offline.Count -gt 0) {
+        # Not a fault of Warden's: the signatures are there, and what is
+        # missing is the answer to whether a certificate was revoked.
+        $steps.signatures = 'blocked'
+        $notes.signatures = 'Windows could not find out whether a certificate was revoked; is this machine online?'
+    } else {
+        $steps.signatures = 'failed'
+        Write-Host 'Warden does not trust two files that Windows itself signed. The lines above say why.' -ForegroundColor Red
+    }
+} catch {
+    $steps.signatures = 'failed'
+    Write-Host "The result of the signature check could not be read ($($_.Exception.Message))." -ForegroundColor Red
+}
+
+# --- 5. Test suite --------------------------------------------------------------------
 if ($SkipTests) {
     $steps.tests = 'skipped'
 } else {
@@ -379,7 +415,7 @@ if ($SkipTests) {
     }
 }
 
-# --- 5. Benchmark ------------------------------------------------------------------------
+# --- 6. Benchmark ------------------------------------------------------------------------
 if ($SkipBench) {
     $steps.benchmark = 'skipped'
 } else {
@@ -392,7 +428,7 @@ if ($SkipBench) {
     }
 }
 
-# --- 6. Rule bundle and false positives ------------------------------------------------------
+# --- 7. Rule bundle and false positives ------------------------------------------------------
 if ($Rules) {
     Write-Heading 'Rule bundle from YARA Forge'
     # The bundle is kept next to the package it is built from. Microsoft
