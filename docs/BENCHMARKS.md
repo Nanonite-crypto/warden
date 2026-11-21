@@ -954,40 +954,71 @@ machine that none of that has seen. One was set up for it:
 | Machine | A VirtualBox 7.1 virtual machine on the desktop of the rounds above: 4 processors, 8 GB RAM, an 80 GB disk image, EFI with Secure Boot, TPM 2.0. A network adapter with the cable unplugged |
 | Windows | Windows 11 Enterprise Evaluation 26H2, build 26300.9457, from Microsoft's evaluation image `26300.9457.260913-1737.26h2_ge_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso` (SHA-256 `bc3f24086ebadc94489066b5ad78089e2cf5c3491e90e790bb81a2b199c10e38`) |
 | State | Installed on 2026-11-20 without a network, and never connected to one. Nothing installed: the programs are the four the image brings (Edge, Edge Update, WebView2 Runtime, OneDrive), the updates the four in the image |
-| Antivirus | Microsoft Defender with real-time protection on, signatures 1.437.1.0 |
-| Scan | The whole of `C:\`, as administrator, by the [scan kit](TESTING.md#a-machine-the-list-was-not-written-from), with the build of commit `f9aef95` |
+| Antivirus | Microsoft Defender with real-time protection on, signatures 1.437.1.0, in both runs |
+| Scan | The whole of `C:\`, as administrator, by the [scan kit](TESTING.md#a-machine-the-list-was-not-written-from): on 2026-11-20 with the build of commit `f9aef95`, on 2026-11-21 with that of `2a625c1` |
 
 | Files expected to be clean | Files | Data | Files inside archives | Flagged | On record, verdict clean |
 |---|---|---|---|---|---|
-| `C:\` of that Windows 11, **without the public rules** | 153,317 | 26.36 GB | 5,018 | 0 | 0 |
+| `C:\` of that Windows 11, **without the public rules**, 2026-11-20 | 153,317 | 26.36 GB | 5,018 | 0 | 0 |
+| The same **with the 5,132 rules**, 2026-11-21 | 153,370 | 26.39 GB | 5,018 | **0** | 5 |
 
-**No file is flagged.** What ran is the built-in signature and rule and
-the heuristic layer, which judges the Windows executables among these
-files; how many of the 153,317 are executables was not counted. For that
-layer this is the first run that is held out in full: its weights and its
-threshold come from a dataset, and the machines it was checked on before
-were a Windows Server 2025 image and a desktop in daily use. This one is a
-client Windows with nothing on it but what Microsoft ships.
+**No file is flagged, with the public rules or without.** Without them,
+what ran is the built-in signature and rule and the heuristic layer, which
+judges the Windows executables among these files; how many of them are
+executables was not counted. For that layer the first run was the first
+that is held out in full: its weights and its threshold come from a
+dataset, and the machines it was checked on before were a Windows Server
+2025 image and a desktop in daily use. This one is a client Windows with
+nothing on it but what Microsoft ships.
 
-**The run it was set up for is still open.** The public rules did not
-run, so this result says nothing about the exclusion list or about the
-second sign, and nothing can be on record: no rule that needs a second
-sign was there. The reason is the machine's own antivirus. Defender took
-the rule bundle on the kit's CD for `Trojan:JS/Webshell.DSK1!MTB` and
-let no program read it, three times, once for each attempt described
-below. The same happens on the desktop
+The second run is the one the machine was set up for. It holds out the
+exclusion list and the second sign as well: no rule was taken out
+because of a file on this machine, and the bar for a second sign was
+never tried here.
+
+**Five files are on record**, all through `MALPEDIA_Win_Triback_Loader_Auto`,
+the generated rule that matches the most clean files elsewhere:
+
+| On record | |
+|---|---|
+| `vulkan-1.dll` in System32 | The same file as on the CI runner, by its SHA-256 |
+| `liblouis.dll` in System32, and its copy in the component store | Another build than the one on the desktop |
+| `NativeDprt.dll` of Defender's own sensor, and its copy in the component store | Not seen before |
+
+None of them has a structure that scores 14 or more, so the matches are
+kept and the verdicts are clean. On a machine that it had never seen, the
+second sign did what it does on the others, and nothing had to be written
+down for it. With these five, generated rules match 21 clean files on the
+three machines, fifteen of them through this one rule.
+
+**The first run had to do without the rules** because of the machine's
+own antivirus. Defender took the rule bundle on the kit's CD for
+`Trojan:JS/Webshell.DSK1!MTB` and let no program read it, three times,
+once for each attempt described below. That bundle stored its rules as
+they are. The same happens on the desktop
 ([RULES.md](RULES.md#rule-files-and-your-antivirus)). Letting Defender
-leave that one file alone is a change to an antivirus setting. No script
-of this project makes such a change, on any machine; the owner of the
-machine does. Until then the kit says what it could not read and scans
-with the rest.
+leave the file alone would have been a change to an antivirus setting,
+and no script of this project makes such a change, on any machine.
 
-Since this run a rule bundle keeps its contents under a cipher, so that
-the patterns of its rules are not in the file as they are
-([RULES.md](RULES.md#rule-files-and-your-antivirus)). A kit with such a
-bundle has not run on this machine yet.
+**Defender tells a bundle under the cipher from one without.** A rule
+bundle keeps its contents under a cipher since then, so that the patterns
+of its rules are not in the file as they are. The kit of the second run
+carried two bundles: the one it scanned with, under the cipher, and as a
+control the very bundle of the first run. The two hold the same compiled
+rules, byte for byte.
 
-How the run went, because it took three attempts on the same
+| On the kit of 2026-11-21 | What the machine did with it |
+|---|---|
+| `rules-plain.wrb`, the bundle of the first run, rules as they are | Blocked: "the file contains a virus or potentially unwanted software". Defender's history names it `Trojan:JS/Webshell.DSK1!MTB`, as before |
+| `rules.wrb`, the same rules under the cipher | Read. The scan above ran with it. Defender's history has no entry for it from this run |
+
+The machine was the same in both runs: no network, so the same Defender
+with the same signatures, real-time protection on, nothing excluded. What
+differed is the cipher. This is one antivirus with one set of signatures;
+it says nothing about what another product does, or this one after an
+update.
+
+How the runs went, because the first took three attempts on the same
 installation:
 
 1. The first kit stopped when the bundle could not be read. The kit now
@@ -998,12 +1029,15 @@ installation:
    confirmed: Windows put the machine to sleep, as it does after a while
    without input, and the virtual machine did not wake up again. The kit
    now asks Windows to stay awake while it runs.
-3. The third attempt is the result above.
+3. The third attempt is the first result above.
+4. The run with the rules, a day later, went through at the first
+   attempt.
 
 Between the attempts nothing was installed and no setting was changed.
-The machine was switched off and on once, after the second attempt. What
-the attempts left on it is the folder `C:\warden-out` with the kit's
-results, and three entries in Defender's history.
+The machine was switched off and on after the second and the third
+attempt. What the attempts left on it is the folder `C:\warden-out` with
+the kit's results, and four entries in Defender's history: three for the
+bundle of the first kits and one for the control.
 
 Also from this machine:
 
@@ -1013,17 +1047,28 @@ Also from this machine:
 - **Its clock is nine hours ahead in the results.** Setup gave it the
   Pacific time zone and the host's local time, which is Central European.
   The times in the result files are the machine's; by the host's clock
-  the scan ran on 2026-11-20 from 04:24 to 04:31 UTC.
-- **Its speed is not a measurement of Warden.** 6 min 31 s for 26 GB, at
-  67 MB/s, on four virtual processors with Defender reading every file
-  along.
+  the first scan ran on 2026-11-20 from 04:24 to 04:31 UTC and the second
+  on 2026-11-21 from 01:10 to 01:24 UTC.
+- **Its speed is not a measurement of Warden.** 6 min 31 s for 26 GB
+  without the rules, at 67 MB/s, and 13 min 15 s with them, at 33 MB/s, on
+  four virtual processors with Defender reading every file along. With
+  the rules the scan took twice as long here; on the desktop, with sixteen
+  logical processors, it takes about as long with them as without.
 
-162 entries could not be read, and 66 files were checked in part.
+In the first run 162 entries could not be read. The second result is of
+the format that counts folders apart: 136 files and 21 folders, most of
+the folders Defender's own. In both, 66 files were checked in part.
 
-Raw results, as the kit sent them through the machine's serial port:
+Raw results, as the kit sent them through the machine's serial port. Of
+the first run:
 [the scan](benchmarks/2026-11-20-windows11-fresh-vm-false-positives-without-rules.json),
 [the machine](benchmarks/2026-11-20-windows11-fresh-vm-machine.json),
 [what Defender reported](benchmarks/2026-11-20-windows11-fresh-vm-antivirus.json),
-and [the capture](benchmarks/2026-11-20-windows11-fresh-vm-serial-capture.txt)
-they were read from, which holds a checksum for each:
+[the capture](benchmarks/2026-11-20-windows11-fresh-vm-serial-capture.txt).
+Of the second:
+[the scan](benchmarks/2026-11-21-windows11-fresh-vm-false-positives.json),
+[the machine](benchmarks/2026-11-21-windows11-fresh-vm-machine.json),
+[what Defender reported](benchmarks/2026-11-21-windows11-fresh-vm-antivirus.json),
+[the capture](benchmarks/2026-11-21-windows11-fresh-vm-serial-capture.txt).
+Each capture holds a checksum for every result that was read from it:
 `python3 scripts/read-scan-kit-output.py <capture> --out <folder>`.

@@ -337,8 +337,8 @@ One in twenty is the choice here, and it is 250 times looser than the
 threshold's one in 5,000. It can be, because reaching the bar reports
 nothing. For a clean file to be reported, a generated rule has to match
 it by mistake and its structure has to reach the bar, and the first of the
-two is rare already: in the runs of phase 4, generated rules matched 16 of
-about 448,000 clean Windows files.
+two is rare already: in the runs of phase 4, generated rules matched 21 of
+about 600,000 clean Windows files.
 
 What other bars would do, on programs, which are the hard case:
 
@@ -445,7 +445,8 @@ counted. And it is two machines, not a promise about a third.
 The third machine came in phase 4, and it is the first that nothing here
 had been checked against: a Windows 11 installed for the purpose, with
 nothing on it but what Microsoft ships. The layer flagged none of its
-153,317 files
+153,317 files, and none of 153,370 a day later, when the public rules ran
+there as well
 ([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)). The
 executables among them were not counted either.
 

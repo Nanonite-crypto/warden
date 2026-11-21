@@ -79,12 +79,20 @@ Microsoft Defender and sealed.wrb, on the Windows desktop
                          read back with the SHA-256 above.
 2026-11-20 16:56:43 UTC  Both files are still there and read back with the
                          SHA-256 above.
+2026-11-21 01:28:20 UTC  The same, 19 hours and 30 minutes after the first
+                         was written. Both files were deleted after that.
 
-Looked at in between at 05:58, 05:59, 06:05 and 16:42 UTC, with the same
-result.
+Looked at in between at 05:58, 05:59, 06:05, 16:42 and 17:44 UTC on
+2026-11-20, with the same result.
 
-Not checked: whether Defender's real-time protection was on during that
-time. No bundle without the cipher was placed next to the two files for
+Defender's real-time protection: the desktop's own check recorded it as on
+at 17:48 UTC on 2026-11-20, which is within that time
+(2026-11-20-windows-desktop-phase4-repeat-machine.json). It was not looked
+at before or after.
+
+No bundle without the cipher was placed next to the two files for
 comparison. Defender had blocked and removed a copy of the desktop's bundle
 without the cipher that was made outside the excluded folder
-(docs/RULES.md, "Rule files and your antivirus").
+(docs/RULES.md, "Rule files and your antivirus"). The comparison in one run
+was made on another machine a day later: docs/BENCHMARKS.md, "On a freshly
+installed Windows 11".

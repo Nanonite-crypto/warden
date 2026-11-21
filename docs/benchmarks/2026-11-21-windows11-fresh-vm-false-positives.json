@@ -1,0 +1,1055 @@
+{
+  "schema": 3,
+  "label": "fresh Windows installation",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 4,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795197190,
+        "bundle_digest": "8430532c2a7107f5898bb1211bb0c3c6e9eac41687a30cb1531fe31a57e52ad7",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5132,
+        "rules_excluded": 6,
+        "rules_generated": 1622
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "threads": 4,
+  "duration_ms": 794606,
+  "files_scanned": 153370,
+  "bytes_scanned": 26385314078,
+  "files_skipped": 136,
+  "folders_skipped": 21,
+  "files_partially_scanned": 66,
+  "archive_members_scanned": 5018,
+  "files_per_second": 193.01370371723996,
+  "megabytes_per_second": 33.20549777621055,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false,
+  "recorded_files": 5,
+  "recorded_by_name": [
+    {
+      "name": "MALPEDIA_Win_Triback_Loader_Auto",
+      "files": 5
+    }
+  ],
+  "recorded": [
+    {
+      "path": "C:\\Program Files\\Windows Defender Advanced Threat Protection\\Classification\\Dprt\\NativeDprt.dll",
+      "size": 793912,
+      "sha256": "c5f3d8e8255325679127e9e3a4d99d260d9ebab2fac5e96b55f6945f5bda826c",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Windows\\System32\\liblouis.dll",
+      "size": 742224,
+      "sha256": "bd9f224e7128db2994f9bd905f68732724187e9b344905faadad00c4131cc7ed",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Windows\\System32\\vulkan-1.dll",
+      "size": 1416664,
+      "sha256": "591d4c316a0a39f96792979ce5ebb1bb380f0015c30707ba7ac611b35ae01cfc",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Windows\\WinSxS\\amd64_microsoft-windows-a..ty-braille-liblouis_31bf3856ad364e35_10.0.26100.8875_none_79397e940820f44e\\liblouis.dll",
+      "size": 742224,
+      "sha256": "bd9f224e7128db2994f9bd905f68732724187e9b344905faadad00c4131cc7ed",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Windows\\WinSxS\\amd64_windows-senseclient-service_31bf3856ad364e35_10.0.26100.9278_none_4402971c3f25b8d8\\NativeDprt.dll",
+      "size": 793912,
+      "sha256": "c5f3d8e8255325679127e9e3a4d99d260d9ebab2fac5e96b55f6945f5bda826c",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    }
+  ],
+  "recorded_truncated": false,
+  "skipped": [
+    {
+      "path": "C:\\Program Files\\Windows Defender Advanced Threat Protection\\Classification\\Configuration",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\Program Files\\Windows Defender Advanced Threat Protection\\Classification\\Configuration: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Cache",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Cache: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Cyber",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Cyber: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\DLP",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\DLP: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\DataCollection",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\DataCollection: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\DataScan\\Classification",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\DataScan\\Classification: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Downloads",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Downloads: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\ImageCache",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\ImageCache: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Platform",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Platform: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\SenseCM",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\SenseCM: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\SenseNDR",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\SenseNDR: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Task",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Task: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Temp\\PSScriptOutputs",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows Defender Advanced Threat Protection\\Temp\\PSScriptOutputs: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows\\CapabilityAccessManager",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows\\CapabilityAccessManager: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows\\SystemData",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\ProgramData\\Microsoft\\Windows\\SystemData: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\System Volume Information",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\System Volume Information: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Windows\\CSC",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\Windows\\CSC: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\LocalService\\AppData\\Local\\Microsoft\\Ngc",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\Windows\\ServiceProfiles\\LocalService\\AppData\\Local\\Microsoft\\Ngc: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\LogFiles\\WMI\\RtBackup",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\Windows\\System32\\LogFiles\\WMI\\RtBackup: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\WebThreatDefSvc",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\Windows\\System32\\WebThreatDefSvc: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\BFS",
+      "folder": true,
+      "reason": "access_denied",
+      "detail": "IO error for operation on C:\\Windows\\System32\\config\\BFS: Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\DumpStack.log.tmp",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Network\\Downloader\\edb.log",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Network\\Downloader\\qmgr.db",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Network\\Downloader\\qmgr.jfm",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender\\IMpService77BDAF73-B396-481F-9042-AD358843EC24.lock",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender\\Scans\\History\\CacheManager\\26702AAE-008D-481A-8D1D-58B122EBF73A-0.bin",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Microsoft\\Windows Defender\\Scans\\MpDiag.bin",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\Microsoft.WindowsNotepad_8wekyb3d8bbwe\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\bdc397d0f06843ef.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\Microsoft.WindowsNotepad_8wekyb3d8bbwe\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\bdc397d0f06843ef_COM15.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\Microsoft.WindowsNotepad_8wekyb3d8bbwe\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\bdc397d0f06843ef_COM15.dat.LOG1",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\Microsoft.WindowsNotepad_8wekyb3d8bbwe\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\bdc397d0f06843ef_COM15.dat.LOG2",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1000\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1000\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a_COM15.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1000\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a_COM15.dat.LOG1",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1000\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a_COM15.dat.LOG2",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a_COM15.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a_COM15.dat.LOG1",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\e43e2e75a119a14a_COM15.dat.LOG2",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\34f9f1e39fc2b49f.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\34f9f1e39fc2b49f_COM15.dat",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\34f9f1e39fc2b49f_COM15.dat.LOG1",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\ProgramData\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\S-1-5-21-3254050699-2825880868-3243599213-1001\\SystemAppData\\Helium\\Cache\\34f9f1e39fc2b49f_COM15.dat.LOG2",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\EdgeCoupons\\coupons_data.db\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Extension State\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Local Storage\\leveldb\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Network\\Cookies",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Service Worker\\Database\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Site Characteristics Database\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Sync Data\\LevelDB\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\shared_proto_db\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\shared_proto_db\\metadata\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\ActionsMcpHost.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Clipchamp.Clipchamp_yxz26nhyzhsrt\\clipchamp.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\MediaPlayer.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\WindowsPackageManagerServer.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\python.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\python3.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\\winget.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.OutlookForWindows_8wekyb3d8bbwe\\olk.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.Paint_8wekyb3d8bbwe\\mspaint.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.Paint_8wekyb3d8bbwe\\pbrush.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.ScreenSketch_8wekyb3d8bbwe\\SnippingTool.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.WindowsNotepad_8wekyb3d8bbwe\\notepad.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.WindowsTerminal_8wekyb3d8bbwe\\wt.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\Microsoft.ZuneMusic_8wekyb3d8bbwe\\MediaPlayer.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\ActionsMcpHost.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.Core_cw5n1h2txyewy\\ShellMcpServers.Packaging.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\ShellMcpServers.Packaging.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\SnippingTool.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\WindowsPackageManagerServer.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\clipchamp.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\mspaint.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\notepad.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\olk.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\pbrush.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\winget.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\WindowsApps\\wt.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\Notifications\\WPNPRMRY.tmp",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\UsrClass.dat.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\WebCacheLock.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\WebCache\\V01.log",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\WebCache\\WebCacheV01.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Microsoft\\Windows\\WebCache\\WebCacheV01.jfm",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\Settings\\settings.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\Settings\\settings.dat.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\\Settings\\settings.dat.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\Extension State\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\IndexedDB\\https_searchapp.bundleassets.example_0.indexeddb.leveldb\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\Local Storage\\leveldb\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\Network\\Cookies",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\Service Worker\\Database\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\Session Storage\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\Site Characteristics Database\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\Sync Data\\LevelDB\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\shared_proto_db\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\LocalState\\EBWebView\\Default\\shared_proto_db\\metadata\\LOCK",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\Settings\\settings.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\Settings\\settings.dat.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\Settings\\settings.dat.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\SystemAppData\\Helium\\User.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\SystemAppData\\Helium\\User.dat.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\SystemAppData\\Helium\\User.dat.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\SystemAppData\\Helium\\UserClasses.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\SystemAppData\\Helium\\UserClasses.dat.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\AppData\\Local\\Packages\\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy\\SystemAppData\\Helium\\UserClasses.dat.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\NTUSER.DAT",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\ntuser.dat.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Users\\warden\\ntuser.dat.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\Resources\\Themes\\aero\\VSCache\\Aero.msstyles_1033_96_01.mss",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\LocalService\\NTUSER.DAT",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\LocalService\\NTUSER.DAT.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\LocalService\\NTUSER.DAT.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization\\State\\dosvcState.dat",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization\\State\\dosvcState.dat.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization\\State\\dosvcState.dat.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\NetworkService\\NTUSER.DAT",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\NetworkService\\NTUSER.DAT.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\ServiceProfiles\\NetworkService\\NTUSER.DAT.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\Tasks\\Microsoft\\Windows\\Sense\\InstallSenseClient",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\BBI",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\BBI.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\BBI.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\DEFAULT",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\DEFAULT.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\DEFAULT.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\DRIVERS",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\DRIVERS.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\DRIVERS.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SAM",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SAM.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SAM.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SECURITY",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SECURITY.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SECURITY.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SOFTWARE",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SOFTWARE.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SOFTWARE.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SYSTEM",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SYSTEM.LOG1",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\SYSTEM.LOG2",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\ActionsMcpHost.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\ActionsMcpHost.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.Core_cw5n1h2txyewy\\ShellMcpServers.Packaging.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\ShellMcpServers.Packaging.exe",
+      "folder": false,
+      "reason": "special_file",
+      "detail": "The file cannot be accessed by the system. (os error 1920)"
+    },
+    {
+      "path": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\Windows\\Notifications\\WPNPRMRY.tmp",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\pagefile.sys",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    },
+    {
+      "path": "C:\\swapfile.sys",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because it is being used by another process. (os error 32)"
+    }
+  ],
+  "skipped_truncated": false
+}

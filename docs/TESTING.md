@@ -446,9 +446,11 @@ Three things to know before the first run:
   says so, and scans with the layers that need no bundle: the built-in
   signature and rule, and the heuristics. The result is marked as such. A
   bundle keeps its contents under a cipher now, so that this does not
-  happen; whether it works on that machine is not known before a kit with
-  such a bundle has run there. Whatever the bundle, the script changes no
-  antivirus setting, as no script here does.
+  happen: the same machine later read such a bundle, and blocked the old
+  one that the kit carried next to it as a control. Another antivirus may
+  decide differently, which is why the script still looks before it
+  scans. Whatever the bundle, it changes no antivirus setting, as no
+  script here does.
 - **Do not click into the script's window.** A click selects text, and
   Windows holds a console program still for as long as text is selected.
   The scan then waits, without a word, until Esc is pressed.
@@ -459,7 +461,7 @@ Three things to know before the first run:
   Powering the machine off and starting it again helped both times;
   Windows Setup went on where it had stopped.
 
-The first run with the kit is in
+The runs with the kit are in
 [BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11).
 
 `warden.exe` is built with the C runtime linked in (`.cargo/config.toml`),

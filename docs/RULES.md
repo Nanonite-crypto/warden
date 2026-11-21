@@ -129,7 +129,7 @@ did the same to such a bundle on the CD of the
 Defender gave the reason a name: `Trojan:JS/Webshell.DSK1!MTB`. Going by
 the name, the patterns of rules that describe web shells are enough to be
 taken for one. Warden got "the file contains a virus or potentially
-unwanted software" when it opened the bundle, and the scan there ran
+unwanted software" when it opened the bundle, and the first scan there ran
 without the public rules
 ([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)).
 
@@ -143,7 +143,7 @@ same way and for the same reason
 [The format](#the-rule-bundle-format) has the layout, and what the cipher
 is and is not good for.
 
-What has been measured of this, on 2026-11-20:
+What has been measured of this, on 2026-11-20 and the day after:
 
 - **The patterns are gone from the file.** A bundle of 5,132 rules, one
   more than the table above has now, was built with the cipher and
@@ -154,24 +154,34 @@ What has been measured of this, on 2026-11-20:
 - **Defender on the desktop left such a bundle alone for as long as it
   was watched.** The bundle with the cipher was put on that desktop
   outside the excluded folder, where the copy without the cipher had been
-  blocked and removed, and copied once there. Nearly eleven hours later
-  both files were still there and read back with the checksum they had
-  been written with. Whether real-time protection was on during those
-  hours was not checked, and no bundle without the cipher was put next to
-  them for comparison, because that would have raised an alarm on
-  somebody's desktop on purpose.
-- **The fresh Windows 11 has not seen such a bundle yet.** Its Defender is
-  the one that named the bundle without the cipher, so that run is the
-  comparison the desktop does not give. It needs a kit with a Windows
-  build that reads the new format, and is open.
+  blocked and removed, and copied once there. Nineteen and a half hours
+  later both files were still there and read back with the checksum they
+  had been written with. Real-time protection was recorded as on once in
+  that time and not looked at otherwise. No bundle without the cipher was
+  put next to them for comparison, because that would have raised an
+  alarm on somebody's desktop on purpose.
+- **The fresh Windows 11 blocked the bundle without the cipher and read
+  the one with it, in one run.** That machine's Defender is the one that
+  had named the plain bundle. The kit brought that very bundle again as a
+  control, next to a bundle of the same compiled rules under the cipher.
+  Defender blocked the control under the same name and has no entry for
+  the other from that run, and Warden scanned the whole drive with it.
+  Nothing on the machine had changed in between: it has no network, so
+  its Defender and its signatures were the same, and real-time protection
+  was on
+  ([BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11)).
+
+That is one antivirus with one set of signatures. What another product
+does with a bundle, or this one after an update, is not known.
 
 The figures and the times are in
 [2026-11-20-dev-container-sealed-bundle.txt](benchmarks/2026-11-20-dev-container-sealed-bundle.txt).
 
 One exclusion stays necessary on a Windows machine with Defender: the
 rule package is a file of rule text, and building a bundle starts with
-downloading it. Using a bundle that is already built should need none.
-The measurements above are the evidence for that so far.
+downloading it. A bundle that is already built has needed none so far:
+the fresh Windows scanned with one from a CD, and on the desktop one lay
+outside the excluded folder for most of a day.
 
 ## Rules that are left out
 
@@ -457,13 +467,17 @@ files. The heuristic layer has nothing to say about any of them, so all
 four are on record with the verdict clean, and nothing had to be written
 down for that to happen.
 
-It happened once more. Scanned with administrator rights, the desktop's
+It happened twice more. Scanned with administrator rights, the desktop's
 programs include the apps from the Microsoft Store, which the run before
 could not list, and the rule matched four clean files there:
 `NativeHostNE.dll` of Phone Link, and `pyshellext.exe`, `launcher-64.exe`
-and `launcherw-64.exe` of the Python install manager. They are on record
-too. That makes ten clean files for this one rule, on two machines, and
-none of them reported.
+and `launcherw-64.exe` of the Python install manager. And on the Windows
+11 that was installed for the test, a machine no list was written from,
+it matched five: `vulkan-1.dll`, which is the runner's file, `liblouis.dll`
+in another build than the desktop's, and `NativeDprt.dll` of Defender's
+own sensor, the last two each with a copy in the component store. All
+nine are on record too. That makes fifteen clean files for this one rule,
+on three machines, and none of them reported.
 
 ### What the second sign costs
 

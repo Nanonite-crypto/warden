@@ -293,18 +293,19 @@ produced. In short, as of phase 4:
   desktop's programs with administrator rights reached 52,636 files more,
   and one of those was flagged: a file of the Microsoft Defender app, by a
   hand-written rule that is the seventh on the list now. That scan has not
-  been repeated with the list of seven. Across these runs, generated
-  rules match sixteen clean files on two machines, and all are on record
-  with a clean verdict. Eight are the files that such rules had flagged
-  before; the other eight came up after the change, and nothing had to be
-  done about them. What the second sign costs in detection is not
-  measured.
+  been repeated with the list of seven. Across all runs, generated rules
+  match 21 clean files on three machines, and all are on record with a
+  clean verdict. Eight are the files that such rules had flagged before;
+  the other thirteen came up after the change, and nothing had to be done
+  about them. What the second sign costs in detection is not measured.
 - **On a Windows 11 that was installed for the test**, with nothing else
-  on it, the built-in rule and the heuristic layer flag none of 153,317
-  files. The public rules have not run there yet. That machine's Defender
-  blocked the rule bundle, as the desktop's did, and no script of this
-  project changes an antivirus setting. For that reason a bundle now keeps
-  its contents under a cipher. The run with such a bundle is still to come.
+  on it, no file is flagged: none of 153,317 with the built-in rule and
+  the heuristic layer, and none of 153,370 with the 5,132 public rules as
+  well. That machine's Defender blocked the rule bundle of the first run,
+  as the desktop's did. A bundle keeps its contents under a cipher since.
+  In the second run Defender left that bundle alone and blocked the old
+  one, which the kit carried for comparison. No script of this project
+  changes an antivirus setting.
 - **The heuristic score on EMBER2024**, on the twelve weeks it was not
   fitted to: it flags 24.6 % of the malicious Windows executables and
   0.0056 % of the benign ones (15 of 269,813). Among programs it is 29.6 %;
