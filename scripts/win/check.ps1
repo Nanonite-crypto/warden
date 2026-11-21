@@ -371,26 +371,23 @@ $signedFiles = @((Join-Path $system32 'ntdll.dll'), (Join-Path $system32 'whoami
 & $warden trust check @signedFiles
 $trustJson = (& $warden trust check --json @signedFiles) -join "`n"
 Write-Utf8 (Join-Path $out 'trust.json') $trustJson
-try {
-    $checked = @($trustJson | ConvertFrom-Json)
-    $trusted = @($checked | Where-Object { $_.trust.answer -eq 'trusted' -and $_.trust.publisher -eq 'Microsoft Windows' })
-    $offline = @($checked | Where-Object { $_.trust.reason -eq 'revocation_unknown' })
-    if ($trusted.Count -eq $signedFiles.Count) {
-        $steps.signatures = 'passed'
-        $routes = @($trusted | ForEach-Object { $_.trust.route } | Sort-Object -Unique)
-        $notes.signatures = "two files of Windows, found by: $($routes -join ', ')"
-    } elseif ($offline.Count -gt 0) {
-        # Not a fault of Warden's: the signatures are there, and what is
-        # missing is the answer to whether a certificate was revoked.
-        $steps.signatures = 'blocked'
-        $notes.signatures = 'Windows could not find out whether a certificate was revoked; is this machine online?'
-    } else {
-        $steps.signatures = 'failed'
-        Write-Host 'Warden does not trust two files that Windows itself signed. The lines above say why.' -ForegroundColor Red
-    }
-} catch {
+# The answers are read out of the text. Windows PowerShell hands a JSON
+# list on as one object, and what a filter makes of that depends on the
+# version of PowerShell; a pattern over the text means the same everywhere.
+$trusted = [regex]::Matches($trustJson, '"answer":\s*"trusted",\s*"publisher":\s*"Microsoft Windows",\s*"route":\s*"(\w+)"')
+$offline = [regex]::Matches($trustJson, '"reason":\s*"revocation_unknown"')
+if ($trusted.Count -eq $signedFiles.Count) {
+    $steps.signatures = 'passed'
+    $routes = @($trusted | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    $notes.signatures = "two files of Windows, found by: $($routes -join ', ')"
+} elseif ($offline.Count -gt 0) {
+    # Not a fault of Warden's: the signatures are there, and what is
+    # missing is the answer to whether a certificate was revoked.
+    $steps.signatures = 'blocked'
+    $notes.signatures = 'Windows could not find out whether a certificate was revoked; is this machine online?'
+} else {
     $steps.signatures = 'failed'
-    Write-Host "The result of the signature check could not be read ($($_.Exception.Message))." -ForegroundColor Red
+    Write-Host 'Warden does not trust two files that Windows itself signed. The lines above say why.' -ForegroundColor Red
 }
 
 # --- 5. Test suite --------------------------------------------------------------------
