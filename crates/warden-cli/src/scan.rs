@@ -9,6 +9,7 @@ use clap::Args;
 use warden_engine::{ArchiveOptions, CancelToken, HashDetector, ScanOptions, Scanner};
 use warden_pe::PeDetector;
 use warden_sigdb::SigDb;
+use warden_trust::{TrustList, Verifier};
 use warden_yara::{RuleBundle, YaraDetector};
 
 use crate::EXIT_FOUND;
@@ -36,6 +37,19 @@ pub struct LayerArgs {
     /// Do not look inside zip archives
     #[arg(long)]
     pub no_archives: bool,
+
+    /// Do not check who signed a file: report every match of a rule from
+    /// the bundle, also in a file that a trusted publisher signed
+    #[arg(long)]
+    pub no_trust: bool,
+
+    /// Do not use the network. A scan uses it for one thing: when it
+    /// checks who signed a file, Windows may ask whether a certificate was
+    /// revoked. Without the network a certificate that Windows has
+    /// nothing stored about counts as not checked, and its file is not
+    /// trusted
+    #[arg(long)]
+    pub offline: bool,
 }
 
 #[derive(Debug, Args)]
@@ -75,7 +89,9 @@ pub struct ScanArgs {
 
 /// Builds a scanner with the layers the options ask for: hash matching
 /// always, YARA rules and the heuristics unless switched off. The layers
-/// run in this order, the most certain first.
+/// run in this order, the most certain first. Unless that is switched off
+/// too, the scanner checks who signed a file before it reports the match
+/// of a bundle's rule.
 pub fn build_scanner(
     layers: &LayerArgs,
     threads: Option<usize>,
@@ -104,6 +120,13 @@ pub fn build_scanner(
     }
     if !layers.no_heuristics {
         builder = builder.detector(PeDetector::new());
+    }
+    if !layers.no_trust {
+        let list = TrustList::builtin().context("the built-in trust list is broken")?;
+        let options = warden_trust::Options {
+            network: !layers.offline,
+        };
+        builder = builder.trust(Verifier::new(list, options));
     }
     Ok(builder.build())
 }

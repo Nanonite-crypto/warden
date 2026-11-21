@@ -13,12 +13,15 @@ use std::process::ExitCode;
 use anyhow::{Context, bail};
 use clap::Args;
 use serde::Serialize;
-use warden_engine::{DetectorInfo, ENGINE_VERSION, Finding, ScanReport, SkipReason, Verdict};
+use warden_engine::{
+    DetectorInfo, ENGINE_VERSION, Finding, ScanReport, SkipReason, TrustAnswer, TrustCheckInfo,
+    Verdict,
+};
 
 use crate::EXIT_FOUND;
 use crate::render::{
     ProgressLine, group_digits, heuristic_summary, human_bytes, human_duration, rule_summary,
-    shown, shown_path, signature_summary,
+    shown, shown_path, signature_summary, trust_summary,
 };
 use crate::scan::{LayerArgs, build_scanner, cancel_on_ctrl_c};
 use crate::system::{SystemInfo, system_info};
@@ -70,6 +73,9 @@ struct FlaggedFile {
     sha256: String,
     /// The detection names, each once.
     names: Vec<String>,
+    /// What the check of the file's signature said, if it was asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust: Option<TrustAnswer>,
 }
 
 /// A file that kept its clean verdict and has findings on record.
@@ -80,6 +86,11 @@ struct RecordedFile {
     sha256: String,
     /// The names of the findings, each once.
     names: Vec<String>,
+    /// What the check of the file's signature said, if it was asked. A
+    /// file that a trusted publisher signed is here for that reason: a
+    /// rule matched it, and the match yielded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust: Option<TrustAnswer>,
 }
 
 /// A file that could not be read, or a folder that could not be opened.
@@ -95,8 +106,12 @@ struct NotRead {
 
 /// Version of the JSON layout below. Version 2 added the files with
 /// findings on record. Version 3 lists what could not be read and counts
-/// folders apart from files: `files_skipped` used to count both.
-const FP_SCHEMA: u32 = 3;
+/// folders apart from files: `files_skipped` used to count both. Version 4
+/// adds the check of who signed a file: the list of publishers behind it,
+/// how often it was asked, and what it said about each file it was asked
+/// about. A file that an older result lists as flagged can be on record in
+/// a newer one for that reason.
+const FP_SCHEMA: u32 = 4;
 
 #[derive(Debug, Serialize)]
 struct FpReport {
@@ -106,6 +121,14 @@ struct FpReport {
     system: SystemInfo,
     paths: Vec<String>,
     detectors: Vec<DetectorInfo>,
+    /// What was asked who signed a file, if the check was not switched
+    /// off.
+    trust_check: Option<TrustCheckInfo>,
+    /// Files whose signature was checked: the ones a rule from the bundle
+    /// matched strongly enough to be reported.
+    trust_checks: u64,
+    /// How many of those a publisher on the trust list had signed.
+    files_trusted: u64,
     threads: usize,
     duration_ms: u64,
     files_scanned: u64,
@@ -195,6 +218,7 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
                 size: detection.size,
                 sha256: detection.sha256.clone(),
                 names: names.into_iter().map(str::to_owned).collect(),
+                trust: detection.trust.clone(),
             });
         }
     }
@@ -215,6 +239,7 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
                 size: entry.size,
                 sha256: entry.sha256.clone(),
                 names: names.into_iter().map(str::to_owned).collect(),
+                trust: entry.trust.clone(),
             });
         }
     }
@@ -256,6 +281,9 @@ fn summarise(report: &ScanReport, label: Option<String>, paths: &[PathBuf]) -> F
             })
             .collect(),
         detectors: report.detectors.clone(),
+        trust_check: report.trust_check.clone(),
+        trust_checks: stats.trust_checks,
+        files_trusted: stats.files_trusted,
         threads: report.threads,
         duration_ms: u64::try_from(report.duration.as_millis()).unwrap_or(u64::MAX),
         files_scanned: stats.files_scanned,
@@ -302,6 +330,12 @@ fn text(report: &FpReport, duration: std::time::Duration) -> String {
     }
     if let Some(heuristics) = heuristic_summary(&report.detectors) {
         let _ = writeln!(out, "Heuristics  {heuristics}");
+    }
+    if let Some(trust) = trust_summary(
+        report.trust_check.as_ref(),
+        Some((report.trust_checks, report.files_trusted)),
+    ) {
+        let _ = writeln!(out, "Trust       {trust}");
     }
     let _ = writeln!(out);
     let _ = writeln!(
@@ -413,6 +447,9 @@ fn text(report: &FpReport, duration: std::time::Duration) -> String {
                 shown_path(std::path::Path::new(&file.path)),
                 shown(&file.names.join(", "))
             );
+            if let Some(TrustAnswer::Trusted { detail, .. }) = &file.trust {
+                let _ = writeln!(out, "              {}", shown(detail));
+            }
         }
         if report.recorded_truncated {
             let _ = writeln!(out, "  ... and more; the list was cut short.");

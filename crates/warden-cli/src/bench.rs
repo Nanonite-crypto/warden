@@ -6,10 +6,11 @@ use std::process::ExitCode;
 use anyhow::{Context, bail};
 use clap::Args;
 use serde::Serialize;
-use warden_engine::{DetectorInfo, ENGINE_VERSION, NoObserver, ScanReport};
+use warden_engine::{DetectorInfo, ENGINE_VERSION, NoObserver, ScanReport, TrustCheckInfo};
 
 use crate::render::{
     group_digits, heuristic_summary, human_bytes, human_duration, rule_summary, signature_summary,
+    trust_summary,
 };
 use crate::scan::{LayerArgs, build_scanner, cancel_on_ctrl_c};
 use crate::system::{SystemInfo, system_info};
@@ -57,6 +58,10 @@ struct Run {
     /// Folders that could not be opened; what is in them was not scanned.
     folders_skipped: u64,
     detections: u64,
+    /// Files whose signature was checked during the run. A check takes far
+    /// longer than a file takes to scan, so a run with many of them
+    /// measures something else than a run with none.
+    trust_checks: u64,
     files_per_second: f64,
     megabytes_per_second: f64,
 }
@@ -71,6 +76,7 @@ impl Run {
             files_skipped: report.stats.files_skipped,
             folders_skipped: report.stats.folders_skipped,
             detections: report.stats.detections,
+            trust_checks: report.stats.trust_checks,
             files_per_second: report.stats.files_per_second,
             megabytes_per_second: report.stats.megabytes_per_second,
         }
@@ -90,8 +96,9 @@ struct Configuration {
 /// Version of the JSON layout below. Version 2 marked the first run and
 /// took the median over the runs after it. Version 3 counts folders that
 /// could not be opened apart from files that could not be read:
-/// `files_skipped` used to count both.
-const BENCH_SCHEMA: u32 = 3;
+/// `files_skipped` used to count both. Version 4 names the check of who
+/// signed a file and says how often each run asked it.
+const BENCH_SCHEMA: u32 = 4;
 
 #[derive(Debug, Serialize)]
 struct BenchReport {
@@ -101,6 +108,9 @@ struct BenchReport {
     engine_version: &'static str,
     system: SystemInfo,
     detectors: Vec<DetectorInfo>,
+    /// What was asked who signed a file, if the check was not switched
+    /// off.
+    trust_check: Option<TrustCheckInfo>,
     configurations: Vec<Configuration>,
 }
 
@@ -136,6 +146,7 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
     let roots = [args.path.clone()];
 
     let mut detectors = Vec::new();
+    let mut trust_check = None;
     let mut configurations = Vec::new();
     let mut first = true;
     for threads in thread_counts {
@@ -157,6 +168,7 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
             used_threads = report.threads;
             if detectors.is_empty() {
                 detectors.clone_from(&report.detectors);
+                trust_check.clone_from(&report.trust_check);
             }
             runs.push(Run::from_report(&report, first));
             first = false;
@@ -181,6 +193,7 @@ pub fn run(args: &BenchArgs) -> anyhow::Result<ExitCode> {
         engine_version: ENGINE_VERSION,
         system: system_info(),
         detectors,
+        trust_check,
         configurations,
     };
 
@@ -211,6 +224,24 @@ fn text(report: &BenchReport) -> String {
     }
     if let Some(heuristics) = heuristic_summary(&report.detectors) {
         let _ = writeln!(out, "Heuristics  {heuristics}");
+    }
+    let most_checks = report
+        .configurations
+        .iter()
+        .flat_map(|configuration| &configuration.runs)
+        .map(|run| run.trust_checks)
+        .max()
+        .unwrap_or(0);
+    if let Some(mut trust) = trust_summary(report.trust_check.as_ref(), None) {
+        if most_checks > 0 {
+            let _ = write!(
+                trust,
+                ". A run checked up to {} {}",
+                group_digits(most_checks),
+                if most_checks == 1 { "file" } else { "files" }
+            );
+        }
+        let _ = writeln!(out, "Trust       {trust}");
     }
     let _ = writeln!(out);
     let _ = writeln!(
@@ -283,6 +314,7 @@ mod tests {
             files_skipped: 0,
             folders_skipped: 0,
             detections: 0,
+            trust_checks: 0,
             files_per_second,
             megabytes_per_second: files_per_second / 10.0,
         }

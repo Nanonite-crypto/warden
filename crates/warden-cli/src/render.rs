@@ -9,7 +9,7 @@ use time::format_description::well_known::Rfc3339;
 use warden_engine::text::printable;
 use warden_engine::{
     DetectorInfo, Finding, InfoValue, Member, Progress, ScanObserver, ScanReport, ThreatCategory,
-    Verdict,
+    TrustCheckInfo, Verdict,
 };
 
 /// Longest path or message printed on one line.
@@ -154,6 +154,34 @@ pub fn heuristic_summary(detectors: &[DetectorInfo]) -> Option<String> {
     Some(line)
 }
 
+/// One line on the check of who signed a file, if a scan had one.
+///
+/// `asked` is how many files it was asked about and how many of those a
+/// trusted publisher had signed, where the caller has those numbers.
+pub fn trust_summary(check: Option<&TrustCheckInfo>, asked: Option<(u64, u64)>) -> Option<String> {
+    let check = check?;
+    if !check.available {
+        return Some(
+            "signatures can only be checked on Windows, so no rule match yields to one".to_owned(),
+        );
+    }
+    let mut line = format!(
+        "{} {} on the trust list; the match of a bundle's rule yields to a valid signature of one",
+        group_digits(check.publishers),
+        plural(check.publishers, "publisher", "publishers")
+    );
+    if let Some((checked, trusted)) = asked.filter(|(checked, _)| *checked > 0) {
+        let _ = write!(
+            line,
+            ". Checked for {} {}, {} of them signed by a trusted publisher",
+            group_digits(checked),
+            plural(checked, "file", "files"),
+            group_digits(trusted)
+        );
+    }
+    Some(line)
+}
+
 pub fn signature_summary(detectors: &[DetectorInfo]) -> String {
     let Some(hash) = detectors.iter().find(|detector| detector.id == "hash") else {
         return "none".to_owned();
@@ -272,6 +300,12 @@ pub fn report_text(report: &ScanReport, show_skipped: bool) -> String {
     }
     if let Some(heuristics) = heuristic_summary(&report.detectors) {
         let _ = writeln!(out, "Heuristics  {heuristics}");
+    }
+    if let Some(trust) = trust_summary(
+        report.trust_check.as_ref(),
+        Some((stats.trust_checks, stats.files_trusted)),
+    ) {
+        let _ = writeln!(out, "Trust       {trust}");
     }
     if stats.archives_unpacked > 0 {
         let _ = writeln!(

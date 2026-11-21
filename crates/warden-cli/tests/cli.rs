@@ -159,6 +159,16 @@ fn json_output_is_the_full_report() {
     assert_eq!(json["schema"], 5);
     assert_eq!(json["stats"]["files_scanned"], 3);
     assert_eq!(json["stats"]["detections"], 1);
+    // The scan says what it would have asked who signed a file. A hash
+    // match yields to no signature, so nobody was asked.
+    assert_eq!(json["trust_check"]["available"], cfg!(windows));
+    assert!(json["trust_check"]["publishers"].as_u64().unwrap() >= 1);
+    assert_eq!(
+        json["trust_check"]["trust_list"].as_str().unwrap().len(),
+        64
+    );
+    assert_eq!(json["stats"]["trust_checks"], 0);
+    assert!(json["detections"][0].get("trust").is_none());
     assert_eq!(json["detections"][0]["verdict"], "malicious");
     assert_eq!(json["detections"][0]["findings"][0]["name"], "Test.Fixture");
     assert_eq!(json["detections"][0]["sha256"], hash_of(&fixture.threat));
@@ -694,9 +704,10 @@ fn bench_reports_every_run_as_json_and_text() {
             .arg(&results_file),
     );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(json["schema"], 3);
+    assert_eq!(json["schema"], 4);
     assert_eq!(json["label"], "unit test");
     assert!(json["system"]["logical_cpus"].as_u64().unwrap() >= 1);
+    assert_eq!(json["trust_check"]["available"], cfg!(windows));
     let configurations = json["configurations"].as_array().unwrap();
     assert_eq!(configurations.len(), 2);
     assert_eq!(configurations[0]["threads"], 1);
@@ -705,6 +716,7 @@ fn bench_reports_every_run_as_json_and_text() {
         let runs = configuration["runs"].as_array().unwrap();
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0]["files_scanned"], 3);
+        assert_eq!(runs[0]["trust_checks"], 0);
         assert!(
             configuration["repeat_median_files_per_second"]
                 .as_f64()
@@ -1128,8 +1140,11 @@ fn false_positives_reports_what_was_flagged_in_clean_files() {
         );
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&results).unwrap()).unwrap();
-    assert_eq!(json["schema"], 3);
+    assert_eq!(json["schema"], 4);
     assert_eq!(json["label"], "unit test");
+    assert_eq!(json["trust_check"]["available"], cfg!(windows));
+    assert_eq!(json["trust_checks"], 0);
+    assert_eq!(json["files_trusted"], 0);
     assert_eq!(json["files_scanned"], 8);
     assert_eq!(json["flagged_malicious"], 0);
     assert_eq!(json["flagged"], serde_json::json!([]));
@@ -1174,6 +1189,36 @@ fn false_positives_reports_what_was_flagged_in_clean_files() {
         json["flagged"][1]["names"],
         serde_json::json!(["Test_Marker_High", "Test_Marker_Medium"])
     );
+    // Where signatures can be checked, the check was asked about both
+    // files before they were reported, and found nothing: they are text.
+    if cfg!(windows) {
+        assert_eq!(json["trust_checks"], 2);
+        assert_eq!(json["files_trusted"], 0);
+        for flagged in json["flagged"].as_array().unwrap() {
+            assert_eq!(flagged["trust"]["answer"], "not_trusted");
+            assert_eq!(flagged["trust"]["reason"], "no_signature");
+        }
+    } else {
+        assert_eq!(json["trust_checks"], 0);
+        assert!(json["flagged"][0].get("trust").is_none());
+    }
+
+    // With the check switched off, the result says so by saying nothing.
+    let output = warden()
+        .arg("fp")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .args(["--no-trust", "--json"])
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert!(json["trust_check"].is_null());
+    assert_eq!(json["trust_checks"], 0);
+    assert!(json["flagged"][0].get("trust").is_none());
 }
 
 /// The whole path of a false positive: a rule flags a clean file, the rule
@@ -1877,7 +1922,7 @@ fn a_generated_rule_counts_only_together_with_an_unusual_structure() {
     // The check of clean files counts both kinds, and keeps them apart.
     assert_eq!(check.status.code(), Some(1));
     let check: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
-    assert_eq!(check["schema"], 3);
+    assert_eq!(check["schema"], 4);
     assert_eq!(check["flagged_suspicious"], 2);
     assert_eq!(check["flagged_malicious"], 0);
     assert_eq!(check["recorded_files"], 2);
@@ -2462,5 +2507,255 @@ fn the_test_file_is_harmless_in_quarantine_and_itself_again_afterwards() {
     assert_eq!(
         digest.as_deref(),
         Some("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")
+    );
+}
+
+#[test]
+fn trust_list_shows_the_publishers_that_are_part_of_the_program() {
+    warden().args(["trust", "list"]).assert().success().stdout(
+        predicate::str::contains("on the trust list that is part of this program")
+            .and(predicate::str::contains("Microsoft Corporation"))
+            .and(predicate::str::contains(
+                "has to pass through one of Microsoft's own root certificates",
+            ))
+            .and(predicate::str::contains("Seen ")),
+    );
+
+    let output = stdout_of(warden().args(["trust", "list", "--json"]));
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(json["sha256"].as_str().unwrap().len(), 64);
+    let publishers = json["publishers"].as_array().unwrap();
+    assert!(!publishers.is_empty());
+    for publisher in publishers {
+        for field in ["name", "common_name", "anchor", "signs", "reason", "added"] {
+            assert!(
+                publisher[field]
+                    .as_str()
+                    .is_some_and(|text| !text.is_empty()),
+                "{field} of {publisher}"
+            );
+        }
+        // Nobody is on the list without a file that was seen with such a
+        // signature.
+        let evidence = publisher["evidence"].as_array().unwrap();
+        assert!(!evidence.is_empty(), "{publisher}");
+        for seen in evidence {
+            assert_eq!(seen["sha256"].as_str().unwrap().len(), 64);
+            assert!(
+                ["embedded", "windows_catalog", "package"]
+                    .contains(&seen["route"].as_str().unwrap())
+            );
+        }
+    }
+
+    // The scan reports the same list: its digest is in every report.
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("note.txt"), "nothing to see here").unwrap();
+    let report = stdout_of(warden().arg("scan").arg(dir.path()).arg("--json"));
+    let report: serde_json::Value = serde_json::from_str(&report).unwrap();
+    assert_eq!(report["trust_check"]["trust_list"], json["sha256"]);
+    assert_eq!(report["trust_check"]["publishers"], publishers.len());
+}
+
+#[test]
+fn trust_check_explains_a_file_that_nobody_signed() {
+    let dir = tempfile::tempdir().unwrap();
+    let note = dir.path().join("note.txt");
+    fs::write(&note, "nothing to see here").unwrap();
+
+    let assert = warden()
+        .args(["trust", "check"])
+        .arg(&note)
+        .assert()
+        .code(1);
+    let output = warden()
+        .args(["trust", "check", "--json"])
+        .arg(&note)
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let file = &json[0];
+    assert!(file["path"].as_str().unwrap().ends_with("note.txt"));
+    assert_eq!(file["trust"]["answer"], "not_trusted");
+
+    if cfg!(windows) {
+        assert.stdout(
+            predicate::str::contains("Trusted     no")
+                .and(predicate::str::contains("no Windows executable"))
+                .and(predicate::str::contains(sha256_hex(b"nothing to see here"))),
+        );
+        assert_eq!(file["trust"]["reason"], "no_signature");
+        assert_eq!(file["executable"], false);
+        assert_eq!(file["sha256"], sha256_hex(b"nothing to see here"));
+        let routes = file["routes"].as_array().unwrap();
+        assert_eq!(routes.len(), 3, "every route is accounted for: {routes:?}");
+        assert_eq!(routes[0]["route"], "embedded");
+        assert_eq!(routes[0]["found"], "not_applicable");
+        assert_eq!(routes[1]["route"], "windows_catalog");
+        assert_eq!(routes[1]["found"], "not_applicable");
+        assert_eq!(routes[2]["route"], "package");
+        assert_eq!(routes[2]["found"], "nothing");
+    } else {
+        assert.stdout(predicate::str::contains(
+            "Trusted     no: signatures can only be checked on Windows",
+        ));
+        assert_eq!(file["trust"]["reason"], "unavailable");
+    }
+
+    // A file that is not there is not trusted either, and that is not an
+    // error of the command.
+    warden()
+        .args(["trust", "check"])
+        .arg(dir.path().join("no-such-file.exe"))
+        .assert()
+        .code(1);
+    warden().args(["trust", "check"]).assert().code(2);
+}
+
+#[test]
+fn trust_survey_counts_what_it_finds_in_a_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    fs::create_dir_all(tree.join("nested")).unwrap();
+    fs::write(tree.join("note.txt"), "nothing to see here").unwrap();
+    fs::write(tree.join("nested/data.bin"), [7u8; 4096]).unwrap();
+
+    if !cfg!(windows) {
+        warden()
+            .args(["trust", "survey"])
+            .arg(&tree)
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains(
+                "signatures can only be checked on Windows",
+            ));
+        return;
+    }
+
+    let results = dir.path().join("survey.json");
+    warden()
+        .args(["trust", "survey"])
+        .arg(&tree)
+        .args(["--label", "unit test", "--threads", "2", "--output"])
+        .arg(&results)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("who signed what")
+                .and(predicate::str::contains("Checked      2 files"))
+                .and(predicate::str::contains(
+                    "0 Windows executables, 2 other files",
+                ))
+                .and(predicate::str::contains("no signature found")),
+        );
+    let json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&results).unwrap()).unwrap();
+    assert_eq!(json["schema"], 1);
+    assert_eq!(json["label"], "unit test");
+    assert_eq!(json["files"], 2);
+    assert_eq!(json["executables"], 0);
+    assert_eq!(json["files_trusted"], 0);
+    assert_eq!(json["threads"], 2);
+    assert_eq!(json["network"], true);
+    assert_eq!(json["not_trusted"][0]["reason"], "no_signature");
+    assert_eq!(json["not_trusted"][0]["files"], 2);
+    assert_eq!(json["signers"], serde_json::json!([]));
+    assert_eq!(json["timing"][0]["outcome"], "all");
+    assert_eq!(json["timing"][0]["files"], 2);
+
+    warden()
+        .args(["trust", "survey"])
+        .arg(dir.path().join("no-such-folder"))
+        .assert()
+        .code(2);
+}
+
+#[test]
+fn a_scan_says_whether_it_checks_signatures_and_can_be_told_not_to() {
+    let dir = tempfile::tempdir().unwrap();
+    let bundle = marker_bundle(dir.path());
+    let tree = dir.path().join("tree");
+    fs::create_dir_all(&tree).unwrap();
+    fs::write(tree.join("high.txt"), "text with WARDEN-CLI-HIGH in it").unwrap();
+
+    let expected = if cfg!(windows) {
+        "on the trust list; the match of a bundle's rule yields to a valid signature of one. \
+         Checked for 1 file, 0 of them signed by a trusted publisher"
+    } else {
+        "Trust       signatures can only be checked on Windows, so no rule match yields to one"
+    };
+    let assert = warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains(expected));
+    if cfg!(windows) {
+        // The match is reported, and it says that nobody vouches for the
+        // file.
+        assert.stdout(predicate::str::contains(
+            "No signature of a publisher on the trust list speaks for the file",
+        ));
+    }
+
+    let output = warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .arg("--json")
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let finding = &json["detections"][0]["findings"][0];
+    assert_eq!(finding["name"], "Test_Marker_High");
+    assert_eq!(
+        finding["yields_to_trust"], true,
+        "a rule that came with a bundle"
+    );
+    assert_eq!(finding["confidence"], "high");
+    assert_eq!(json["stats"]["trust_checks"], u64::from(cfg!(windows)));
+    assert_eq!(json["stats"]["files_trusted"], 0);
+
+    // Switched off: no line, no check, and the same detection.
+    warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .arg("--no-trust")
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("Trust ").not());
+    let output = warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--rules")
+        .arg(&bundle)
+        .args(["--no-trust", "--offline", "--json"])
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert!(json["trust_check"].is_null());
+    assert_eq!(json["stats"]["trust_checks"], 0);
+    let reasons = json["detections"][0]["findings"][0]["reasons"]
+        .as_array()
+        .unwrap();
+    assert!(
+        reasons
+            .iter()
+            .all(|reason| !reason.as_str().unwrap().contains("trust list")),
+        "{reasons:?}"
     );
 }

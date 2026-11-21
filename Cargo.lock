@@ -2779,10 +2779,12 @@ dependencies = [
  "serde_json",
  "tempfile",
  "time",
+ "walkdir",
  "warden-engine",
  "warden-pe",
  "warden-quarantine",
  "warden-sigdb",
+ "warden-trust",
  "warden-yara",
  "zip",
 ]

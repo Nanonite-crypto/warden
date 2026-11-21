@@ -23,6 +23,7 @@ mod rules;
 mod scan;
 mod sigdb;
 mod system;
+mod trust;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -85,6 +86,15 @@ enum Command {
     #[command(subcommand)]
     Quarantine(quarantine::QuarantineCommand),
 
+    /// Check who signed a file, and whether Warden trusts the publisher
+    ///
+    /// A match of a rule that came with a rule bundle is recorded and not
+    /// reported when the file has a valid signature of a publisher on
+    /// Warden's trust list. These commands show what that check finds.
+    /// Signatures can only be checked on Windows.
+    #[command(subcommand)]
+    Trust(trust::TrustCommand),
+
     /// Print the SHA-256 of files
     Hash {
         /// Files to hash
@@ -107,6 +117,7 @@ fn main() -> ExitCode {
         Command::FalsePositives(args) => fp::run(&args),
         Command::Inspect(args) => inspect::run(&args),
         Command::Quarantine(command) => quarantine::run(&command),
+        Command::Trust(command) => trust::run(&command),
         Command::Hash { files } => misc::hash(&files),
         Command::Eicar(command) => misc::eicar(&command),
     };
