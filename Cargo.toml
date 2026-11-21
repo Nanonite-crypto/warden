@@ -6,6 +6,7 @@ members = [
     "crates/warden-yara",
     "crates/warden-pe",
     "crates/warden-quarantine",
+    "crates/warden-trust",
     "crates/warden-cli",
     "crates/warden-calibrate",
 ]
@@ -24,8 +25,12 @@ warden-pe = { path = "crates/warden-pe" }
 warden-yara = { path = "crates/warden-yara" }
 warden-sigdb = { path = "crates/warden-sigdb" }
 warden-quarantine = { path = "crates/warden-quarantine" }
+warden-trust = { path = "crates/warden-trust" }
 
 anyhow = "1.0.104"
+# Decodes the hashes in the block map of an app package, which are written
+# in base64. Already part of the build through yara-x.
+base64 = "0.23.1"
 # The stream cipher that makes a quarantined file unusable as it lies on
 # disk, and that keeps a rule bundle from being taken for the malware its
 # rules describe. From the RustCrypto project, and already part of the
@@ -68,6 +73,11 @@ yara-x = { version = "1.23.0", default-features = false, features = [
     "string-module",
     "time-module",
 ] }
+# Reads the block map of an app package, which is XML. A read-only parser
+# with no dependencies and no unsafe code, and already part of the build
+# through yara-x. Warden refuses document types and limits the number of
+# elements.
+roxmltree = "0.21.2"
 # yara-x 1.23.0 was released against a pre-release of rsa. The final rsa
 # 0.10.0 moved the PKCS#1 v1.5 types behind a feature that yara-x does not
 # ask for, so Warden asks for it. To be removed when yara-x does.

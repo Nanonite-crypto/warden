@@ -1,0 +1,40 @@
+# Publishers whose valid signature keeps a match of a published rule on
+# record and out of the verdict. docs/TRUST.md explains the list and says
+# how a publisher gets on it. In short:
+#
+# - An entry names a signing identity: the two names in the signer's
+#   certificate, and what its chain of certificates has to pass through.
+# - It says what that identity signs, and why it is on the list.
+# - It names at least one real file with such a signature: where it was
+#   seen, its SHA-256, the route its signature was found by, the day and
+#   the machine.
+#
+# The list is compiled into the program. A valid signature of a publisher
+# that is not here changes nothing.
+
+[[publisher]]
+name = "Microsoft Corporation"
+common_name = "Microsoft Corporation"
+organization = "Microsoft Corporation"
+anchor = "microsoft-root"
+signs = """\
+Microsoft's own applications, and the packages of the apps that Microsoft \
+itself publishes in the Microsoft Store. Not the apps of other publishers \
+in the Store, which are signed for an identity of their own, and not other \
+companies' drivers and components, which Microsoft signs under other names."""
+reason = """\
+A rule written by hand flagged a file of the Microsoft Defender app among \
+the programs of a desktop. Without this entry the rule had to be left out \
+of the bundle, for every file."""
+added = 2026-11-21
+
+[[publisher.evidence]]
+file = 'C:\Program Files\WindowsApps\Microsoft.6365217CE6EB4_102.2611.9002.0_x64__8wekyb3d8bbwe\MicrosoftSecurityApp\xpdAgent.exe'
+sha256 = "86f95974cb32af876d64a85b647b042e5aa3d215d8daff481d1f876b1373a8ec"
+route = "embedded"
+seen = 2026-11-21
+machine = "Windows 11 desktop"
+note = """\
+Read with Windows' own Get-AuthenticodeSignature, before Warden could check \
+a signature: valid, embedded, signed for Microsoft Corporation. The SHA-256 \
+is the one the scan of 2026-11-20 recorded for the file at this path."""
