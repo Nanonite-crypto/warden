@@ -122,9 +122,16 @@ fn any_valid_signature_is_not_enough() {
 
     // Signed, validly, by somebody who is not on the list. And the same
     // names as Microsoft's under a root that is not Microsoft's.
-    for signed_by in [
-        signer("Somebody Else", "Somebody Else", false),
-        signer("Microsoft Corporation", "Microsoft Corporation", false),
+    for (signed_by, said) in [
+        (
+            signer("Somebody Else", "Somebody Else", false),
+            "that publisher is not on the trust list",
+        ),
+        (
+            signer("Microsoft Corporation", "Microsoft Corporation", false),
+            "only with a chain that ends in one of Microsoft's own root certificates, \
+             which this signature does not have",
+        ),
     ] {
         let (scanner, _) = scanner(Answers {
             catalog: valid(signed_by),
@@ -139,7 +146,7 @@ fn any_valid_signature_is_not_enough() {
         let last = detection.findings[0].reasons.last().unwrap();
         assert!(
             last.starts_with("No signature of a publisher on the trust list speaks for the file")
-                && last.ends_with("that publisher is not on the trust list"),
+                && last.ends_with(said),
             "{last}"
         );
         assert!(matches!(

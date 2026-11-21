@@ -371,6 +371,19 @@ impl TrustList {
             .iter()
             .find(|publisher| publisher.made(signer))
     }
+
+    /// A listed publisher whose two names a signature carries without the
+    /// chain that the list asks of that publisher. Such a signature is not
+    /// that publisher's. This is for saying why a file is not trusted:
+    /// "not on the list" would read oddly next to a name that is on it.
+    #[must_use]
+    pub fn namesake_of(&self, signer: &Signer) -> Option<&Publisher> {
+        self.publishers.iter().find(|publisher| {
+            publisher.common_name == signer.common_name
+                && publisher.organization == signer.organization
+                && !publisher.anchor.holds_for(signer)
+        })
+    }
 }
 
 fn invalid(message: String) -> ListError {
@@ -510,9 +523,23 @@ machine = "a test"
             found.map(|publisher| publisher.name.as_str()),
             Some("Alpha")
         );
-        // The names alone are not enough.
+        // The names alone are not enough. The list can say whose names
+        // they are, for the explanation.
+        let borrowed = signer("Alpha Ltd", "Alpha Ltd", false, &[]);
+        assert!(list.publisher_of(&borrowed).is_none());
+        assert_eq!(
+            list.namesake_of(&borrowed)
+                .map(|publisher| publisher.name.as_str()),
+            Some("Alpha")
+        );
+        // A signature that is the publisher's borrows nothing, and neither
+        // does one with other names.
         assert!(
-            list.publisher_of(&signer("Alpha Ltd", "Alpha Ltd", false, &[]))
+            list.namesake_of(&signer("Alpha Ltd", "Alpha Ltd", true, &[]))
+                .is_none()
+        );
+        assert!(
+            list.namesake_of(&signer("Alpha Ltd", "Someone Else", false, &[]))
                 .is_none()
         );
         // One name wrong.
@@ -529,9 +556,12 @@ machine = "a test"
         let other = "cd".repeat(32);
         let found = list.publisher_of(&signer("Beta Ltd", "Beta Ltd", false, &[&other, &pinned]));
         assert_eq!(found.map(|publisher| publisher.name.as_str()), Some("Beta"));
-        assert!(
-            list.publisher_of(&signer("Beta Ltd", "Beta Ltd", false, &[&other]))
-                .is_none()
+        let renewed = signer("Beta Ltd", "Beta Ltd", false, &[&other]);
+        assert!(list.publisher_of(&renewed).is_none());
+        assert_eq!(
+            list.namesake_of(&renewed)
+                .map(|publisher| publisher.name.as_str()),
+            Some("Beta")
         );
         // A root of Microsoft's does not stand in for a pinned certificate.
         assert!(

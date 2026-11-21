@@ -370,6 +370,14 @@ fn microsofts_names_under_somebody_elses_root_are_not_microsoft() {
     // check of the root's key. So the names are worth nothing.
     assert!(!signer.microsoft_root);
     assert_eq!(reason(&examination), Reason::NotListed);
+    // And the explanation says what is missing, not that Microsoft
+    // Corporation is not on the list.
+    assert!(
+        detail(&examination)
+            .contains("only with a chain that ends in one of Microsoft's own root certificates"),
+        "{}",
+        detail(&examination)
+    );
     // The certificate names no place to ask whether it was revoked.
     assert_eq!(signer.revocation, Revocation::Unknown);
 }

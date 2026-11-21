@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use sha2::{Digest, Sha256};
 
-use crate::list::TrustList;
+use crate::list::{Anchor, TrustList};
 use crate::package::{self, BlockMap, PackageDigests, PackageFiles};
 use crate::sigarea::{self, SignatureArea};
 use crate::signature::{
@@ -276,10 +276,25 @@ impl Verifier {
             not_listed.get_or_insert((route, signer));
         }
         if let Some((route, signer)) = not_listed {
+            // The names of a listed publisher without that publisher's
+            // chain: anyone who runs a certificate authority can issue
+            // such a certificate, so it counts as somebody else's. The
+            // explanation says so, because "not on the list" would read
+            // as a mistake next to a name that is on it.
+            let why = match self.list.namesake_of(signer) {
+                Some(namesake) => format!(
+                    "the trust list has a publisher with these names, but only with a chain that {}, which this signature does not have",
+                    match namesake.anchor {
+                        Anchor::MicrosoftRoot => "ends in one of Microsoft's own root certificates",
+                        Anchor::Certificate(_) => "holds the certificate the list names",
+                    }
+                ),
+                None => "that publisher is not on the trust list".to_owned(),
+            };
             return Trust::NotTrusted {
                 reason: Reason::NotListed,
                 detail: format!(
-                    "signed for {}, found in {}; that publisher is not on the trust list",
+                    "signed for {}, found in {}; {why}",
                     name_of(signer),
                     route.in_words()
                 ),
@@ -707,6 +722,10 @@ machine = "a test"
             unreachable!("checked above");
         };
         assert!(detail.contains("Somebody Else"), "{detail}");
+        assert!(
+            detail.ends_with("that publisher is not on the trust list"),
+            "{detail}"
+        );
     }
 
     #[test]
@@ -721,9 +740,18 @@ machine = "a test"
                 ..Answers::default()
             },
         );
+        let trust = verifier.trust(&path, None);
+        assert_eq!(reason(&trust), Some(Reason::NotListed));
+        // The explanation does not say "not on the list" about a name
+        // that is on it. It says what is missing.
+        let Trust::NotTrusted { detail, .. } = &trust else {
+            unreachable!("checked above");
+        };
         assert_eq!(
-            reason(&verifier.trust(&path, None)),
-            Some(Reason::NotListed)
+            detail,
+            "signed for Example Ltd, found in the file itself; the trust list has a publisher \
+             with these names, but only with a chain that ends in one of Microsoft's own root \
+             certificates, which this signature does not have"
         );
     }
 
