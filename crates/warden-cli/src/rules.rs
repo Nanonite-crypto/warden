@@ -8,7 +8,8 @@ use clap::Subcommand;
 use serde::Serialize;
 use warden_sigdb::hex;
 use warden_yara::{
-    BundleBuilder, ExclusionInfo, ExclusionList, RuleBundle, SourceInfo, YaraDetector, write_bundle,
+    BundleBuilder, ExclusionInfo, ExclusionList, Layout, RuleBundle, SourceInfo, YaraDetector,
+    write_bundle,
 };
 
 use crate::render::{group_digits, human_bytes, human_duration, human_timestamp, shown};
@@ -27,6 +28,11 @@ pub enum RulesCommand {
     /// Rules that flag clean files can be left out with --exclusions. The
     /// bundle records which list it was built with and which rules that
     /// removed, and `warden rules info` shows it.
+    ///
+    /// A bundle keeps its contents under a cipher. Rules are made of the
+    /// byte patterns of the malware they describe, and an antivirus that
+    /// finds those patterns in a file removes the file. The cipher is not a
+    /// secret: the key is in the bundle.
     Build {
         /// Rule files, folders of rule files, or zip packages of rule files
         #[arg(required = true, value_name = "PATH")]
@@ -51,6 +57,13 @@ pub enum RulesCommand {
         /// Creation time to record, in seconds since the Unix epoch
         #[arg(long, value_name = "SECONDS", env = "SOURCE_DATE_EPOCH")]
         created: Option<u64>,
+
+        /// Store the rules as they are, not under a cipher
+        ///
+        /// An antivirus may take such a bundle for malware and remove it.
+        /// Use this to look at what a bundle holds with other tools.
+        #[arg(long)]
+        plain: bool,
 
         /// List every rule that was left out, with the reason
         #[arg(long)]
@@ -77,6 +90,7 @@ pub fn run(command: RulesCommand) -> anyhow::Result<ExitCode> {
             no_builtin,
             exclusions,
             created,
+            plain,
             show_skipped,
         } => build(
             &sources,
@@ -84,6 +98,7 @@ pub fn run(command: RulesCommand) -> anyhow::Result<ExitCode> {
             no_builtin,
             exclusions.as_deref(),
             created,
+            if plain { Layout::Plain } else { Layout::Sealed },
             show_skipped,
         ),
         RulesCommand::Info { bundle, json } => info(&bundle, json),
@@ -98,15 +113,26 @@ fn rule_count(count: u64) -> String {
     )
 }
 
+/// How `rules build` and `rules info` name a layout.
+fn layout_in_words(layout: Layout) -> &'static str {
+    match layout {
+        Layout::Plain => "contents as they are",
+        Layout::Sealed => "contents under a cipher",
+    }
+}
+
 fn build(
     sources: &[PathBuf],
     out: &Path,
     no_builtin: bool,
     exclusions: Option<&Path>,
     created: Option<u64>,
+    layout: Layout,
     show_skipped: bool,
 ) -> anyhow::Result<ExitCode> {
-    let mut builder = BundleBuilder::new().builtin_rules(!no_builtin);
+    let mut builder = BundleBuilder::new()
+        .builtin_rules(!no_builtin)
+        .layout(layout);
     if let Some(created) = created {
         builder = builder.created_unix_secs(created);
     }
@@ -122,7 +148,7 @@ fn build(
     write_bundle(out, &built.bytes)?;
 
     let report = &built.report;
-    println!(
+    outln!(
         "Compiled {} from {} {} in {}",
         rule_count(report.rules),
         group_digits(report.sources.len() as u64),
@@ -132,7 +158,7 @@ fn build(
             "files"
         },
         human_duration(report.compile_time)
-    );
+    )?;
     for source in &report.sources {
         let mut line = format!("  {}: {}", shown(&source.name), rule_count(source.rules));
         if source.skipped > 0 {
@@ -144,53 +170,60 @@ fn build(
         if source.replaced_invalid_text {
             line.push_str(", contained bytes that are not valid text");
         }
-        println!("{line}");
+        outln!("{line}")?;
+    }
+    let generated = built.bundle.generated_rules();
+    if generated > 0 {
+        outln!(
+            "A tool generated {} of them. A match of one counts only together with a sign from another layer.",
+            group_digits(generated)
+        )?;
     }
     if let Some(path) = exclusions {
         if report.excluded.is_empty() {
-            println!(
+            outln!(
                 "The exclusion list {} names no rule that is in these files.",
                 path.display()
-            );
+            )?;
         } else {
-            println!(
+            outln!(
                 "Excluded {}, named in {}:",
                 rule_count(report.excluded.len() as u64),
                 path.display()
-            );
+            )?;
             for entry in &report.excluded {
-                println!("  {} (in {})", shown(&entry.rule), shown(&entry.source));
+                outln!("  {} (in {})", shown(&entry.rule), shown(&entry.source))?;
             }
         }
         if !report.unused_exclusions.is_empty() {
-            println!(
+            outln!(
                 "The list also names {} that no rule file declares:",
                 rule_count(report.unused_exclusions.len() as u64)
-            );
+            )?;
             for name in &report.unused_exclusions {
-                println!("  {}", shown(name));
+                outln!("  {}", shown(name))?;
             }
-            println!("Check the spelling, or remove the entry if the rule set dropped the rule.");
+            outln!("Check the spelling, or remove the entry if the rule set dropped the rule.")?;
         }
     }
     if report.skipped_total > 0 {
-        println!(
+        outln!(
             "Left out {} that could not be used.",
             rule_count(report.skipped_total)
-        );
+        )?;
         if show_skipped {
             for skipped in &report.skipped {
-                println!("  {}: {}", shown(&skipped.rule), shown(&skipped.reason));
+                outln!("  {}: {}", shown(&skipped.rule), shown(&skipped.reason))?;
             }
             if report.skipped_total > report.skipped.len() as u64 {
-                println!("  ... and more; the list was cut short.");
+                outln!("  ... and more; the list was cut short.")?;
             }
         } else {
-            println!("Run again with --show-skipped to list them with the reason.");
+            outln!("Run again with --show-skipped to list them with the reason.")?;
         }
     }
     if report.warnings > 0 {
-        println!(
+        outln!(
             "The compiler issued {} {} about rules it did compile.",
             group_digits(report.warnings),
             if report.warnings == 1 {
@@ -198,15 +231,21 @@ fn build(
             } else {
                 "warnings"
             }
-        );
+        )?;
     }
-    println!(
-        "Wrote {} ({}), digest {}",
+    outln!(
+        "Wrote {} ({}, {}), digest {}",
         out.display(),
         human_bytes(built.bundle.size_bytes()),
+        layout_in_words(built.bundle.layout()),
         hex::encode(&built.bundle.digest())
-    );
-    println!("Rules keep the licences their authors gave them. `warden rules info` lists them.");
+    )?;
+    if built.bundle.layout() == Layout::Plain {
+        outln!(
+            "An antivirus may take a bundle with its contents as they are for malware and remove it."
+        )?;
+    }
+    outln!("Rules keep the licences their authors gave them. `warden rules info` lists them.")?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -218,6 +257,9 @@ struct Scores {
     suspicious: u64,
     /// Rules whose matches are recorded without changing the verdict.
     recorded_only: u64,
+    /// Rules that a tool generated. A match counts only together with a
+    /// sign from another layer, and is then reported as suspicious.
+    with_second_sign: u64,
     /// Rules that state no score and are given the default.
     unscored: u64,
 }
@@ -232,6 +274,9 @@ struct LicenceCount {
 #[derive(Debug, Serialize)]
 struct BundleInfo<'a> {
     path: String,
+    /// Version of the bundle format: 1 stores the contents as they are, 2
+    /// under a cipher.
+    format_version: u32,
     rules: u32,
     created_unix_secs: u64,
     created: String,
@@ -264,6 +309,7 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
     });
     let description = BundleInfo {
         path: path.display().to_string(),
+        format_version: bundle.layout().version(),
         rules: bundle.rule_count(),
         created_unix_secs: bundle.created_unix_secs(),
         created: human_timestamp(bundle.created_unix_secs()),
@@ -276,6 +322,7 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
             malicious: stats.high,
             suspicious: stats.medium,
             recorded_only: stats.low,
+            with_second_sign: stats.generated,
             unscored: stats.unscored,
         },
         licences,
@@ -284,41 +331,52 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
     if json {
         let text = serde_json::to_string_pretty(&description)
             .context("cannot describe the bundle as JSON")?;
-        println!("{text}");
+        outln!("{text}")?;
         return Ok(ExitCode::SUCCESS);
     }
 
-    println!("Rule bundle  {}", description.path);
-    println!(
+    outln!("Rule bundle  {}", description.path)?;
+    outln!(
+        "Format       version {}, {}",
+        description.format_version,
+        layout_in_words(bundle.layout())
+    )?;
+    outln!(
         "Rules        {}",
         group_digits(u64::from(description.rules))
-    );
-    println!("Built        {}", description.created);
-    println!("Engine       {}", description.engine);
-    println!("Size         {}", human_bytes(description.size_bytes));
-    println!("Digest       {}", description.digest);
-    println!();
-    println!("A match is reported as");
-    println!(
+    )?;
+    outln!("Built        {}", description.created)?;
+    outln!("Engine       {}", description.engine)?;
+    outln!("Size         {}", human_bytes(description.size_bytes))?;
+    outln!("Digest       {}", description.digest)?;
+    outln!()?;
+    outln!("A match is reported as")?;
+    outln!(
         "  malicious      for {} (score 80 and above)",
         rule_count(description.scores.malicious)
-    );
-    println!(
+    )?;
+    outln!(
         "  suspicious     for {} (score 60 to 79)",
         rule_count(description.scores.suspicious)
-    );
-    println!(
+    )?;
+    outln!(
         "  recorded only  for {} (score below 60)",
         rule_count(description.scores.recorded_only)
-    );
+    )?;
+    if description.scores.with_second_sign > 0 {
+        outln!(
+            "  suspicious, and only with a second sign from another layer,\n                 for {} that a tool generated",
+            rule_count(description.scores.with_second_sign)
+        )?;
+    }
     if description.scores.unscored > 0 {
-        println!(
+        outln!(
             "  {} state no score and count as 75.",
             rule_count(description.scores.unscored)
-        );
+        )?;
     }
-    println!();
-    println!("Rule files");
+    outln!()?;
+    outln!("Rule files")?;
     for source in description.sources {
         let mut line = format!("  {}: {}", shown(&source.name), rule_count(source.rules));
         if source.skipped > 0 {
@@ -327,43 +385,43 @@ fn info(path: &Path, json: bool) -> anyhow::Result<ExitCode> {
         if source.excluded > 0 {
             line.push_str(&format!(", {} excluded", group_digits(source.excluded)));
         }
-        println!("{line}");
-        println!("    sha256 {}", source.sha256);
+        outln!("{line}")?;
+        outln!("    sha256 {}", source.sha256)?;
     }
-    println!();
+    outln!()?;
     if let Some(exclusions) = description.exclusions {
-        println!("Excluded on purpose");
+        outln!("Excluded on purpose")?;
         if exclusions.rules.is_empty() {
-            println!("  (nothing: the exclusion list named no rule that was in the rule files)");
+            outln!("  (nothing: the exclusion list named no rule that was in the rule files)")?;
         }
         for rule in &exclusions.rules {
-            println!("  {}", shown(rule));
+            outln!("  {}", shown(rule))?;
         }
-        println!(
+        outln!(
             "  named by the exclusion list with sha256 {}",
             exclusions.sha256
-        );
-        println!();
+        )?;
+        outln!()?;
     }
-    println!("Licences named by the rules");
+    outln!("Licences named by the rules")?;
     for entry in description.licences.iter().take(LICENCES_SHOWN) {
         let name = if entry.licence.is_empty() {
             "(none named)".to_owned()
         } else {
             shown(&entry.licence)
         };
-        println!("  {:>7}  {name}", group_digits(entry.rules));
+        outln!("  {:>7}  {name}", group_digits(entry.rules))?;
     }
     if description.licences.len() > LICENCES_SHOWN {
         let rest: u64 = description.licences[LICENCES_SHOWN..]
             .iter()
             .map(|entry| entry.rules)
             .sum();
-        println!(
+        outln!(
             "  {:>7}  under {} other licences (use --json for all of them)",
             group_digits(rest),
             description.licences.len() - LICENCES_SHOWN
-        );
+        )?;
     }
     Ok(ExitCode::SUCCESS)
 }

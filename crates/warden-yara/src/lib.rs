@@ -7,7 +7,8 @@
 //! - [`BundleBuilder`] compiles rule files into a [`RuleBundle`]: one file
 //!   with the compiled rules and a record of where they came from. A rule
 //!   that does not compile is left out and reported; it does not stop the
-//!   build.
+//!   build. The file keeps its contents under a cipher, see [`Layout`], so
+//!   that an antivirus does not take it for the malware its rules describe.
 //! - [`YaraDetector`] runs a bundle as a [`warden_engine::Detector`]. It
 //!   turns the `score` a rule states about itself into a confidence, and
 //!   the engine's verdict policy decides what that means.
@@ -50,8 +51,8 @@ pub use builder::{
     BUILTIN_SOURCE, BuildReport, Built, BundleBuilder, ExcludedRuleMatch, SkippedRule, SourceReport,
 };
 pub use bundle::{
-    BundleError, ENGINE, ExclusionInfo, FORMAT_VERSION, HEADER_LEN, MAGIC, Manifest, RuleBundle,
-    SourceInfo, write_bundle,
+    BundleError, ENGINE, ExclusionInfo, Layout, MAGIC, Manifest, RuleBundle, SourceInfo,
+    write_bundle,
 };
-pub use detector::{RuleStats, YaraDetector, YaraOptions};
+pub use detector::{RuleStats, YaraDetector, YaraOptions, generator};
 pub use exclusions::{Evidence, ExcludedRule, ExclusionError, ExclusionList};

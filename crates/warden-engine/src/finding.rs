@@ -39,6 +39,39 @@ pub enum Confidence {
     Definitive,
 }
 
+/// When a finding counts towards the verdict.
+///
+/// Most findings count by themselves. Some evidence is too weak for that
+/// and still worth having. A rule that a tool generated from malware
+/// samples also matches the library code those samples share with clean
+/// software, and an executable with an odd structure is usually a packed
+/// installer. Each is common enough among clean files; both about the same
+/// file is not. So one layer can report a finding that waits for a second
+/// sign, another layer can offer one, and
+/// [`VerdictPolicy::settle`](crate::VerdictPolicy::settle) brings the two
+/// together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Counts {
+    /// By itself, with the confidence it states.
+    #[default]
+    Alone,
+    /// Only when another layer has something to say about the same file.
+    /// Until then it is kept with low confidence, which changes nothing.
+    WithSecondSign,
+    /// Never by itself. It is the second sign that a finding of another
+    /// layer may be waiting for, and it is dropped when none is.
+    AsSecondSign,
+}
+
+impl Counts {
+    /// Whether this is [`Counts::Alone`], the usual case.
+    #[must_use]
+    pub fn is_alone(&self) -> bool {
+        *self == Self::Alone
+    }
+}
+
 /// A file inside an archive.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Member {
@@ -66,8 +99,13 @@ pub struct Finding {
     pub name: String,
     /// What kind of thing was found.
     pub category: ThreatCategory,
-    /// How sure the detector is.
+    /// How sure the detector is. For a finding that counts only with a
+    /// second sign, this is what it is worth once it has one.
     pub confidence: Confidence,
+    /// When the finding counts towards the verdict. Left out of a report
+    /// when it counts by itself.
+    #[serde(skip_serializing_if = "Counts::is_alone")]
+    pub counts: Counts,
     /// The evidence, one human-readable sentence per item.
     pub reasons: Vec<String>,
     /// The archive member the finding is about. Absent when it is about the
@@ -92,9 +130,26 @@ impl Finding {
             name: name.into(),
             category,
             confidence,
+            counts: Counts::Alone,
             reasons,
             member: None,
         }
+    }
+
+    /// Makes this a finding that counts only when another layer has
+    /// something to say about the same file.
+    #[must_use]
+    pub fn with_second_sign(mut self) -> Self {
+        self.counts = Counts::WithSecondSign;
+        self
+    }
+
+    /// Makes this a second sign: nothing by itself, and what a finding of
+    /// another layer may be waiting for.
+    #[must_use]
+    pub fn as_second_sign(mut self) -> Self {
+        self.counts = Counts::AsSecondSign;
+        self
     }
 }
 

@@ -83,20 +83,21 @@ fn open_input(path: &Path) -> anyhow::Result<BufReader<File>> {
     Ok(BufReader::new(file))
 }
 
-fn print_import(path: &Path, stats: &ImportStats) {
-    println!(
+fn print_import(path: &Path, stats: &ImportStats) -> Result<(), crate::out::OutputError> {
+    outln!(
         "{}: {} added, {} invalid, {} comment or blank",
         path.display(),
         group_digits(stats.added),
         group_digits(stats.invalid),
         group_digits(stats.ignored),
-    );
+    )?;
     for sample in &stats.invalid_samples {
-        println!("  line {}: {}", sample.line, sample.reason);
+        outln!("  line {}: {}", sample.line, sample.reason)?;
     }
     if stats.invalid > stats.invalid_samples.len() as u64 {
-        println!("  ... and more invalid lines");
+        outln!("  ... and more invalid lines")?;
     }
+    Ok(())
 }
 
 fn build(
@@ -117,28 +118,28 @@ fn build(
     for path in hashes {
         let stats = import::import_hash_list(open_input(path)?, &mut builder, name, category)
             .with_context(|| format!("while importing {}", path.display()))?;
-        print_import(path, &stats);
+        print_import(path, &stats)?;
     }
     for path in csv {
         let stats = import::import_csv(open_input(path)?, &mut builder, category)
             .with_context(|| format!("while importing {}", path.display()))?;
-        print_import(path, &stats);
+        print_import(path, &stats)?;
     }
 
     let stats = builder.write_to(out)?;
-    println!();
-    println!("Wrote {}", out.display());
-    println!("  entries     {}", group_digits(stats.entries));
-    println!("  names       {}", group_digits(u64::from(stats.names)));
-    println!(
+    outln!()?;
+    outln!("Wrote {}", out.display())?;
+    outln!("  entries     {}", group_digits(stats.entries))?;
+    outln!("  names       {}", group_digits(u64::from(stats.names)))?;
+    outln!(
         "  duplicates  {} dropped",
         group_digits(stats.duplicates_dropped)
-    );
-    println!("  size        {}", human_bytes(stats.bytes));
-    println!("  created     {}", human_timestamp(stats.created_unix_secs));
-    println!("  digest      {}", hex::encode(&stats.digest));
+    )?;
+    outln!("  size        {}", human_bytes(stats.bytes))?;
+    outln!("  created     {}", human_timestamp(stats.created_unix_secs))?;
+    outln!("  digest      {}", hex::encode(&stats.digest))?;
     if stats.entries == 0 {
-        eprintln!("warning: the database is empty");
+        errln!("warning: the database is empty");
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -147,14 +148,14 @@ fn info(file: &Path) -> anyhow::Result<ExitCode> {
     let clock = Instant::now();
     let db = SigDb::open(file)?;
     let verified_in = clock.elapsed();
-    println!("{}", file.display());
-    println!("  format      version {FORMAT_VERSION}");
-    println!("  entries     {}", group_digits(db.len() as u64));
-    println!("  names       {}", group_digits(db.name_count() as u64));
-    println!("  size        {}", human_bytes(db.size_bytes()));
-    println!("  created     {}", human_timestamp(db.created_unix_secs()));
-    println!("  digest      {}", hex::encode(&db.digest()));
-    println!("  verified    in {}", human_duration(verified_in));
+    outln!("{}", file.display())?;
+    outln!("  format      version {FORMAT_VERSION}")?;
+    outln!("  entries     {}", group_digits(db.len() as u64))?;
+    outln!("  names       {}", group_digits(db.name_count() as u64))?;
+    outln!("  size        {}", human_bytes(db.size_bytes()))?;
+    outln!("  created     {}", human_timestamp(db.created_unix_secs()))?;
+    outln!("  digest      {}", hex::encode(&db.digest()))?;
+    outln!("  verified    in {}", human_duration(verified_in))?;
     Ok(ExitCode::SUCCESS)
 }
 
@@ -165,11 +166,11 @@ fn lookup(file: &Path, sha256: &str) -> anyhow::Result<ExitCode> {
     let db = SigDb::open(file)?;
     match db.lookup(&hash) {
         Some(signature) => {
-            println!("found: {} ({})", signature.name, signature.category);
+            outln!("found: {} ({})", signature.name, signature.category)?;
             Ok(ExitCode::SUCCESS)
         }
         None => {
-            println!("not found");
+            outln!("not found")?;
             Ok(ExitCode::from(EXIT_FOUND))
         }
     }

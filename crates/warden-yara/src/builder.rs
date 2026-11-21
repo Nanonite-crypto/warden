@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::bundle::{BundleError, ENGINE, ExclusionInfo, Manifest, RuleBundle, SourceInfo};
+use crate::bundle::{BundleError, ENGINE, ExclusionInfo, Layout, Manifest, RuleBundle, SourceInfo};
 use crate::exclusions::{EXCLUSION_MODULE, ExclusionList, stub_out};
 
 /// Name under which the built-in rules appear in a bundle.
@@ -41,6 +41,7 @@ pub struct BundleBuilder {
     sources: Vec<Source>,
     builtin: bool,
     created_unix_secs: Option<u64>,
+    layout: Layout,
     exclusions: Option<ExclusionList>,
 }
 
@@ -137,6 +138,7 @@ impl BundleBuilder {
             sources: Vec::new(),
             builtin: true,
             created_unix_secs: None,
+            layout: Layout::default(),
             exclusions: None,
         }
     }
@@ -153,6 +155,15 @@ impl BundleBuilder {
     #[must_use]
     pub fn created_unix_secs(mut self, seconds: u64) -> Self {
         self.created_unix_secs = Some(seconds);
+        self
+    }
+
+    /// Chooses how the bundle stores its contents. The default is
+    /// [`Layout::Sealed`]: under a cipher, so that an antivirus does not
+    /// take the bundle for the malware its rules describe.
+    #[must_use]
+    pub fn layout(mut self, layout: Layout) -> Self {
+        self.layout = layout;
         self
     }
 
@@ -509,7 +520,7 @@ impl BundleBuilder {
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |elapsed| elapsed.as_secs())
         });
-        let (bundle, bytes) = RuleBundle::assemble(rules, manifest, created)?;
+        let (bundle, bytes) = RuleBundle::assemble(rules, manifest, created, self.layout)?;
         Ok(Built {
             bundle,
             bytes,

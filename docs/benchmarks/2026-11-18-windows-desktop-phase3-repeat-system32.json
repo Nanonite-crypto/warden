@@ -1,0 +1,78 @@
+{
+  "schema": 2,
+  "label": "local machine",
+  "path": "C:\\WINDOWS\\System32",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795030000,
+        "bundle_digest": "ea4f4989952598af453d38964109cc082f234d2b139db857a21b1cffab0d75d3",
+        "engine": "yara-x 1.23.0",
+        "origin": "built-in rules",
+        "rule_files": 1,
+        "rules": 1
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "configurations": [
+    {
+      "threads": 16,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 23769.6383,
+          "files_scanned": 27645,
+          "bytes_scanned": 10283536207,
+          "files_skipped": 34,
+          "detections": 0,
+          "files_per_second": 1163.0383117777606,
+          "megabytes_per_second": 432.63326421757114
+        },
+        {
+          "first": false,
+          "duration_ms": 7838.517699999999,
+          "files_scanned": 27642,
+          "bytes_scanned": 10121891663,
+          "files_skipped": 37,
+          "detections": 0,
+          "files_per_second": 3526.432044670895,
+          "megabytes_per_second": 1291.3017550499376
+        },
+        {
+          "first": false,
+          "duration_ms": 7774.0789,
+          "files_scanned": 27642,
+          "bytes_scanned": 10121891663,
+          "files_skipped": 37,
+          "detections": 0,
+          "files_per_second": 3555.6623949365885,
+          "megabytes_per_second": 1302.005265601305
+        }
+      ],
+      "repeat_median_files_per_second": 3541.0472198037414,
+      "repeat_median_megabytes_per_second": 1296.6535103256213
+    }
+  ]
+}

@@ -12,11 +12,17 @@ Every number on this page comes from a run that is recorded in
 | What each detection layer costs in throughput | Phase 2 |
 | False positives on clean files | Phase 2 |
 | How the heuristic score does on the labelled records of EMBER2024, and on the files of a clean Windows installation | Phase 3 |
+| How many clean files a generated rule matches, with and without counting such a match alone | Phase 4 |
+| False positives on a Windows that was installed for the test, without the public rules and with them | Phase 4 |
+| What Microsoft Defender does with a rule bundle, with its contents under a cipher and without | Phase 4 |
 | Real-time time-to-detect | From phase 9 |
 
 **Not measured, by design:** detection rates on live malware samples. Warden
 is built without handling live malware, so no such test set exists here.
+That includes what the second sign of phase 4 costs in detection.
 See [TESTING.md](TESTING.md).
+
+**Not measured yet:** how long quarantining and restoring a file take.
 
 ## Method
 
@@ -35,7 +41,20 @@ See [TESTING.md](TESTING.md).
   which scans files that are expected to be clean and lists every one that
   gets a verdict other than clean. Each result names the rule release it
   was produced with, because the count belongs to the rules as much as to
-  the engine.
+  the engine. Since phase 4 a result also lists the files with a finding
+  that did not count, apart from the flagged ones: their verdict is clean.
+- **What could not be read.** A folder that cannot be opened hides what is
+  in it: its files are neither scanned nor counted. A result written
+  since the end of phase 4 (`"schema": 3`) counts such folders apart from
+  the files that could not be read, and names both. The results before
+  have one number for the two and name nothing. Where a table or a
+  sentence below says that so many files could not be read, that number
+  is of entries, and a lower bound of what the run did not see. This was
+  noticed in phase 4, see
+  [the fifth round](#with-a-second-sign-for-generated-rules). On Windows,
+  which folders a scan may open depends on how it was started, and not
+  only on the account:
+  [TESTING.md](TESTING.md#tests-that-close-a-file-or-a-folder).
 - **Micro-benchmarks** use Criterion (`cargo bench`) and report the
   estimate with its confidence interval.
 - **Hardware is always stated.** Numbers from a shared CI runner or a cloud
@@ -404,10 +423,13 @@ phase 2 runs.
 
 - With the default layers the heuristic layer cannot be seen in the times
   on this machine: the passes from the file cache took 7.6 and 7.7 s with
-  it, and 7.6 and 8.1 s without it in phase 2.
-- The pass with all rules took 22.78 s. The same pass took 19.35 s in
-  phase 2, without the heuristic layer. That is one run each, hours apart,
-  on a machine in use, so how much of the 3.4 s belongs to the layer is not
+  it, and 7.6 and 8.1 s without it in phase 2. When the check was run again
+  two and a half hours later, they took 7.8 s twice.
+- The pass with all rules took 22.78 s, and 21.21 s in that later run, by
+  then with eight rules fewer. The same pass took 19.35 s in phase 2,
+  without the heuristic layer. These are single runs, hours apart, on a
+  machine in use, and the two with the layer differ by 1.6 s between
+  themselves. So how much of the 1.9 to 3.4 s belongs to the layer is not
   known. The comparison on the runner above is the only controlled one so
   far, and it is a different kind of machine: two threads, and a rule scan
   that is many times slower. A controlled comparison on this desktop is
@@ -418,15 +440,104 @@ phase 2 runs.
 Raw results:
 [benchmark](benchmarks/2026-11-18-windows-desktop-phase3-system32.json),
 [the run with rules](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
-[machine](benchmarks/2026-11-18-windows-desktop-phase3-machine.json).
+[machine](benchmarks/2026-11-18-windows-desktop-phase3-machine.json);
+the later run:
+[benchmark](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32.json),
+[the run with rules](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32-false-positives.json).
+
+## Results: phase 4
+
+Phase 4 changed how findings add up to a verdict, and added the
+quarantine. Its numbers are about false positives and are under
+[the fifth round](#with-a-second-sign-for-generated-rules). This section
+has two checks: how long a scan takes now, and what the cipher on the rule
+bundle costs at a start.
+
+### Windows desktop
+
+The machine of the phases before, with administrator rights, on commit
+`f9aef95`, on 2026-11-19 at 00:12 UTC. This build has the C runtime linked
+in; the builds before loaded it as a library.
+
+**Scan throughput** over `C:\Windows\System32`, with
+`scripts\win\check.cmd -Rules -SkipTests`. The three benchmark passes read
+27,646 files, 10.29 GB, and could not read 34 entries; the pass with rules
+read 27,643 files, 10.12 GB, and could not read 37.
+
+| Layers | Pass | Time | Files/s | MB/s |
+|---|---|---|---|---|
+| Default: hash, the built-in rule, heuristics, archives | 1 | 21.76 s | 1,271 | 472.8 |
+| | 2 | 8.10 s | 3,412 | 1,269.4 |
+| | 3 | 8.07 s | 3,427 | 1,275.0 |
+| Hash, archives, 5,132 rules, heuristics | One, after those | 21.91 s | 1,261 | 462.0 |
+
+- From the file cache a pass took 8.1 s and read 1,269 to 1,275 MB/s. The
+  passes of phase 3 took 7.6 to 7.8 s for 0.17 GB less, and read 1,291 to
+  1,331 MB/s; that is a spread of 3 % between two runs of one build. So
+  the passes of phase 4 are 1 to 5 % slower per byte, on a machine in use.
+  The reason may be the change to the verdict, the C runtime linked in, or
+  the machine. This run cannot tell them apart.
+- The pass with rules took 21.9 s, between the 21.2 s and 22.8 s of the
+  two runs of phase 3. It ran four rules more than the later of those.
+- What linking the C runtime in changes was not measured by itself.
+- No file was flagged, and one is on record, see
+  [False positives](#with-a-second-sign-for-generated-rules).
+
+Raw results:
+[benchmark](benchmarks/2026-11-19-windows-desktop-phase4-system32.json),
+[the run with rules](benchmarks/2026-11-19-windows-desktop-phase4-system32-false-positives.json),
+[machine](benchmarks/2026-11-19-windows-desktop-phase4-machine.json).
+
+### What the cipher on the rule bundle costs
+
+Since 2026-11-20 a rule bundle keeps its contents under a cipher;
+[RULES.md](RULES.md#rule-files-and-your-antivirus) has the reason. A start
+with a bundle now takes the cipher off and checks the key against what it
+opened. Measured in the development container, 2 virtual CPUs, with the
+bundle of 5,132 rules from the pinned package, built with the cipher and
+without (8.7 MB each):
+
+| Start, open the bundle, scan three small files | With the cipher | Without |
+|---|---|---|
+| Wall-clock time, median of 30 runs | 0.528 s | 0.523 s |
+| Fastest and slowest of the 30 | 0.504 s and 0.678 s | 0.495 s and 0.601 s |
+| Processor time, mean of 60 runs | 0.561 s | 0.547 s |
+
+- The two differ by less than the runs of either one do. So the steps
+  that the cipher adds were also timed on their own, inside the reader:
+  0.6 ms to copy the contents, 4.1 ms for ChaCha20, and 4.8 ms for the
+  SHA-256 that checks the key. Together that is 9 ms, under 2 % of a
+  start with this bundle.
+- The rest of the half second is what it was in
+  [phase 2](#development-container-linux-2-vcpu-1): the rule engine
+  rebuilds its search structures from the stored rules.
+- These figures do not compare with the 0.73 s of 2026-11-18. The
+  container is not always on the same hardware, and the bundle had six
+  rules more then.
+- The same rules give the same file. Each of the two bundles was built
+  twice and came out the same byte for byte. Built without the cipher,
+  with the exclusion list and the creation time of the bundle on the
+  Windows desktop, the container wrote that very file: the one that the
+  Windows build of commit `f9aef95` had written there the day before.
+
+Raw figures, with what can and cannot be read in the two files:
+[2026-11-20-dev-container-sealed-bundle.txt](benchmarks/2026-11-20-dev-container-sealed-bundle.txt).
 
 ## False positives
 
-Three rounds of runs. The first used every rule of the rule package and
+Five rounds of runs. The first used every rule of the rule package and
 found two rules that flag clean files. Those two went onto the
 [exclusion list](RULES.md#rules-that-are-left-out), and the second round
 measured what is left. The third round has the heuristic layer switched on
-as well.
+as well, and took in the installed programs of a desktop, where eight more
+rules flagged clean files. The fourth measured what is left with those on
+the list too. For the fifth, four of the ten rules came off the list
+again: they were generated by a tool, and the match of such a rule now
+counts only together with a sign from another layer. After the rounds
+comes [a repeat of one run](#the-desktops-programs-again-with-administrator-rights),
+which put a seventh rule on the list and was run once more with it, and
+then two runs of another kind, on
+[a Windows that was installed for them](#on-a-freshly-installed-windows-11).
 
 ### With every rule of the package
 
@@ -586,14 +697,16 @@ two ask for a few common strings.
 Of the 5,137 rules in the package, 1,622 are generated automatically in
 the way of the first three. Four of those have now flagged clean files, in
 about 448,000 Windows files on two machines. Every further machine is
-likely to find more: that is what public rules are like, and what the
-exclusion list is for.
+likely to find more: that is what public rules are like. The answer at
+the time was the exclusion list. For generated rules it has since become
+another one, see
+[the fifth round](#with-a-second-sign-for-generated-rules).
 
 **All eight went onto the exclusion list the same day**, each with its
-evidence. A bundle built with the list now has 5,128 rules: 205 lead to the
-verdict malicious and 4,923 to suspicious. The scan of the installed
-programs has not been repeated with that bundle yet, so what the longer
-list does there is not measured.
+evidence. A bundle built with that list had 5,128 rules: 205 led to the
+verdict malicious and 4,923 to suspicious. Both scans of the desktop were
+repeated with that bundle: that is
+[the fourth round](#with-ten-rules-on-the-list).
 
 Three of the 13 files are not named, here or in the raw result: their names
 would show which programs are installed on a private machine. They are
@@ -622,3 +735,366 @@ Raw results:
 [machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-heuristics-machine.json),
 [System32 on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-system32-false-positives.json),
 [installed programs on the desktop](benchmarks/2026-11-18-windows-desktop-phase3-programs-false-positives.json).
+
+### With ten rules on the list
+
+The check on the desktop was run again with the bundle that the longer list
+gives: 5,128 rules, of which 205 lead to the verdict malicious and 4,923 to
+suspicious. After it, the two folders with the installed programs were
+scanned again with the same bundle.
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged by the heuristics | Flagged by rules |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on the Windows 11 desktop | 27,642 | 10.12 GB | 194 | 0 | 0 |
+| `C:\Program Files` and `C:\Program Files (x86)` on that desktop | 310,853 | 74.63 GB | 345,010 | 0 | 0 |
+
+**No file among the installed programs is flagged any more**: 0 of 310,853,
+where the bundle with two exclusions had flagged 13 of 310,849. That row is
+the one that shows what the eight new entries do. The first row cannot,
+because none of those rules had flagged anything in System32. What the
+first row shows is that a bundle with ten exclusions builds and runs on
+this machine, and that nothing new surfaced in its system folder.
+
+What that zero is worth, and what it is not:
+
+- **It was measured on the files the list was written from.** The eight
+  entries exist because of 13 files in these folders. That the same folders
+  come out clean afterwards says the list does what it was written to do.
+  It says nothing about the next machine, which is likely to find rules of
+  its own.
+- **The folders had changed a little.** They belong to a machine in use,
+  and an hour and forty minutes lay between the two scans: the second found
+  four files and 0.13 GB more.
+- **A result lists what is flagged, not what passes.** That the 13 files
+  were scanned again follows from the folders being the same ones, not from
+  the result.
+
+In System32, 37 files could not be read and 5 were checked in part, and the
+run took 21 s from the file cache. Among the installed programs, 2 files
+could not be read and 1,069 were checked in part, as in the first scan.
+That run took 6 min 6 s, at 204 MB/s, where the first had taken 7 min 59 s.
+The folders had been read once by then; how much of them the file cache
+still held was not measured.
+
+Raw results:
+[System32](benchmarks/2026-11-18-windows-desktop-phase3-repeat-system32-false-positives.json),
+[installed programs](benchmarks/2026-11-18-windows-desktop-phase3-repeat-programs-false-positives.json).
+
+### With a second sign for generated rules
+
+In phase 4 the four generated rules came off the exclusion list, and the
+verdict policy changed instead: the match of a rule that a tool generated
+counts only together with a sign from another layer
+([RULES.md](RULES.md#generated-rules)). A bundle built with the remaining
+list of six has 5,132 rules. A match of 205 leads to the verdict malicious
+and a match of 3,305 to suspicious; the other 1,622 are generated. The
+heuristic layer backs up such a match from a score of 14.
+
+Every run of the rounds before was repeated with that bundle.
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged | On record, verdict clean |
+|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,806 | 4.80 GB | 193 | 0 | 1 |
+| Software installed on that runner: 7-Zip, Git, Chrome, Firefox, PowerShell, .NET, Node.js | 87,707 | 14.42 GB | 89,049 | 0 | 0 |
+| `C:\Windows\System32` on the Windows 11 desktop | 27,643 | 10.12 GB | 194 | 0 | 1 |
+| `C:\Program Files` and `C:\Program Files (x86)` on that desktop | 258,274 | 64.32 GB | 328,862 | 0 | 10 |
+| `/usr` in the Linux development container | 140,429 | 7.15 GB | 88,855 | 0 | 0 |
+| All | 535,859 | 100.81 GB | 507,153 | **0** | 12 |
+
+**No file is flagged, and twelve are on record.** A file on record was
+matched by a generated rule and by nothing else: the heuristic layer has
+nothing to say about it, so the match is kept and the verdict is clean.
+
+| On record | Rule | |
+|---|---|---|
+| `vulkan-1.dll` in System32 of the runner | `MALPEDIA_Win_Triback_Loader_Auto` | Flagged in the first round |
+| `liblouis.dll` in System32 of the desktop | the same | Flagged in the first round |
+| `libstdc++-6.dll` in Git for Windows, two copies | `MALPEDIA_Win_Bqtlock_Auto` | Flagged in the third round |
+| `zip.dll` and `unpack200.exe` of the Java runtime | `MALPEDIA_Win_Mystic_Stealer_Auto` | Flagged in the third round |
+| `ucrtbased.dll` in the Windows SDK, two copies | `MALPEDIA_Win_Yokai_Auto` | Flagged in the third round |
+| `SDL3_image.dll`, `libavif-16.dll` and `libpng16-16.dll` in Steam | `MALPEDIA_Win_Triback_Loader_Auto` | **New** |
+| `driver_VirtualDesktop.dll` of Virtual Desktop Streamer | the same | **New** |
+
+The first eight are the files that the four rules flagged before, each with
+the SHA-256 it had then. That is the exit criterion of the change: the
+clean files these rules flagged are no longer reported.
+
+**The last four were not known.** When the desktop's programs were first
+scanned, in the third round, the Triback rule was already on the exclusion
+list, so it never ran over them. Back in the bundle, it matches four more
+clean libraries on the same machine. Counted alone, each of these matches
+would make its file suspicious. With the second sign there was nothing to
+do: no list knew these files, and they are not reported.
+
+What the round shows, and what it does not:
+
+- **How often generated rules match clean files:** twelve files in
+  535,859. Four of the 1,622 rules account for all of them, and one rule
+  for six. None of the twelve has a structure that scores 14 or more.
+- **It is the same kind of evidence as the fourth round.** The mechanism
+  was built knowing eight of these files. The four new ones are a small
+  test it did not know, and passed.
+- **The scan of the desktop's programs saw less than the ones before.** It
+  found 258,274 files where the fourth round, on 2026-11-18, had found
+  310,853, and 8 entries could not be read where 2 could not before. The
+  likely reason: this run was started from the Run box of Windows, and
+  nothing asked for administrator rights. The runs before had them, and
+  they read `C:\Program Files\WindowsApps`, where the apps from the
+  Microsoft Store are: a file flagged in the third round is in it. By
+  default Windows lets an ordinary program list that folder only with
+  administrator rights, and a folder that cannot be opened counts as one
+  entry, whatever it holds. The result does not name the entries, and the
+  run did not record its rights, so this is a likely reason and not a
+  measured one. The six files that generated rules flagged among the
+  programs are in other folders, and the table shows that all six were
+  scanned again.
+- **It says nothing about detection.** A generated rule that matches
+  malware with an ordinary structure is now kept on record in the same
+  way. What that costs is not measured, see
+  [RULES.md](RULES.md#what-the-second-sign-costs).
+
+On the runner, in System32, 38 entries could not be read and 2 files were
+checked in part; in its software folders 7 files were checked in part. On
+the desktop, 37 entries in System32 could not be read and 5 files were
+checked in part; in the program folders 8 and 1,060. In `/usr`, 8 files
+were checked in part. This runner: AMD EPYC 9V45, 2 logical processors,
+8 GB RAM, Windows Server 2025, Microsoft Defender real-time protection
+off; its runs took 5 min 22 s and 9 min 26 s, reading every file for the
+first time from the disk. The desktop's took 22 s and 4 min 44 s, the
+second at 226 MB/s. The scan of `/usr` took 2 min 49 s on two cores.
+
+The desktop ran a build of commit `f9aef95`, which has the C runtime
+linked in. System32 was scanned on 2026-11-19 and the program folders a
+day later.
+
+Raw results:
+runner [System32](benchmarks/2026-11-18-github-windows-runner-system32-false-positives-with-second-sign.json),
+[software](benchmarks/2026-11-18-github-windows-runner-software-false-positives-with-second-sign.json),
+[machine](benchmarks/2026-11-18-github-windows-runner-false-positives-with-second-sign-machine.json);
+desktop [System32](benchmarks/2026-11-19-windows-desktop-phase4-system32-false-positives.json),
+[programs](benchmarks/2026-11-20-windows-desktop-phase4-programs-false-positives.json),
+[machine](benchmarks/2026-11-19-windows-desktop-phase4-machine.json);
+[`/usr`](benchmarks/2026-11-18-dev-container-usr-false-positives-with-second-sign.json).
+
+### The desktop's programs again, with administrator rights
+
+The scan of the desktop's programs in the round above had seen 52,579
+files fewer than the one before it, and the likely reason was that it ran
+without administrator rights. On 2026-11-20 it was repeated with them:
+a build of commit `2a625c1`, the same 5,132 rules, this time in a bundle
+under the cipher. A script asked Windows for the rights and wrote down
+what it could list before and after.
+
+| | |
+|---|---|
+| `C:\Program Files\WindowsApps` without administrator rights | Cannot be listed |
+| The same folder with them | 52,631 files, 9.45 GB, and no folder in it that could not be opened |
+| Scanned in `C:\Program Files` and `C:\Program Files (x86)` | 310,910 files, 74.31 GB, 344,996 files inside archives |
+| Could not be read | 2 files and no folder |
+| Checked in part | 1,069 files |
+| Time | 4 min 54 s, at 253 MB/s |
+| Flagged | **1**, as suspicious |
+| On record, verdict clean | 14 |
+
+**The likely reason was the reason.** Without administrator rights, the
+folder that holds the apps from the Microsoft Store cannot be listed, and
+it holds about as many files as the run before had missed. This result is
+of the format that counts folders apart from files, and it has no folder
+that could not be opened.
+
+**One file is flagged, and it is clean.** `xpdAgent.exe` belongs to the
+Microsoft Defender app from the Microsoft Store. The rule,
+`RUSSIANPANDA_Purecrypter`, was written by hand for PureCrypter, a malware
+loader that is itself a .NET program. It asks for four of five short
+sequences of .NET instructions, three of them ordinary, in a program under
+6 MB with exactly one embedded resource of more than 300 KB. The rule was
+in the bundle when these folders were first scanned, on 2026-11-18, and
+flagged nothing then. It is the seventh rule on the exclusion list now
+([RULES.md](RULES.md#rules-that-are-left-out)), and a bundle built with
+that list has 5,131 rules.
+
+**Four more files are on record**, all of them in the folder that the run
+without those rights could not list, and all through the Triback rule:
+`NativeHostNE.dll` of Phone Link, and `pyshellext.exe`, `launcher-64.exe`
+and `launcherw-64.exe` of the Python install manager. The other ten are
+the ten of the round above. On the runner and the desktop together that
+makes sixteen clean files that a generated rule matches, and none of them
+is reported.
+
+**With that list, no file is flagged.** The scan was repeated on
+2026-11-21 with a bundle built with the list of seven, with administrator
+rights and the same build of Warden:
+
+| | |
+|---|---|
+| Rules | 5,131, with 7 left out |
+| `C:\Program Files\WindowsApps` | 52,633 files, 9.47 GB, and no folder in it that could not be opened |
+| Scanned in `C:\Program Files` and `C:\Program Files (x86)` | 311,415 files, 76.17 GB, 345,262 files inside archives |
+| Could not be read | 2 files and no folder: the two of the day before |
+| Checked in part | 1,073 files |
+| Time | 4 min 53 s, at 260 MB/s |
+| Flagged | **0** |
+| On record, verdict clean | 14: the files of the day before, each with the SHA-256 it had then |
+
+The folders held 505 files and 1.85 GB more than the day before; the
+machine is in use. A result names no file without a finding, so this one
+cannot show that `xpdAgent.exe` was among the files it scanned. What it
+shows is that a bundle built with the list does not hold the rule, and
+that nothing else flags a file in these folders. The bundle was built in
+the development container, from the pinned package and the list as the
+repository has it, and copied to the desktop.
+
+On 2026-11-20 the desktop's check was repeated with that build as well.
+System32 with the 5,132 rules: none of 27,649 files flagged,
+`liblouis.dll` on record as before, 34 files and 3 folders that could not
+be read. The passes without rules took 19.3 s, 8.7 s and 9.5 s, and the
+pass with them 16.3 s; on 2026-11-19 they had taken 21.8 s, 8.1 s, 8.1 s
+and 21.9 s. The machine was in use both times.
+
+A result now names what it could not read. Four of those files are not
+named in the two results of 2026-11-20, the two among the programs and two
+of the 34 in System32: their paths would show which programs are installed
+on a private machine. The repeat could not read the same two among the
+programs, and its result does not name them either. Each raw result says
+so at its top.
+
+Raw results:
+[programs](benchmarks/2026-11-20-windows-desktop-phase4-programs-administrator-false-positives.json),
+[what the script wrote down](benchmarks/2026-11-20-windows-desktop-phase4-programs-administrator-rights.txt);
+programs with the list of seven
+[a day later](benchmarks/2026-11-21-windows-desktop-phase4-programs-administrator-repeat-false-positives.json),
+[what the script wrote down then](benchmarks/2026-11-21-windows-desktop-phase4-programs-administrator-repeat-rights.txt);
+System32 [benchmark](benchmarks/2026-11-20-windows-desktop-phase4-repeat-system32.json),
+[with rules](benchmarks/2026-11-20-windows-desktop-phase4-repeat-system32-false-positives.json),
+[machine](benchmarks/2026-11-20-windows-desktop-phase4-repeat-machine.json).
+
+### On a freshly installed Windows 11
+
+The machines of the rounds above have shaped Warden: the exclusion list
+was written from their files, the bar for a second sign was tried on them,
+and the heuristic threshold was checked against them. A fairer test is a
+machine that none of that has seen. One was set up for it:
+
+| | |
+|---|---|
+| Machine | A VirtualBox 7.1 virtual machine on the desktop of the rounds above: 4 processors, 8 GB RAM, an 80 GB disk image, EFI with Secure Boot, TPM 2.0. A network adapter with the cable unplugged |
+| Windows | Windows 11 Enterprise Evaluation 26H2, build 26300.9457, from Microsoft's evaluation image `26300.9457.260913-1737.26h2_ge_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso` (SHA-256 `bc3f24086ebadc94489066b5ad78089e2cf5c3491e90e790bb81a2b199c10e38`) |
+| State | Installed on 2026-11-20 without a network, and never connected to one. Nothing installed: the programs are the four the image brings (Edge, Edge Update, WebView2 Runtime, OneDrive), the updates the four in the image |
+| Antivirus | Microsoft Defender with real-time protection on, signatures 1.437.1.0, in both runs |
+| Scan | The whole of `C:\`, as administrator, by the [scan kit](TESTING.md#a-machine-the-list-was-not-written-from): on 2026-11-20 with the build of commit `f9aef95`, on 2026-11-21 with that of `2a625c1` |
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged | On record, verdict clean |
+|---|---|---|---|---|---|
+| `C:\` of that Windows 11, **without the public rules**, 2026-11-20 | 153,317 | 26.36 GB | 5,018 | 0 | 0 |
+| The same **with the 5,132 rules**, 2026-11-21 | 153,370 | 26.39 GB | 5,018 | **0** | 5 |
+
+**No file is flagged, with the public rules or without.** Without them,
+what ran is the built-in signature and rule and the heuristic layer, which
+judges the Windows executables among these files; how many of them are
+executables was not counted. For that layer the first run was the first
+that is held out in full: its weights and its threshold come from a
+dataset, and the machines it was checked on before were a Windows Server
+2025 image and a desktop in daily use. This one is a client Windows with
+nothing on it but what Microsoft ships.
+
+The second run is the one the machine was set up for. It holds out the
+exclusion list and the second sign as well: no rule was taken out
+because of a file on this machine, and the bar for a second sign was
+never tried here.
+
+**Five files are on record**, all through `MALPEDIA_Win_Triback_Loader_Auto`,
+the generated rule that matches the most clean files elsewhere:
+
+| On record | |
+|---|---|
+| `vulkan-1.dll` in System32 | The same file as on the CI runner, by its SHA-256 |
+| `liblouis.dll` in System32, and its copy in the component store | Another build than the one on the desktop |
+| `NativeDprt.dll` of Defender's own sensor, and its copy in the component store | Not seen before |
+
+None of them has a structure that scores 14 or more, so the matches are
+kept and the verdicts are clean. On a machine that it had never seen, the
+second sign did what it does on the others, and nothing had to be written
+down for it. With these five, generated rules match 21 clean files on the
+three machines, fifteen of them through this one rule.
+
+**The first run had to do without the rules** because of the machine's
+own antivirus. Defender took the rule bundle on the kit's CD for
+`Trojan:JS/Webshell.DSK1!MTB` and let no program read it, three times,
+once for each attempt described below. That bundle stored its rules as
+they are. The same happens on the desktop
+([RULES.md](RULES.md#rule-files-and-your-antivirus)). Letting Defender
+leave the file alone would have been a change to an antivirus setting,
+and no script of this project makes such a change, on any machine.
+
+**Defender tells a bundle under the cipher from one without.** A rule
+bundle keeps its contents under a cipher since then, so that the patterns
+of its rules are not in the file as they are. The kit of the second run
+carried two bundles: the one it scanned with, under the cipher, and as a
+control the very bundle of the first run. The two hold the same compiled
+rules, byte for byte.
+
+| On the kit of 2026-11-21 | What the machine did with it |
+|---|---|
+| `rules-plain.wrb`, the bundle of the first run, rules as they are | Blocked: "the file contains a virus or potentially unwanted software". Defender's history names it `Trojan:JS/Webshell.DSK1!MTB`, as before |
+| `rules.wrb`, the same rules under the cipher | Read. The scan above ran with it. Defender's history has no entry for it from this run |
+
+The machine was the same in both runs: no network, so the same Defender
+with the same signatures, real-time protection on, nothing excluded. What
+differed is the cipher. This is one antivirus with one set of signatures;
+it says nothing about what another product does, or this one after an
+update.
+
+How the runs went, because the first took three attempts on the same
+installation:
+
+1. The first kit stopped when the bundle could not be read. The kit now
+   goes on without it and marks its result.
+2. The second attempt never finished. Some time into the scan the
+   virtual machine's screen was black, and it answered neither keyboard
+   nor mouse nor its power button. The likely reason, which was not
+   confirmed: Windows put the machine to sleep, as it does after a while
+   without input, and the virtual machine did not wake up again. The kit
+   now asks Windows to stay awake while it runs.
+3. The third attempt is the first result above.
+4. The run with the rules, a day later, went through at the first
+   attempt.
+
+Between the attempts nothing was installed and no setting was changed.
+The machine was switched off and on after the second and the third
+attempt. What the attempts left on it is the folder `C:\warden-out` with
+the kit's results, and four entries in Defender's history: three for the
+bundle of the first kits and one for the control.
+
+Also from this machine:
+
+- **It has no `vcruntime140.dll`**, the C runtime that a build of Warden
+  asked for until phase 4. That build would not have started here. The
+  build with the runtime linked in did.
+- **Its clock is nine hours ahead in the results.** Setup gave it the
+  Pacific time zone and the host's local time, which is Central European.
+  The times in the result files are the machine's; by the host's clock
+  the first scan ran on 2026-11-20 from 04:24 to 04:31 UTC and the second
+  on 2026-11-21 from 01:10 to 01:24 UTC.
+- **Its speed is not a measurement of Warden.** 6 min 31 s for 26 GB
+  without the rules, at 67 MB/s, and 13 min 15 s with them, at 33 MB/s, on
+  four virtual processors with Defender reading every file along. With
+  the rules the scan took twice as long here; on the desktop, with sixteen
+  logical processors, it takes about as long with them as without.
+
+In the first run 162 entries could not be read. The second result is of
+the format that counts folders apart: 136 files and 21 folders, most of
+the folders Defender's own. In both, 66 files were checked in part.
+
+Raw results, as the kit sent them through the machine's serial port. Of
+the first run:
+[the scan](benchmarks/2026-11-20-windows11-fresh-vm-false-positives-without-rules.json),
+[the machine](benchmarks/2026-11-20-windows11-fresh-vm-machine.json),
+[what Defender reported](benchmarks/2026-11-20-windows11-fresh-vm-antivirus.json),
+[the capture](benchmarks/2026-11-20-windows11-fresh-vm-serial-capture.txt).
+Of the second:
+[the scan](benchmarks/2026-11-21-windows11-fresh-vm-false-positives.json),
+[the machine](benchmarks/2026-11-21-windows11-fresh-vm-machine.json),
+[what Defender reported](benchmarks/2026-11-21-windows11-fresh-vm-antivirus.json),
+[the capture](benchmarks/2026-11-21-windows11-fresh-vm-serial-capture.txt).
+Each capture holds a checksum for every result that was read from it:
+`python3 scripts/read-scan-kit-output.py <capture> --out <folder>`.

@@ -109,12 +109,16 @@ pub struct PartialScan {
     pub detail: String,
 }
 
-/// A file or directory that could not be scanned.
+/// A file or folder that could not be scanned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Skipped {
     /// The path that was skipped.
     #[serde(serialize_with = "lossy_path")]
     pub path: PathBuf,
+    /// Whether this is a folder. A folder that could not be opened hides
+    /// what is in it: none of that was scanned, and none of it is counted
+    /// anywhere, so one such entry can stand for any number of files.
+    pub folder: bool,
     /// Why it was skipped.
     pub reason: SkipReason,
     /// The underlying error message, when there is one.
@@ -142,6 +146,28 @@ pub struct Detection {
     pub findings_omitted: u64,
 }
 
+/// A file whose verdict is clean and that has findings on record.
+///
+/// Nothing is wrong with such a file as far as Warden can tell. What is
+/// kept is what a detector noticed and the verdict policy did not count: a
+/// rule match that waits for a second sign and got none, for example. It is
+/// kept so that "why was this file not flagged?" has an answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Recorded {
+    /// Where the file is.
+    #[serde(serialize_with = "lossy_path")]
+    pub path: PathBuf,
+    /// Number of bytes read.
+    pub size: u64,
+    /// SHA-256 of the file, in lowercase hexadecimal.
+    pub sha256: String,
+    /// What the detectors noticed, with reasons. At most 100 are listed.
+    pub findings: Vec<Finding>,
+    /// Findings left out because there were more than 100.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub findings_omitted: u64,
+}
+
 /// Counters for a whole scan.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct ScanStats {
@@ -151,9 +177,15 @@ pub struct ScanStats {
     pub bytes_scanned: u64,
     /// Files whose verdict is not clean.
     pub detections: u64,
-    /// Files and directories that could not be scanned.
+    /// Files whose verdict is clean and that have findings on record.
+    pub files_recorded: u64,
+    /// Files that could not be scanned.
     pub files_skipped: u64,
-    /// The same, broken down by reason.
+    /// Folders that could not be opened. What is in them was neither
+    /// scanned nor counted, so this is not a number of files: one folder
+    /// can hide any number of them.
+    pub folders_skipped: u64,
+    /// Both together, broken down by reason.
     pub skipped_by_reason: BTreeMap<SkipReason, u64>,
     /// Symbolic links and junctions that were not followed. Their targets
     /// are scanned if they lie inside the scan roots themselves.
@@ -207,7 +239,12 @@ pub struct ScanReport {
     pub stats: ScanStats,
     /// Every file whose verdict is not clean, sorted by path.
     pub detections: Vec<Detection>,
-    /// Files and directories that could not be scanned, sorted by path.
+    /// Files whose verdict is clean and that have findings on record,
+    /// sorted by path.
+    pub recorded: Vec<Recorded>,
+    /// Whether `recorded` was cut short. The counters are always complete.
+    pub recorded_truncated: bool,
+    /// Files and folders that could not be scanned, sorted by path.
     pub skipped: Vec<Skipped>,
     /// Whether `skipped` was cut short. The counters are always complete.
     pub skipped_truncated: bool,

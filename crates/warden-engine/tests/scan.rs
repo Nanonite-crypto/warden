@@ -390,6 +390,28 @@ fn links_are_counted_but_not_followed() {
     assert_eq!(report.stats.files_skipped, 0);
 }
 
+/// Called by a test that took the right to read a file or to list a folder
+/// away and found that this process can do it all the same. There is
+/// nothing to test then.
+///
+/// Access rights do not apply to root on Unix. On Windows they do not apply
+/// to the listing of folders for a process whose backup privilege is
+/// switched on, and the Git Bash of an administrator switches it on for
+/// every program it starts.
+///
+/// The test passes with a note. `WARDEN_REQUIRE_ACCESS_TESTS=1` turns the
+/// note into a failure; CI sets it, so that these tests run for real there.
+#[cfg(any(unix, windows))]
+fn access_rights_do_not_apply(what: &str) {
+    let note = format!(
+        "{what} was not exercised: access rights do not apply to this process. \
+         See docs/TESTING.md."
+    );
+    let strict = std::env::var_os("WARDEN_REQUIRE_ACCESS_TESTS").is_some_and(|value| value == "1");
+    assert!(!strict, "{note}");
+    eprintln!("note: {note}");
+}
+
 #[cfg(unix)]
 #[test]
 fn unreadable_files_are_reported_with_a_reason() {
@@ -401,7 +423,7 @@ fn unreadable_files_are_reported_with_a_reason() {
     write(&dir.path().join("open.bin"), b"public");
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     if fs::read(&locked).is_ok() {
-        // Running as root: permissions do not apply, nothing to test.
+        access_rights_do_not_apply("a file that cannot be read");
         return;
     }
 
@@ -410,10 +432,116 @@ fn unreadable_files_are_reported_with_a_reason() {
 
     assert_eq!(report.stats.files_scanned, 1);
     assert_eq!(report.stats.files_skipped, 1);
+    assert_eq!(report.stats.folders_skipped, 0);
     assert_eq!(report.stats.skipped_by_reason[&SkipReason::AccessDenied], 1);
     assert_eq!(report.skipped[0].reason, SkipReason::AccessDenied);
+    assert!(!report.skipped[0].folder);
     assert!(report.skipped[0].path.ends_with("locked.bin"));
     assert!(!report.skipped[0].detail.is_empty());
+}
+
+/// What a scan says about a folder it may not open: one entry, marked as a
+/// folder and counted apart from the files, because nobody knows how many
+/// files it stands for. Here it stands for three.
+fn assert_the_closed_folder_is_told_apart(report: &ScanReport) {
+    assert_eq!(report.stats.files_scanned, 1, "only the file next to it");
+    assert_eq!(report.stats.folders_skipped, 1);
+    assert_eq!(report.stats.files_skipped, 0);
+    assert_eq!(report.stats.skipped_by_reason[&SkipReason::AccessDenied], 1);
+    assert_eq!(report.skipped.len(), 1);
+    assert!(report.skipped[0].folder);
+    assert_eq!(report.skipped[0].reason, SkipReason::AccessDenied);
+    assert!(report.skipped[0].path.ends_with("closed"));
+    assert!(!report.skipped[0].detail.is_empty());
+    assert!(
+        report.detections.is_empty(),
+        "what is in it was not scanned"
+    );
+}
+
+/// A folder with three files in it, one of them a registered threat, next
+/// to one ordinary file.
+fn tree_with_a_folder_to_close(threat: &[u8]) -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let closed = dir.path().join("closed");
+    write(&closed.join("one.bin"), b"first");
+    write(&closed.join("two.bin"), b"second");
+    write(&closed.join("deeper/threat.bin"), threat);
+    write(&dir.path().join("open.bin"), b"public");
+    (dir, closed)
+}
+
+/// Takes away the right to list a folder. Says `false` if this process
+/// can list it all the same, see [`access_rights_do_not_apply`].
+#[cfg(unix)]
+fn close_folder(folder: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
+    true
+}
+
+#[cfg(unix)]
+fn open_folder(folder: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+#[cfg(windows)]
+fn icacls(folder: &Path, arguments: &[&str]) {
+    let status = std::process::Command::new("icacls")
+        .arg(folder)
+        .args(arguments)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "icacls {arguments:?}");
+}
+
+/// Takes away the right to list a folder: everyone (S-1-1-0) is denied it,
+/// and a denial comes before every permission, an administrator's
+/// included. Says `false` if this process can list the folder all the same,
+/// see [`access_rights_do_not_apply`].
+#[cfg(windows)]
+fn close_folder(folder: &Path) -> bool {
+    icacls(folder, &["/deny", "*S-1-1-0:(RD)"]);
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
+    true
+}
+
+#[cfg(windows)]
+fn open_folder(folder: &Path) {
+    icacls(folder, &["/remove:d", "*S-1-1-0"]);
+}
+
+/// The case this was written for is on Windows: a folder like
+/// `C:\Program Files\WindowsApps`, which a program without administrator
+/// rights may see and not list.
+#[cfg(any(unix, windows))]
+#[test]
+fn a_folder_that_cannot_be_opened_is_counted_apart_from_files() {
+    let threat = fixture(91, 64);
+    let (dir, closed) = tree_with_a_folder_to_close(&threat);
+    if !close_folder(&closed) {
+        access_rights_do_not_apply("a folder that cannot be opened");
+        return;
+    }
+
+    let scanner = hash_scanner(
+        &[(&threat, "Test.Hidden", Category::Malware)],
+        ScanOptions::default(),
+    );
+    let report = scan(&scanner, dir.path());
+    // Before anything can fail: the temporary folder has to go away again.
+    open_folder(&closed);
+
+    assert_the_closed_folder_is_told_apart(&report);
 }
 
 /// A detector that reads content: flags files that contain a marker.
@@ -784,7 +912,7 @@ fn the_report_serialises_to_the_documented_json_shape() {
     let report = scan(&scanner, dir.path());
     let json = serde_json::to_value(&report).unwrap();
 
-    assert_eq!(json["schema"], 2);
+    assert_eq!(json["schema"], 4);
     assert_eq!(json["engine_version"], env!("CARGO_PKG_VERSION"));
     assert!(json["started_at"].as_str().unwrap().contains('T'));
     assert!(json["finished_at"].is_string());
@@ -807,6 +935,8 @@ fn the_report_serialises_to_the_documented_json_shape() {
 
     assert_eq!(json["stats"]["files_scanned"], 1);
     assert_eq!(json["stats"]["bytes_scanned"], 16);
+    assert_eq!(json["stats"]["files_skipped"], 0);
+    assert_eq!(json["stats"]["folders_skipped"], 0);
     assert!(json["stats"]["skipped_by_reason"].is_object());
     assert!(json["stats"]["files_per_second"].is_f64());
 
@@ -820,11 +950,16 @@ fn the_report_serialises_to_the_documented_json_shape() {
     assert_eq!(detection["findings"][0]["confidence"], "definitive");
     assert!(detection["findings"][0]["reasons"][0].is_string());
 
+    assert_eq!(json["stats"]["files_recorded"], 0);
+    assert_eq!(json["recorded"], serde_json::json!([]));
+    assert_eq!(json["recorded_truncated"], false);
     assert_eq!(json["skipped"], serde_json::json!([]));
     assert_eq!(json["skipped_truncated"], false);
     assert_eq!(json["partially_scanned"], serde_json::json!([]));
     assert_eq!(json["partially_scanned_truncated"], false);
-    // A finding about the scanned file itself names no archive member.
+    // A finding about the scanned file itself names no archive member, and
+    // one that counts by itself does not say so.
     assert!(detection["findings"][0].get("member").is_none());
+    assert!(detection["findings"][0].get("counts").is_none());
     assert!(detection.get("findings_omitted").is_none());
 }

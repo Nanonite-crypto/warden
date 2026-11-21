@@ -7,36 +7,43 @@ use warden_engine::{
     ThreatCategory,
 };
 
-use crate::assess::{Assessment, SUSPICIOUS_FROM, assess_with};
+use crate::assess::{Assessment, Thresholds, assess_with};
 use crate::indicators::{self, Context};
 use crate::reader::read;
 
-/// The name of the finding this layer reports.
+/// The name of the finding this layer reports about a suspicious file.
 pub const FINDING_NAME: &str = "Heuristic.SuspiciousExecutable";
+
+/// The name under which this layer offers a second sign.
+pub const SECOND_SIGN_NAME: &str = "Heuristic.UnusualExecutable";
 
 /// Judges Windows executables by their structure.
 ///
-/// The finding it makes has [`Confidence::Medium`], which the default
-/// verdict policy reports as suspicious: the file is shown to the user,
-/// and nothing is done to it. Structure alone never makes a file malicious.
+/// A file whose score reaches the threshold gets a finding with
+/// [`Confidence::Medium`], which the default verdict policy reports as
+/// suspicious: the file is shown to the user, and nothing is done to it.
+/// Structure alone never makes a file malicious.
+///
+/// A file whose score stays below the threshold and reaches the lower bar
+/// gets no finding of its own. The layer offers its assessment as a
+/// [second sign](warden_engine::Counts::AsSecondSign): it is kept only if
+/// another layer has a finding about the same file that waits for one.
 #[derive(Debug, Clone)]
 pub struct PeDetector {
-    suspicious_from: u32,
+    thresholds: Thresholds,
 }
 
 impl PeDetector {
-    /// A detector with Warden's threshold.
+    /// A detector with Warden's thresholds.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            suspicious_from: SUSPICIOUS_FROM,
-        }
+        Self::with_thresholds(Thresholds::default())
     }
 
-    /// A detector that counts a file as suspicious from another score.
+    /// A detector that goes by other scores.
     #[must_use]
-    pub fn with_threshold(suspicious_from: u32) -> Self {
-        Self { suspicious_from }
+    pub fn with_thresholds(thresholds: Thresholds) -> Self {
+        Self { thresholds }
     }
 }
 
@@ -71,7 +78,11 @@ impl Detector for PeDetector {
         );
         details.insert(
             "suspicious_from",
-            InfoValue::Count(u64::from(self.suspicious_from)),
+            InfoValue::Count(u64::from(self.thresholds.suspicious_from)),
+        );
+        details.insert(
+            "second_sign_from",
+            InfoValue::Count(u64::from(self.thresholds.second_sign_from)),
         );
         DetectorInfo {
             id: self.id(),
@@ -81,14 +92,14 @@ impl Detector for PeDetector {
 
     fn session(&self) -> Box<dyn Session + '_> {
         Box::new(PeSession {
-            suspicious_from: self.suspicious_from,
+            thresholds: self.thresholds,
             context: Context::now(),
         })
     }
 }
 
 struct PeSession {
-    suspicious_from: u32,
+    thresholds: Thresholds,
     context: Context,
 }
 
@@ -100,33 +111,53 @@ impl Session for PeSession {
         let Ok(facts) = read(content) else {
             return Ok(Vec::new());
         };
-        let assessment = assess_with(&facts, &self.context, self.suspicious_from);
+        let assessment = assess_with(&facts, &self.context, self.thresholds);
         Ok(finding_for(&assessment).into_iter().collect())
     }
 }
 
-/// The finding an assessment amounts to: one if the file is suspicious,
-/// none otherwise. Its reasons are the indicators behind the score.
+/// What an assessment amounts to in a scan: a finding if the file is
+/// suspicious, a second sign if its score reaches the lower bar, and
+/// nothing otherwise. The reasons are the indicators behind the score.
 #[must_use]
 pub fn finding_for(assessment: &Assessment) -> Option<Finding> {
-    if !assessment.suspicious {
+    let opening = if assessment.suspicious {
+        format!(
+            "The structure of the file scores {}; a file counts as suspicious from {}",
+            assessment.score, assessment.suspicious_from
+        )
+    } else if assessment.second_sign {
+        format!(
+            "The structure of the file scores {}: less than the {} that make a file suspicious, \
+             and at least the {} from which it backs up a finding of another layer",
+            assessment.score, assessment.suspicious_from, assessment.second_sign_from
+        )
+    } else {
         return None;
-    }
-    let mut reasons = vec![format!(
-        "The structure of the file scores {}; a file counts as suspicious from {}",
-        assessment.score, assessment.suspicious_from
-    )];
+    };
+    let mut reasons = vec![opening];
     reasons.extend(assessment.scored().map(|hit| {
         format!(
             "+{} {}: {}",
             hit.indicator.weight, hit.indicator.summary, hit.detail
         )
     }));
-    Some(Finding::new(
-        "heuristic",
-        FINDING_NAME,
-        ThreatCategory::Malware,
-        Confidence::Medium,
-        reasons,
-    ))
+    Some(if assessment.suspicious {
+        Finding::new(
+            "heuristic",
+            FINDING_NAME,
+            ThreatCategory::Malware,
+            Confidence::Medium,
+            reasons,
+        )
+    } else {
+        Finding::new(
+            "heuristic",
+            SECOND_SIGN_NAME,
+            ThreatCategory::Malware,
+            Confidence::Low,
+            reasons,
+        )
+        .as_second_sign()
+    })
 }

@@ -383,6 +383,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65c35e4b699c7e15ccbe7ee35c005e4fc0a278d22238a2857e6ce2dadeda1b06"
 dependencies = [
  "cfg-if",
+ "cipher",
  "cpufeatures 0.3.1",
  "rand_core",
 ]
@@ -412,6 +413,17 @@ checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
 dependencies = [
  "ciborium-io",
  "half",
+]
+
+[[package]]
+name = "cipher"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8cf2a2c93cd704877c0858356ed03480ff301ee950b43f1cbe4573b088bfa6c"
+dependencies = [
+ "block-buffer 0.12.1",
+ "crypto-common 0.2.2",
+ "inout",
 ]
 
 [[package]]
@@ -1385,6 +1397,15 @@ dependencies = [
  "hashbrown 0.17.1",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "inout"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a580c13f0ffc335ef42dd3f6b1a41b726051c5e1656d9a3aa6fddb3c5dfbbf9"
+dependencies = [
+ "hybrid-array",
 ]
 
 [[package]]
@@ -2760,6 +2781,7 @@ dependencies = [
  "time",
  "warden-engine",
  "warden-pe",
+ "warden-quarantine",
  "warden-sigdb",
  "warden-yara",
  "zip",
@@ -2797,6 +2819,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "warden-quarantine"
+version = "0.1.0"
+dependencies = [
+ "chacha20",
+ "getrandom",
+ "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "thiserror 2.0.21",
+ "warden-sigdb",
+ "windows-sys",
+]
+
+[[package]]
 name = "warden-sigdb"
 version = "0.1.0"
 dependencies = [
@@ -2812,6 +2850,7 @@ dependencies = [
 name = "warden-yara"
 version = "0.1.0"
 dependencies = [
+ "chacha20",
  "rsa",
  "serde",
  "serde_json",

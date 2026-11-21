@@ -11,11 +11,12 @@ use std::io::{Cursor, Write};
 use std::path::Path;
 
 use warden_engine::{
-    Confidence, FileResult, HashDetector, Scanner, ThreatCategory, Verdict, eicar,
+    Confidence, Counts, Detector, DetectorError, FileResult, FileView, Finding, HashDetector,
+    Scanner, Session, ThreatCategory, Verdict, eicar,
 };
 use warden_yara::{
-    BUILTIN_SOURCE, BundleBuilder, BundleError, ENGINE, RuleBundle, YaraDetector, YaraOptions,
-    write_bundle,
+    BUILTIN_SOURCE, BundleBuilder, BundleError, ENGINE, Layout, RuleBundle, YaraDetector,
+    YaraOptions, generator, write_bundle,
 };
 
 const MARKER_RULES: &str = r#"
@@ -78,6 +79,22 @@ fn marker_bundle() -> warden_yara::Built {
     let mut builder = BundleBuilder::new().created_unix_secs(1_800_000_000);
     builder.add_source("markers.yar", MARKER_RULES);
     builder.build().unwrap()
+}
+
+/// The marker rules in a bundle that stores its contents as they are.
+fn plain_marker_bundle() -> warden_yara::Built {
+    let mut builder = BundleBuilder::new()
+        .created_unix_secs(1_800_000_000)
+        .layout(Layout::Plain);
+    builder.add_source("markers.yar", MARKER_RULES);
+    builder.build().unwrap()
+}
+
+/// Whether `needle` occurs anywhere in `haystack`.
+fn holds(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 fn marker_scanner() -> Scanner {
@@ -359,6 +376,64 @@ fn a_bundle_survives_being_written_and_read_back() {
 }
 
 #[test]
+fn a_bundle_keeps_what_its_rules_look_for_out_of_sight() {
+    // What an antivirus goes by when it takes a rule file for malware is
+    // the patterns the rules look for. Here those are the marker strings.
+    let patterns: [&[u8]; 4] = [
+        b"WARDEN-YARA-HIGH",
+        b"WARDEN-YARA-MEDIUM",
+        b"WARDEN-YARA-NAMED",
+        b"markers.yar",
+    ];
+
+    let sealed = marker_bundle();
+    assert_eq!(sealed.bundle.layout(), Layout::Sealed);
+    let plain = plain_marker_bundle();
+    assert_eq!(plain.bundle.layout(), Layout::Plain);
+    for pattern in patterns {
+        let shown = String::from_utf8_lossy(pattern);
+        assert!(holds(&plain.bytes, pattern), "{shown} in the plain bundle");
+        assert!(
+            !holds(&sealed.bytes, pattern),
+            "{shown} in the sealed bundle"
+        );
+    }
+
+    // Both are the same rules, and say so.
+    assert_eq!(sealed.bundle.manifest(), plain.bundle.manifest());
+    assert_eq!(sealed.bundle.rule_count(), plain.bundle.rule_count());
+    assert_eq!(sealed.bytes.len(), plain.bytes.len() + 32);
+
+    // Both load from their bytes and detect the same.
+    for built in [&sealed, &plain] {
+        let loaded = RuleBundle::from_bytes(&built.bytes).unwrap();
+        assert_eq!(loaded.layout(), built.bundle.layout());
+        assert_eq!(loaded.digest(), built.bundle.digest());
+        assert_eq!(loaded.manifest(), built.bundle.manifest());
+        let scanner = Scanner::builder()
+            .detector(YaraDetector::new(loaded))
+            .build();
+        assert_eq!(
+            scanner.scan_bytes(b"WARDEN-YARA-HIGH").verdict,
+            Verdict::Malicious
+        );
+        assert_eq!(
+            scanner.scan_bytes(b"WARDEN-YARA-MEDIUM").verdict,
+            Verdict::Suspicious
+        );
+        assert_eq!(scanner.scan_bytes(b"nothing here").verdict, Verdict::Clean);
+        assert_eq!(
+            scanner.scan_bytes(&padded(b"\n")).findings[0].name,
+            eicar::DETECTION_NAME
+        );
+    }
+
+    // Building again gives the same file, byte for byte.
+    assert_eq!(marker_bundle().bytes, sealed.bytes);
+    assert_eq!(plain_marker_bundle().bytes, plain.bytes);
+}
+
+#[test]
 fn a_rule_that_does_not_compile_is_left_out_and_the_rest_is_kept() {
     let rules = r#"
 import "magic"
@@ -526,38 +601,58 @@ fn a_bundle_needs_at_least_one_rule() {
 
 #[test]
 fn damaged_bundles_are_refused() {
-    let bytes = marker_bundle().bytes;
+    for built in [marker_bundle(), plain_marker_bundle()] {
+        let layout = built.bundle.layout();
+        let bytes = built.bytes;
 
-    // Cut short anywhere.
-    for length in (0..bytes.len()).step_by(bytes.len() / 64 + 1) {
-        assert!(
-            RuleBundle::from_bytes(&bytes[..length]).is_err(),
-            "length {length}"
-        );
+        // Cut short anywhere.
+        for length in (0..bytes.len()).step_by(bytes.len() / 64 + 1) {
+            assert!(
+                RuleBundle::from_bytes(&bytes[..length]).is_err(),
+                "{layout:?}, length {length}"
+            );
+        }
+        // Cut short inside the header and right after it.
+        for length in [8, 64, 95, 96, 97, 127, 128, 129] {
+            assert!(
+                RuleBundle::from_bytes(&bytes[..length]).is_err(),
+                "{layout:?}, length {length}"
+            );
+        }
+        // Longer than it should be.
+        let mut longer = bytes.clone();
+        longer.push(0);
+        assert!(matches!(
+            RuleBundle::from_bytes(&longer),
+            Err(BundleError::WrongLength { .. })
+        ));
+        // One changed byte anywhere: in the header, the manifest or the
+        // rules.
+        for position in (0..bytes.len()).step_by(bytes.len() / 48 + 1) {
+            let mut damaged = bytes.clone();
+            damaged[position] ^= 0x01;
+            assert!(
+                RuleBundle::from_bytes(&damaged).is_err(),
+                "{layout:?}, position {position}"
+            );
+        }
+        // Every byte of the header counts, whatever the layout keeps there.
+        for position in 0..layout.header_len() {
+            let mut damaged = bytes.clone();
+            damaged[position] ^= 0x10;
+            assert!(
+                RuleBundle::from_bytes(&damaged).is_err(),
+                "{layout:?}, position {position}"
+            );
+        }
+        let mut body_damage = bytes.clone();
+        let last = body_damage.len() - 1;
+        body_damage[last] ^= 0x80;
+        assert!(matches!(
+            RuleBundle::from_bytes(&body_damage),
+            Err(BundleError::DigestMismatch)
+        ));
     }
-    // Longer than it should be.
-    let mut longer = bytes.clone();
-    longer.push(0);
-    assert!(matches!(
-        RuleBundle::from_bytes(&longer),
-        Err(BundleError::WrongLength { .. })
-    ));
-    // One changed byte anywhere: in the header, the manifest or the rules.
-    for position in (0..bytes.len()).step_by(bytes.len() / 48 + 1) {
-        let mut damaged = bytes.clone();
-        damaged[position] ^= 0x01;
-        assert!(
-            RuleBundle::from_bytes(&damaged).is_err(),
-            "position {position}"
-        );
-    }
-    let mut body_damage = bytes.clone();
-    let last = body_damage.len() - 1;
-    body_damage[last] ^= 0x80;
-    assert!(matches!(
-        RuleBundle::from_bytes(&body_damage),
-        Err(BundleError::DigestMismatch)
-    ));
     // Something else entirely.
     assert!(matches!(
         RuleBundle::from_bytes(&[0u8; 4096]),
@@ -569,15 +664,201 @@ fn damaged_bundles_are_refused() {
     ));
 }
 
+/// Rules that say a tool made them, in the words of the real ones, and one
+/// that names a tool Warden does not know as a rule generator.
+const GENERATED_RULES: &str = r#"
+rule Test_Generated
+{
+    meta:
+        description = "autogenerated rule brought to you by yara-signator"
+        score = 75
+        tool = "yara-signator v0.6.0"
+    strings:
+        $sequence_0 = "WARDEN-YARA-GENERATED-QUIET"
+    condition:
+        $sequence_0
+}
+
+rule Test_Generated_Loud
+{
+    meta:
+        score = 95
+        tool = "YARA-Signator v9"
+    strings:
+        $sequence_0 = "WARDEN-YARA-GENERATED-LOUD"
+    condition:
+        $sequence_0
+}
+
+rule Test_Made_With_Something_Else
+{
+    meta:
+        score = 75
+        tool = "a text editor"
+    strings:
+        $marker = "WARDEN-YARA-BY-HAND"
+    condition:
+        $marker
+}
+"#;
+
+fn generated_detector() -> YaraDetector {
+    let mut builder = BundleBuilder::new().builtin_rules(false);
+    builder.add_source("generated.yar", GENERATED_RULES);
+    YaraDetector::new(builder.build().unwrap().bundle)
+}
+
+/// What the detector reports about some bytes, before the verdict policy
+/// has settled anything.
+fn reported(detector: &YaraDetector, content: &[u8]) -> Vec<Finding> {
+    let sha256 = warden_engine::sha256(content);
+    detector
+        .session()
+        .inspect(&FileView::in_memory(content, &sha256))
+        .unwrap()
+}
+
+#[test]
+fn a_rule_says_in_its_metadata_whether_a_tool_made_it() {
+    assert_eq!(
+        generator("yara-signator v0.6.0"),
+        Some("yara-signator v0.6.0")
+    );
+    assert_eq!(generator("  YARA-Signator v9 "), Some("YARA-Signator v9"));
+    assert_eq!(generator("a text editor"), None);
+    assert_eq!(generator("yara"), None);
+    assert_eq!(generator(""), None);
+}
+
+#[test]
+fn a_match_of_a_generated_rule_waits_for_a_second_sign() {
+    let detector = generated_detector();
+
+    let findings = reported(&detector, b"... WARDEN-YARA-GENERATED-QUIET ...");
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].name, "Test_Generated");
+    assert_eq!(findings[0].counts, Counts::WithSecondSign);
+    assert_eq!(findings[0].confidence, Confidence::Medium);
+    let said = findings[0].reasons.join("\n");
+    assert!(
+        said.contains("generated by a tool, yara-signator v0.6.0"),
+        "{said}"
+    );
+
+    // Its tool gave this one a score that would make a file malicious.
+    // Backed up or not, a generated rule stops at suspicious.
+    let findings = reported(&detector, b"WARDEN-YARA-GENERATED-LOUD");
+    assert_eq!(findings[0].counts, Counts::WithSecondSign);
+    assert_eq!(findings[0].confidence, Confidence::Medium);
+    assert!(findings[0].reasons.join("\n").contains("Rule score 95"));
+
+    // A rule that names some other tool is a rule like any other.
+    let findings = reported(&detector, b"WARDEN-YARA-BY-HAND");
+    assert_eq!(findings[0].counts, Counts::Alone);
+    assert_eq!(findings[0].confidence, Confidence::Medium);
+    assert!(!findings[0].reasons.join("\n").contains("generated"));
+}
+
+#[test]
+fn alone_a_generated_rule_leaves_a_file_clean_and_on_record() {
+    let scanner = Scanner::builder().detector(generated_detector()).build();
+
+    let result = scanner.scan_bytes(b"WARDEN-YARA-GENERATED-QUIET");
+    assert_eq!(result.verdict, Verdict::Clean);
+    assert_eq!(names(&result), ["Test_Generated"]);
+    assert_eq!(result.findings[0].confidence, Confidence::Low);
+    let last = result.findings[0].reasons.last().unwrap();
+    assert!(last.contains("does not change the verdict"), "{last}");
+
+    // Two generated rules about the same file are still one layer.
+    let result = scanner.scan_bytes(b"WARDEN-YARA-GENERATED-QUIET and WARDEN-YARA-GENERATED-LOUD");
+    assert_eq!(result.verdict, Verdict::Clean);
+    assert_eq!(result.findings.len(), 2);
+
+    // A rule a person wrote counts as before.
+    assert_eq!(
+        scanner.scan_bytes(b"WARDEN-YARA-BY-HAND").verdict,
+        Verdict::Suspicious
+    );
+}
+
+/// A stand-in for another layer: offers a second sign for any content that
+/// holds its marker.
+struct OddLooking;
+
+impl Detector for OddLooking {
+    fn id(&self) -> &'static str {
+        "odd"
+    }
+
+    fn needs_content(&self) -> bool {
+        true
+    }
+
+    fn session(&self) -> Box<dyn Session + '_> {
+        Box::new(self)
+    }
+}
+
+impl Session for &OddLooking {
+    fn inspect(&mut self, file: &FileView<'_>) -> Result<Vec<Finding>, DetectorError> {
+        const MARKER: &[u8] = b"LOOKS-ODD";
+        let odd = file
+            .content()
+            .is_some_and(|content| content.windows(MARKER.len()).any(|window| window == MARKER));
+        Ok(odd
+            .then(|| {
+                Finding::new(
+                    "odd",
+                    "Test.OddLooking",
+                    ThreatCategory::Malware,
+                    Confidence::Low,
+                    vec!["holds the odd marker".to_owned()],
+                )
+                .as_second_sign()
+            })
+            .into_iter()
+            .collect())
+    }
+}
+
+#[test]
+fn with_a_sign_from_another_layer_a_generated_rule_makes_a_file_suspicious() {
+    let scanner = Scanner::builder()
+        .detector(generated_detector())
+        .detector(OddLooking)
+        .build();
+
+    let result = scanner.scan_bytes(b"WARDEN-YARA-GENERATED-QUIET, and it LOOKS-ODD");
+    assert_eq!(result.verdict, Verdict::Suspicious);
+    assert_eq!(names(&result), ["Test_Generated", "Test.OddLooking"]);
+    let last = result.findings[0].reasons.last().unwrap();
+    assert!(last.ends_with("same file: odd"), "{last}");
+
+    // The loud one too, and no further than suspicious.
+    let result = scanner.scan_bytes(b"WARDEN-YARA-GENERATED-LOUD, and it LOOKS-ODD");
+    assert_eq!(result.verdict, Verdict::Suspicious);
+
+    // Odd-looking alone is nothing.
+    let result = scanner.scan_bytes(b"it only LOOKS-ODD");
+    assert_eq!(result.verdict, Verdict::Clean);
+    assert!(result.findings.is_empty());
+}
+
 #[test]
 fn the_detector_describes_its_rules_for_the_report() {
-    use warden_engine::{Detector, InfoValue};
+    use warden_engine::InfoValue;
 
     let built = marker_bundle();
     let digest = warden_sigdb::hex::encode(&built.bundle.digest());
     let info = YaraDetector::new(built.bundle).describe();
     assert_eq!(info.id, "yara");
     assert_eq!(info.details["rules"], InfoValue::Count(6));
+    assert_eq!(info.details["rules_generated"], InfoValue::Count(0));
+    assert_eq!(
+        generated_detector().describe().details["rules_generated"],
+        InfoValue::Count(2)
+    );
     assert_eq!(info.details["rule_files"], InfoValue::Count(2));
     assert_eq!(info.details["engine"], InfoValue::Text(ENGINE.to_owned()));
     assert_eq!(
@@ -609,9 +890,17 @@ rule Unscored { condition: false }
 
     assert_eq!((stats.high, stats.medium, stats.low), (1, 2, 1));
     assert_eq!(stats.unscored, 1);
+    assert_eq!(stats.generated, 0);
     assert_eq!(stats.licences["https://example.test/LICENSE"], 1);
     assert_eq!(stats.licences["Example Licence 1.0"], 1);
     assert_eq!(stats.licences[""], 2);
+
+    // Generated rules are counted as that, whatever their score says: one
+    // of the two states 95. The third rule names a tool that is not a rule
+    // generator and is counted like any other.
+    let generated = generated_detector().rule_stats();
+    assert_eq!((generated.high, generated.medium, generated.low), (0, 1, 0));
+    assert_eq!(generated.generated, 2);
 }
 
 #[test]

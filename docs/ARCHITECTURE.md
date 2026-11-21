@@ -3,8 +3,10 @@
 This document describes the design Warden is being built towards and marks
 what exists today. The phases are in [ROADMAP.md](ROADMAP.md).
 
-**Implemented so far (phases 1 and 2):** the engine library, the signature
-database, hash matching, YARA rules, zip scanning and the command-line tool.
+**Implemented so far (phases 1 to 4):** the engine library, the signature
+database, hash matching, YARA rules, zip scanning, the heuristic layer, a
+verdict policy in which a finding can depend on a second sign, the
+quarantine, and the command-line tool.
 
 ## Scope
 
@@ -80,14 +82,21 @@ elevated caller.
    with a confidence and human-readable reasons. A separate verdict policy
    turns the findings for a file into clean, suspicious or malicious. Every
    detection can therefore answer "why was this flagged?", and a new
-   detector never needs to know what the product does about a finding.
-3. **Nothing is destroyed.** Quarantine is journaled and reversible, and a
-   guard refuses to quarantine signed Windows system files, because a false
-   positive there can stop Windows from booting.
+   detector never needs to know what the product does about a finding. A
+   detector may also say that its finding is not enough alone; whether
+   something backs it up is again for the policy to see, not for the
+   detector.
+3. **Nothing is destroyed.** Quarantine is journaled and reversible. A
+   guard that refuses to quarantine signed Windows system files belongs to
+   this rule, because a false positive there can stop Windows from
+   starting. It is not built yet: it needs signature checking. Until it
+   exists, nothing is quarantined unless a person names the file.
 4. **Files are hostile input.** Parsers get limits, and fuzz targets from
    phase 3 on. A file that cannot be read is reported as skipped with a
    reason, and a file that could only be checked in part is reported as
    such, with what was left out. Neither is ever silently dropped. A
+   folder that cannot be opened is reported as a folder and counted apart
+   from files, because nobody knows how many files it stands for. A
    detector that panics costs one file, not the scan.
 
 ## Workspace layout
@@ -101,6 +110,10 @@ crates/
   warden-pe/        heuristic layer: a reader for Windows executables, the
                     indicators with their weights, the score, the detector,
                     and inert executables for tests
+  warden-quarantine/
+                    the quarantine: the entry format, the journal that
+                    settles interrupted operations, and what a file has
+                    besides its content on Unix and on Windows
   warden-cli/       the `warden` command-line tool
   warden-calibrate/ development tool: measures the indicators on a public
                     dataset and fits their weights; not part of the scanner
@@ -118,8 +131,12 @@ needs YARA pays for it. The heuristic layer is a crate of its own for the
 opposite reason: it depends on nothing but the engine's detector interface,
 so the calibration tool and the fuzzers can use it without the rest.
 
-Crates planned for later phases: `quarantine`, `remediation`, `realtime`,
-`ipc`, `service`, and the Tauri app.
+The quarantine depends on neither the engine nor the detection layers: it
+moves files, whoever asks. Of the other crates it uses one function, the
+signature database's helper that writes bytes as hexadecimal.
+
+Crates planned for later phases: `remediation`, `realtime`, `ipc`,
+`service`, and the Tauri app.
 
 ## The scan pipeline
 
@@ -150,8 +167,9 @@ flowchart LR
    hands out once per worker thread.
 5. If the file is a zip archive, its members are unpacked in memory and go
    through the same detectors, see [Archives](#archives).
-6. The **verdict policy** decides clean, suspicious or malicious from all
-   findings for the file, its members included.
+6. The **verdict policy** first settles which findings count, then
+   decides clean, suspicious or malicious from those, the file's members
+   included. See [the verdict policy](#the-verdict-policy).
 7. The **calling thread** collects outcomes, so an observer (a progress
    line today, the service's event stream later) needs no locking.
 
@@ -169,8 +187,8 @@ at any time and still returns a report of what it covered.
 | ML classifier | 11, optional | Statistical resemblance to known malware | Opaque, and only as good as its training data |
 
 The layers run in that order, the most certain first, and a file gets the
-verdict of its strongest finding. The heuristic layer can make a file
-suspicious and never malicious.
+verdict of its strongest finding that counts. The heuristic layer can make
+a file suspicious and never malicious.
 
 Whether a file carries a signature is not part of the heuristic score,
 because the presence of a signature proves nothing: one can be appended to
@@ -180,6 +198,31 @@ lower a heuristic score; it will never cancel a hash or YARA hit.
 How a rule match becomes a verdict, where rules come from, which rules are
 left out because they flag clean files, and what a rule bundle looks like on
 disk is in [RULES.md](RULES.md).
+
+### The verdict policy
+
+Implemented in `warden-engine`. A finding says how it counts, in one of
+three ways:
+
+| A finding counts | Who reports such a finding | What the policy does with it |
+|---|---|---|
+| alone | The hash layer, hand-written YARA rules, the heuristic layer from its threshold on | Takes it as it is |
+| with a second sign | A YARA rule that a tool generated | Lets it count if another detector has something to say about the same file. Otherwise it stays on record and the verdict is what it would be without it |
+| as a second sign | The heuristic layer, for a score below its threshold and above a lower bar | Uses it to back up a finding of the second kind. If none waits for it, it is dropped |
+
+Two rules keep this honest. A detector does not back itself: two generated
+rules that match one file are one layer saying the same thing twice. And
+it is settled per file, and inside an archive per member: a rule match in
+one member and an odd structure in another do not add up.
+
+After that the strongest finding that counts decides, as before: high
+confidence is malicious, medium is suspicious, low changes nothing.
+
+A scan report keeps the findings that did not count, in a list apart from
+the detections. So a report can answer "why was this file not flagged?",
+and a false-positive run can show that a file was scanned and what
+happened to its finding. Why generated rules are treated this way, and
+what it costs, is in [RULES.md](RULES.md#generated-rules).
 
 ### The heuristic layer
 
@@ -194,7 +237,9 @@ Implemented in `warden-pe`, in three steps that can each be used alone.
    section both writable and executable?". Each has a weight.
 3. The **score** is the sum of the weights of the indicators that apply. A
    file whose score reaches the threshold is reported as suspicious, with
-   one reason per indicator.
+   one reason per indicator. A score below the threshold and above a lower
+   bar is reported as a second sign, which counts only next to a finding
+   that waits for one.
 
 The reader is Warden's own, and small, for two reasons. A general-purpose
 parser treats a file that contradicts itself as an error; for this layer it
@@ -261,18 +306,44 @@ Implemented in `warden-sigdb`. A sorted table of SHA-256 digests with a
 16-bit prefix index, memory-mapped and verified in full on open. The format
 is specified in [SIGDB_FORMAT.md](SIGDB_FORMAT.md).
 
-## Quarantine and remediation (phases 4 and 5)
+## Quarantine
 
-- **Quarantine.** Encrypt the file into a vault closed to normal users,
-  verify the copy, record the original path, hash, timestamps and
-  permissions, then remove the original, at the next reboot if it is locked.
-  Restore reverses this, checks the hash, and refuses to write through
-  junctions or symbolic links, which is the classic way a SYSTEM-level
-  restore gets abused.
-- **Remediation.** One enumerator each for registry Run keys, scheduled
-  tasks, services and startup folders, each resolving an entry to the file it
-  launches. Quarantining a file removes the entries that point at it and
-  stores them in the quarantine record, so that restore puts them back.
+Implemented in `warden-quarantine` and driven by `warden quarantine`.
+[QUARANTINE.md](QUARANTINE.md) has the details; in short:
+
+- **One entry file per quarantined file**: the content under a stream
+  cipher, then a record of what the file was. The key is in the record.
+  The cipher keeps nothing secret; it makes sure that the bytes on disk are
+  not the file, so that they cannot be started and a resident antivirus
+  does not remove the quarantine's copy.
+- **A journal against interruptions.** Moving a file takes three steps
+  that cannot happen at once. A note of the intention is written first,
+  and the next time the quarantine is opened, an operation that was cut
+  off is undone if the copy had not reached its destination and finished
+  if it had. At no point is the only copy of a file an incomplete one.
+- **A restore checks before it trusts.** The content is checked against
+  the recorded SHA-256 as it is written under a temporary name, and the
+  file gets its real name in one step. A file that has taken its place is
+  not replaced unless that is asked for.
+- **What a file has besides its content comes back too**: timestamps, on
+  Unix the owner and permission bits, on Windows the attribute bits, the
+  security descriptor and the mark of a downloaded file.
+
+It runs with the rights of whoever calls it and keeps its folder in that
+user's own data folder. What a quarantine for a whole machine needs comes
+with the service in phase 6: a folder closed to ordinary users, and a
+restore that refuses to write, on behalf of a user, to a place that user
+could not write to. A privileged restore through a junction into a system
+folder is the classic way an antivirus product gets turned against the
+machine it protects.
+
+## Remediation (phase 5)
+
+One enumerator each for registry Run keys, scheduled tasks, services and
+startup folders, each resolving an entry to the file it launches.
+Quarantining a file removes the entries that point at it and stores them
+in the quarantine record, so that restore puts them back. A file that is
+in use is removed when Windows next starts.
 
 ## Real-time protection (phase 9)
 

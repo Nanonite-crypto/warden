@@ -4,14 +4,20 @@
 //!
 //! - `0`: the command succeeded and, for a scan, nothing was detected;
 //! - `1`: a scan found at least one detection (or a lookup found nothing);
-//! - `2`: the command could not be carried out.
+//! - `2`: the command could not be carried out, or whoever was reading
+//!   its output stopped reading before the end.
 
 #![forbid(unsafe_code)]
+
+// First, because the modules after it print with its macros.
+#[macro_use]
+mod out;
 
 mod bench;
 mod fp;
 mod inspect;
 mod misc;
+mod quarantine;
 mod render;
 mod rules;
 mod scan;
@@ -71,6 +77,14 @@ enum Command {
     /// and the reason it counts. Exits with 1 if the file is suspicious.
     Inspect(inspect::InspectArgs),
 
+    /// Move files out of harm's way, and put them back
+    ///
+    /// A quarantined file is gone from its place and not lost: it can be
+    /// restored with the content, the timestamps and the permissions it
+    /// had. See `warden quarantine add --help`.
+    #[command(subcommand)]
+    Quarantine(quarantine::QuarantineCommand),
+
     /// Print the SHA-256 of files
     Hash {
         /// Files to hash
@@ -92,13 +106,21 @@ fn main() -> ExitCode {
         Command::Bench(args) => bench::run(&args),
         Command::FalsePositives(args) => fp::run(&args),
         Command::Inspect(args) => inspect::run(&args),
+        Command::Quarantine(command) => quarantine::run(&command),
         Command::Hash { files } => misc::hash(&files),
         Command::Eicar(command) => misc::eicar(&command),
     };
     match outcome {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("error: {error:#}");
+            // `warden scan … | head`: nobody is left to tell.
+            let reader_has_left = error
+                .chain()
+                .filter_map(|cause| cause.downcast_ref::<out::OutputError>())
+                .any(out::OutputError::reader_has_left);
+            if !reader_has_left {
+                errln!("error: {error:#}");
+            }
             ExitCode::from(EXIT_ERROR)
         }
     }

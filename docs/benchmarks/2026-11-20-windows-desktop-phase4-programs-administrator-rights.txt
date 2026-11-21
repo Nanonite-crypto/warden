@@ -1,0 +1,8 @@
+scan-as-admin: started
+2026-11-20T17:55:37Z rights: administrator=False windowsapps_can_be_listed=no (UnauthorizedAccessException)
+2026-11-20T17:55:38Z handed over to a window with administrator rights
+2026-11-20T17:55:39Z rights: administrator=True windowsapps_can_be_listed=yes
+2026-11-20T17:55:46Z windowsapps: files=52631 bytes=9445807006 folders_that_could_not_be_listed=0
+2026-11-20T17:55:46Z scan: started
+2026-11-20T18:00:41Z scan: finished exit=1
+2026-11-20T18:00:41Z scan-as-admin: done

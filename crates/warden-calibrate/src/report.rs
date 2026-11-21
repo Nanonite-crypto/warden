@@ -26,6 +26,15 @@ pub const MAX_WEIGHT: u8 = 20;
 /// The threshold is the lowest score that at most this share of the
 /// benign training files of any kind reaches: one file in 5,000.
 pub const MAX_FALSE_ALARMS: f64 = 0.0002;
+/// The bar for a second sign is the lowest score that at most this share
+/// of the benign training files of any kind reaches: one file in twenty.
+///
+/// A second sign does not flag a file. It backs up a finding of another
+/// layer that is too weak to count alone, so what has to be rare is the two
+/// together, and this share is only one of the two factors. One in twenty
+/// is a choice: low enough that an ordinary file does not qualify, high
+/// enough that half of the malicious files of the training weeks do.
+pub const MAX_SECOND_SIGN_SHARE: f64 = 0.05;
 
 /// Indicators that are measured and not offered to the fit, with the
 /// reason. They stay visible in `warden inspect` and never add to a score.
@@ -238,6 +247,8 @@ pub struct Scoring {
     pub weights: BTreeMap<String, u8>,
     /// The score from which a file counts as suspicious.
     pub suspicious_from: u32,
+    /// The score from which the structure of a file is a second sign.
+    pub second_sign_from: u32,
     /// Per kind of file, and last for all kinds together.
     pub by_kind: Vec<KindScores>,
 }
@@ -286,6 +297,7 @@ pub struct RuleInfo {
     pub min_decibans: f64,
     pub max_weight: u8,
     pub max_false_alarms: f64,
+    pub max_second_sign_share: f64,
     /// Whether the indicators in [`NOT_OFFERED`] were offered after all,
     /// to see what they would do.
     pub offer_all: bool,
@@ -299,14 +311,17 @@ pub struct Report {
     pub indicators: Vec<Measured>,
     pub probes: Vec<Measured>,
     pub fit: FitReport,
-    /// The weights and the threshold the scanner has.
+    /// The weights and the two scores the scanner has.
     pub in_use: Scoring,
-    /// The weights and the threshold these counts give.
+    /// The weights and the two scores these counts give.
     pub by_rule: Scoring,
     /// Whether the scanner's weights are the weights these counts give.
     pub weights_match: bool,
     /// Whether the scanner's threshold is the one these counts give.
     pub threshold_matches: bool,
+    /// Whether the scanner's bar for a second sign is the one these counts
+    /// give.
+    pub second_sign_matches: bool,
     /// Counts per range of a number, see [`Collected`].
     pub distributions: BTreeMap<String, Vec<u64>>,
 }
@@ -507,7 +522,7 @@ fn auc(spread: &Spread) -> f64 {
 }
 
 /// The scores of the files of every part, for one kind or for all.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Spreads {
     by_subset: BTreeMap<Subset, Spread>,
 }
@@ -556,15 +571,15 @@ impl Spreads {
     }
 }
 
-/// The lowest score that at most [`MAX_FALSE_ALARMS`] of the benign
-/// training files of every kind reach.
-fn threshold_by_rule(by_kind: &[Spreads]) -> u32 {
+/// The lowest score that at most `share` of the benign training files of
+/// every kind reach.
+fn lowest_score_within(by_kind: &[Spreads], share: f64) -> u32 {
     by_kind
         .iter()
         .map(|spreads| {
             let benign = spreads.of(Subset::Train);
             let total: u64 = benign.values().map(|counts| counts[1]).sum();
-            let allowed = (total as f64 * MAX_FALSE_ALARMS).floor() as u64;
+            let allowed = (total as f64 * share).floor() as u64;
             // Walk down from the highest score for as long as the benign
             // files at or above it stay within what is allowed.
             let mut at_or_above = 0u64;
@@ -583,8 +598,12 @@ fn threshold_by_rule(by_kind: &[Spreads]) -> u32 {
 }
 
 /// `weights` holds, for every scored indicator, its bit in the patterns,
-/// its name and its weight. Without a threshold, the rule sets it.
-fn scoring(rows: &[Row], weights: &[(usize, String, u8)], suspicious_from: Option<u32>) -> Scoring {
+/// its name and its weight. Without thresholds, the rules set them.
+fn scoring(
+    rows: &[Row],
+    weights: &[(usize, String, u8)],
+    thresholds: Option<warden_pe::Thresholds>,
+) -> Scoring {
     let score = |pattern: u128| -> u32 {
         weights
             .iter()
@@ -605,7 +624,14 @@ fn scoring(rows: &[Row], weights: &[(usize, String, u8)], suspicious_from: Optio
             .filter(|(_, _, weight)| *weight > 0)
             .map(|(_, id, weight)| (id.clone(), *weight))
             .collect(),
-        suspicious_from: suspicious_from.unwrap_or_else(|| threshold_by_rule(&by_kind)),
+        suspicious_from: thresholds.map_or_else(
+            || lowest_score_within(&by_kind, MAX_FALSE_ALARMS),
+            |thresholds| thresholds.suspicious_from,
+        ),
+        second_sign_from: thresholds.map_or_else(
+            || lowest_score_within(&by_kind, MAX_SECOND_SIGN_SHARE),
+            |thresholds| thresholds.second_sign_from,
+        ),
         by_kind: FileKind::ALL
             .iter()
             .zip(&by_kind)
@@ -706,7 +732,7 @@ pub fn report(collected: &Collected, options: Options) -> anyhow::Result<Report>
     let in_use = weights(&|entry| entry.weight_in_use.unwrap_or(0));
     let by_rule = weights(&|entry| entry.weight_by_rule);
     let weights_match = in_use == by_rule;
-    let in_use = scoring(&rows, &in_use, Some(warden_pe::SUSPICIOUS_FROM));
+    let in_use = scoring(&rows, &in_use, Some(warden_pe::Thresholds::default()));
     let by_rule = scoring(&rows, &by_rule, None);
     Ok(Report {
         rule: RuleInfo {
@@ -714,6 +740,7 @@ pub fn report(collected: &Collected, options: Options) -> anyhow::Result<Report>
             min_decibans: MIN_DECIBANS,
             max_weight: MAX_WEIGHT,
             max_false_alarms: MAX_FALSE_ALARMS,
+            max_second_sign_share: MAX_SECOND_SIGN_SHARE,
             offer_all: options.offer_all,
         },
         populations: populations
@@ -727,6 +754,7 @@ pub fn report(collected: &Collected, options: Options) -> anyhow::Result<Report>
             .collect(),
         weights_match,
         threshold_matches: in_use.suspicious_from == by_rule.suspicious_from,
+        second_sign_matches: in_use.second_sign_from == by_rule.second_sign_from,
         in_use,
         by_rule,
         indicators: measured,
@@ -896,13 +924,12 @@ fn kind_name(kind: Option<FileKind>) -> &'static str {
     kind.map_or("all kinds", FileKind::name)
 }
 
-/// What one threshold does, per kind and per part.
-fn threshold_lines(out: &mut String, scoring: &Scoring) {
-    let threshold = scoring.suspicious_from;
+/// What one score does, per kind and per part: how many files reach it.
+fn threshold_lines(out: &mut String, scoring: &Scoring, threshold: u32, titles: [&str; 2]) {
     let _ = writeln!(
         out,
         "  {:<10} {:<10} {:>34} {:>30}",
-        "", "", "malicious files flagged", "benign files flagged"
+        "", "", titles[0], titles[1]
     );
     for scores in &scoring.by_kind {
         let row = scores.at(threshold);
@@ -928,8 +955,9 @@ fn threshold_lines(out: &mut String, scoring: &Scoring) {
     }
 }
 
-/// What every threshold near the one in use does on one kind of file.
-fn score_lines(out: &mut String, scores: &KindScores, around: u32) {
+/// What every score in a range would do as a threshold, on one kind of
+/// file.
+fn score_lines(out: &mut String, scores: &KindScores, range: std::ops::RangeInclusive<u32>) {
     let _ = writeln!(
         out,
         "  {}: area under the ROC curve {:.4} on the training part, {:.4} on the test part",
@@ -959,7 +987,7 @@ fn score_lines(out: &mut String, scores: &KindScores, around: u32) {
     for row in scores
         .rows
         .iter()
-        .filter(|row| row.threshold + 16 >= around && row.threshold <= around.saturating_add(10))
+        .filter(|row| range.contains(&row.threshold))
     {
         let _ = writeln!(
             out,
@@ -1128,36 +1156,68 @@ pub fn render_text(collected: &Collected, report: &Report) -> String {
 
     let _ = writeln!(
         out,
-        "\nThe scanner\n  Its weights are {} these counts give. Its threshold is {}, {}",
+        "\nThe bar for a second sign\n  A score below the threshold flags nothing. From the bar on it backs up a finding of another layer that does not count alone.\n  The lowest score that at most one in {} of the benign training files of every kind reaches: {}.",
+        grouped((1.0 / report.rule.max_second_sign_share).round() as u64),
+        report.by_rule.second_sign_from
+    );
+
+    let is_or_is_not = |matches: bool, what: &str| {
+        if matches {
+            format!("which is the {what} these counts give.")
+        } else {
+            format!("which is NOT the {what} these counts give.")
+        }
+    };
+    let _ = writeln!(
+        out,
+        "\nThe scanner\n  Its weights are {} these counts give. Its threshold is {}, {} Its bar for a second sign is {}, {}",
         if report.weights_match {
             "the weights"
         } else {
             "NOT the weights"
         },
         report.in_use.suspicious_from,
-        if report.threshold_matches {
-            "which is the threshold these counts give."
-        } else {
-            "which is NOT the threshold these counts give."
-        }
+        is_or_is_not(report.threshold_matches, "threshold"),
+        report.in_use.second_sign_from,
+        is_or_is_not(report.second_sign_matches, "bar"),
     );
-    let shown = if report.weights_match && report.threshold_matches {
+    let shown = if report.weights_match && report.threshold_matches && report.second_sign_matches {
         &report.in_use
     } else {
         let _ = writeln!(
             out,
-            "  What follows is for the weights and the threshold these counts give."
+            "  What follows is for the weights, the threshold and the bar these counts give."
         );
         &report.by_rule
     };
     let _ = writeln!(out, "\nWhat a threshold of {} does", shown.suspicious_from);
-    threshold_lines(&mut out, shown);
+    threshold_lines(
+        &mut out,
+        shown,
+        shown.suspicious_from,
+        ["malicious files flagged", "benign files flagged"],
+    );
     let _ = writeln!(
         out,
-        "\nOther thresholds\n  (share of the files with at least that score; system and software as counts)"
+        "\nWhat a bar of {} for a second sign does\n  (files that reach it; none of them is flagged for that)",
+        shown.second_sign_from
     );
+    threshold_lines(
+        &mut out,
+        shown,
+        shown.second_sign_from,
+        [
+            "malicious files that reach it",
+            "benign files that reach it",
+        ],
+    );
+    let _ = writeln!(
+        out,
+        "\nOther scores\n  (share of the files with at least that score; system and software as counts)"
+    );
+    let range = shown.second_sign_from.saturating_sub(4)..=shown.suspicious_from.saturating_add(10);
     for scores in &shown.by_kind {
-        score_lines(&mut out, scores, shown.suspicious_from);
+        score_lines(&mut out, scores, range.clone());
     }
     out.push('\n');
     distribution_lines(&mut out, report);
@@ -1463,19 +1523,29 @@ mod tests {
             );
             spreads
         };
+        let threshold = |spreads: &[Spreads]| lowest_score_within(spreads, MAX_FALSE_ALARMS);
         // 100,000 benign files: 20 may reach the threshold. Ten have a
         // score of 10 or more, and with those of 5 or more it is thirty.
         let first = spreads(&[(0, 99_970), (5, 20), (10, 8), (20, 2)]);
-        assert_eq!(threshold_by_rule(std::slice::from_ref(&first)), 10);
+        assert_eq!(threshold(std::slice::from_ref(&first)), 10);
         // 50,000 benign files, of which eleven score 30: one too many, so
         // the threshold is beyond every score.
         let second = spreads(&[(0, 49_989), (30, 11)]);
-        assert_eq!(threshold_by_rule(std::slice::from_ref(&second)), 31);
+        assert_eq!(threshold(std::slice::from_ref(&second)), 31);
         // The limit holds for every kind.
-        assert_eq!(threshold_by_rule(&[first, second]), 31);
+        assert_eq!(threshold(&[first.clone(), second.clone()]), 31);
         // A threshold of zero would flag everything.
-        assert_eq!(threshold_by_rule(&[spreads(&[(0, 5)])]), 1);
-        assert_eq!(threshold_by_rule(&[Spreads::default()]), 1);
+        assert_eq!(threshold(&[spreads(&[(0, 5)])]), 1);
+        assert_eq!(threshold(&[Spreads::default()]), 1);
+
+        // The bar for a second sign is the same rule with a larger share.
+        // One file in twenty: 5,000 of the first, and thirty score 5 or
+        // more; 2,500 of the second, and eleven score 30.
+        let bar = |spreads: &[Spreads]| lowest_score_within(spreads, MAX_SECOND_SIGN_SHARE);
+        assert_eq!(bar(std::slice::from_ref(&first)), 5);
+        assert_eq!(bar(&[first, second]), 30);
+        let many = spreads(&[(0, 900), (4, 60), (9, 40)]);
+        assert_eq!(bar(&[many]), 9);
     }
 
     #[test]
@@ -1584,6 +1654,12 @@ mod tests {
             "the threshold in the scanner is not the one the counts give"
         );
         assert!(report.threshold_matches);
+        assert_eq!(
+            warden_pe::SECOND_SIGN_FROM,
+            report.by_rule.second_sign_from,
+            "the bar for a second sign in the scanner is not the one the counts give"
+        );
+        assert!(report.second_sign_matches);
         assert_eq!(report.in_use, report.by_rule);
 
         // No fitted weight sits so close to a half that rounding could go
@@ -1604,6 +1680,26 @@ mod tests {
         assert!(at_threshold.system.of > 5_000 && at_threshold.software.of > 5_000);
         assert_eq!(at_threshold.system.flagged, 0);
         assert_eq!(at_threshold.software.flagged, 0);
+
+        // The bar is where the rule puts it: at most one benign training
+        // file in twenty of any kind reaches it, and one point lower that
+        // no longer holds for at least one kind.
+        let bar = report.in_use.second_sign_from;
+        assert!(bar < report.in_use.suspicious_from);
+        let kinds = &report.in_use.by_kind[..FileKind::ALL.len()];
+        for scores in kinds {
+            let reached = scores.at(bar).train_benign;
+            assert!(
+                reached.share() <= MAX_SECOND_SIGN_SHARE,
+                "{:?}: {reached:?}",
+                scores.kind
+            );
+        }
+        assert!(
+            kinds
+                .iter()
+                .any(|scores| scores.at(bar - 1).train_benign.share() > MAX_SECOND_SIGN_SHARE)
+        );
 
         let written = std::fs::read_to_string(folder.join("report.txt")).unwrap();
         assert!(

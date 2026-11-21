@@ -118,10 +118,10 @@ pub fn cancel_on_ctrl_c() -> CancelToken {
             std::process::exit(130);
         }
         handler_token.cancel();
-        eprintln!("\nCancelling. Press Ctrl-C again to stop immediately.");
+        errln!("\nCancelling. Press Ctrl-C again to stop immediately.");
     });
     if let Err(error) = installed {
-        eprintln!("warning: Ctrl-C will not cancel cleanly ({error})");
+        errln!("warning: Ctrl-C will not cancel cleanly ({error})");
     }
     token
 }
@@ -141,9 +141,9 @@ pub fn run(args: &ScanArgs) -> anyhow::Result<ExitCode> {
             .with_context(|| format!("cannot write the report to {}", path.display()))?;
     }
     if args.json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        outln!("{}", serde_json::to_string_pretty(&report)?)?;
     } else {
-        print!("{}", render::report_text(&report, args.show_skipped));
+        out!("{}", render::report_text(&report, args.show_skipped))?;
     }
 
     Ok(if report.is_clean() {

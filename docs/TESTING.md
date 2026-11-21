@@ -43,8 +43,11 @@ That runs unit tests, end-to-end scans of generated directory trees and
 archives, property tests of the signature database, of the archive unpacker
 and of the reader for executables, tests of the rule layer and of every
 heuristic indicator, a test that fits the heuristic weights to the counts
-in `calibration/` again and compares them with the scanner's, and tests
-that drive the `warden` binary the way a user would.
+in `calibration/` again and compares them with the scanner's, the tests of
+the quarantine with every operation cut off at every step, and tests that
+drive the `warden` binary the way a user would. Among the last are two that
+give the program an output nobody reads any more, as `warden scan … | head`
+does: it has to end quietly, and it used to panic.
 
 The same checks CI runs before anything is merged:
 
@@ -79,10 +82,10 @@ other scanners. A test checks the rule file for it.
 
 ## EICAR and your antivirus
 
-Two tests, and the demo, write the EICAR test file to disk and scan it. On a
-machine with a resident antivirus (on Windows, Microsoft Defender) that file
-is removed or locked within moments. That is correct behaviour, and it means
-Warden never gets to see the file.
+Three tests, and the demo, write the EICAR test file to disk and scan it.
+On a machine with a resident antivirus (on Windows, Microsoft Defender)
+that file is removed or locked within moments. That is correct behaviour,
+and it means Warden never gets to see the file.
 
 The tests are careful about where and when they do this:
 
@@ -100,12 +103,17 @@ The tests are careful about where and when they do this:
 Detection of the EICAR bytes in memory is tested everywhere,
 unconditionally.
 
-One more test uses the same folder under the same conditions: the scan
-test of the heuristic layer writes the inert executables to disk, and two
-of them are built to look packed. An antivirus that judges files by their
-structure may object to exactly that, however harmless the files are. The
-tests of `warden inspect` hand the same files over on standard input and
-write nothing.
+Two more tests use the same folder under the same conditions: the scan
+test of the heuristic layer and the test of the second sign write the
+inert executables to disk, and two of those are built to look packed. An
+antivirus that judges files by their structure may object to exactly that,
+however harmless the files are. The tests of `warden inspect` hand the same
+files over on standard input and write nothing.
+
+The third EICAR test is the one for the quarantine. It writes the test
+file into the excluded folder and keeps the quarantine itself in an
+ordinary temporary folder, which is not excluded. That is on purpose: what
+lies in a quarantine must not set off a resident antivirus.
 
 ### Excluding one folder from Microsoft Defender
 
@@ -128,6 +136,28 @@ Remove-MpPreference -ExclusionPath "$PWD\testdata\eicar-zone"
 
 The `testdata` folder is ignored by git. The EICAR file is generated when
 needed and deleted afterwards; it is never committed.
+
+## Tests that close a file or a folder
+
+Three tests take away the right to read a file or to list a folder, and
+check what a scan says about it. They cannot work for a process that
+access rights do not apply to:
+
+- On Linux and macOS that is root.
+- On Windows it is a process whose backup privilege is switched on. Such
+  a process lists a folder whatever the folder's access rights say. An
+  administrator's programs have that privilege switched off, unless they
+  are started from Git Bash, which switches it on for everything it
+  starts. On a hosted Windows runner, `whoami /priv` showed the privilege
+  as enabled under Git Bash and as disabled under PowerShell, and the same
+  test found its folder open under the one and closed under the other.
+
+Such a test then passes and prints a note that it was not exercised.
+`WARDEN_REQUIRE_ACCESS_TESTS=1` turns the note into a failure. CI sets it
+on both systems, and starts the tests on Windows from PowerShell.
+
+The same holds for Warden itself: which folders a scan may open on Windows
+depends on how it was started, and not only on the account.
 
 ## Hostile input
 
@@ -155,7 +185,12 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
   before a name reaches a report or a terminal, and nothing is ever written
   to a path taken from an archive.
 - The rule bundle reader is tested against truncation, damage in the header
-  and the body, and bundles written for another version of the rule engine.
+  and the body, and bundles written for another version of the rule engine,
+  in both versions of the format. For the version that keeps its contents
+  under a cipher, tests check that what the rules look for cannot be found
+  in the file, that a key which does not belong to the contents is
+  refused, that the same rules give the same file, and that the cipher is
+  ChaCha20 as RFC 8439 defines it, by the example that the RFC gives.
   A rule that does not compile is left out and named, and the rest of its
   file is kept.
 - The reader for Windows executables takes every offset, size and count
@@ -216,6 +251,71 @@ CI runner one test does the same with 1,500 real executables from
 `C:\Windows\System32`: header fields, sections and imports have to agree.
 Set `WARDEN_PE_CORPUS` to a folder to run it on your own files.
 
+## A finding that needs a second sign
+
+The match of a rule that a tool generated counts only together with a
+sign from another layer ([RULES.md](RULES.md#generated-rules)). That rule
+of the verdict policy is tested at four levels, each without a single
+real rule or sample:
+
+- **The policy alone**, on findings written out by hand: backed, not
+  backed, backed by the same layer only, backed by a finding that is too
+  weak to count itself.
+- **The scan pipeline**, with two stand-in detectors: one whose finding
+  waits for backing, and one that offers it. Among the cases is an archive
+  in which one member has the waiting finding and another member the
+  offer, which must not add up.
+- **The two real layers.** A test rule that says a tool made it, and the
+  inert executables: the rule matches a text file, a plain executable, one
+  that looks packed and one the heuristics call suspicious. The first two
+  come out clean with the match on record, the other two suspicious. The
+  same files without the heuristic layer: all four on record, none
+  reported.
+- **The number.** The bar from which a structure counts as a second sign
+  is computed from the counts in `calibration/`, and a test fails if the
+  scanner uses another one.
+
+What no test can show is what the rule costs in detection: that takes
+malware samples.
+
+## The quarantine
+
+[QUARANTINE.md](QUARANTINE.md) describes what it does. The tests, all
+with made-up bytes in temporary folders:
+
+| | Where it runs | What must hold |
+|---|---|---|
+| Round trips | Everywhere | A file comes back with its content and its timestamps, to the fraction of a second; files of every size, from empty to larger than the buffer they are copied through; restoring elsewhere; not replacing a file unless asked, and never a folder; a damaged entry is not restored, and nothing appears at the destination |
+| Unix | Linux, macOS | Permission bits come back, set-user-id included; a link is not followed; a file name that is not Unicode comes back byte for byte; every file of the quarantine is closed to other users |
+| Interruptions | Everywhere | Every operation stopped after every step, the quarantine opened again: the file is whole and in exactly one place. A property test does it with random content and random stopping points |
+| Windows | Windows | Attribute bits, all three timestamps, the mark of the internet, and the security descriptor come back; so do access rights that deny the restoring user everything but reading; a restore cut off after the file had its name still gives the file its rights |
+| The check of security descriptors | Everywhere | A descriptor whose parts do not lie inside it is refused, and no input makes the check panic: every prefix of a good descriptor and a good one with each byte changed in turn |
+| The command line | Everywhere | The round trip, the refusals and a run that died, through `warden quarantine` the way a person would type it; and the EICAR file, see above |
+
+Two things about the Windows tests.
+
+They do not trust the quarantine about itself. Whether a file's rights
+came back is asked of `icacls`, which prints them as Windows sees them,
+and whether everything in the record came back is checked by quarantining
+the restored file a second time: the second record has to say what the
+first one said, the security descriptor byte for byte.
+
+And they make their own conditions. What rights a new file starts with
+depends on where a machine keeps its temporary files; the first version of
+these tests assumed the usual answer and failed on the CI runner, where it
+is another one. Each test now gives its folder rights of its own first.
+
+The Windows code cannot be built on another system, and the whole of CI
+takes about twenty minutes on Windows. The `Windows check` workflow runs
+the lints and tests of this one crate on a Windows runner in about two,
+for a first answer. It starts by hand or when a branch named
+`win-check/...` is pushed.
+
+**Not tested:** a power cut, as opposed to a program that dies; file
+systems other than the runner's NTFS and the Linux container's; a Windows
+user without administrator rights, which the user of the CI runner has;
+restoring a file that belongs to another user.
+
 ## False positives
 
 ```
@@ -226,7 +326,25 @@ scans files that are expected to be clean with every layer and lists each
 one that gets a verdict other than clean, with the rules that matched or
 the name of the heuristic finding. It exits with 0 when
 nothing was flagged and 1 otherwise, and `--output` saves the result as
-JSON.
+JSON. Files with a finding that did not count are listed apart: their
+verdict is clean, and the list shows that they were scanned and why they
+were not reported.
+
+A result also says what it did not cover. Files that could not be read are
+listed, and folders that could not be opened are listed and counted apart
+from them. The difference matters: a file that cannot be read is one file,
+and a folder that cannot be opened is everything in it. Windows, for one,
+lets a program without administrator rights see
+`C:\Program Files\WindowsApps` and not list it. A run in phase 4 that
+found 52,579 files fewer than the run before it, with six more entries it
+could not read, is what made this visible
+([BENCHMARKS.md](BENCHMARKS.md#with-a-second-sign-for-generated-rules)).
+The repeat with administrator rights listed that folder and found 52,631
+files in it
+([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-again-with-administrator-rights)).
+Tests close a folder on purpose, with permissions on Unix and with a
+denial for everyone on Windows, and check that a scan, a check of clean
+files and a benchmark each say so.
 
 A count is only meaningful together with the rule set that produced it, so
 every result records the bundle's digest, and the bundle records which rule
@@ -261,6 +379,96 @@ On your own Windows machine, `scripts\win\check.cmd -Rules` does the same
 for the System32 folder. Microsoft Defender blocks the rule package it
 downloads; [RULES.md](RULES.md#rule-files-and-your-antivirus) explains why,
 and the one folder exclusion that this needs.
+
+### A machine the list was not written from
+
+Every run above is on a machine whose files have shaped the exclusion
+list, or could have. A fairer test is a Windows that was installed for the
+purpose and has seen nothing else. Such a machine has no network, no
+shared folder and no tools, and should stay that way until it is scanned,
+so everything comes on a CD image:
+
+```
+pip install pycdlib
+python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --out rules/vendor/warden-kit.iso
+```
+
+A kit can carry a second bundle as a control:
+
+```
+warden rules build --plain rules/vendor/yara-forge-rules-core.zip --exclusions rules/exclusions.toml --out rules/vendor/rules-plain.wrb
+python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --control rules/vendor/rules-plain.wrb --out rules/vendor/warden-kit.iso
+```
+
+The control holds its rules as they are, where the bundle the scan uses
+keeps them under a cipher
+([RULES.md](RULES.md#rule-files-and-your-antivirus)). The scan never uses
+the control. The script only asks whether it can be read, so that one run
+shows whether the machine's antivirus tells the two apart.
+
+A kit that holds a bundle with its rules as they are, as a control or as
+its only bundle, has to stay in `rules/vendor`: Microsoft Defender removes
+such a file anywhere else, and may take the image for it too.
+
+The image holds the Windows build of Warden, the bundle or bundles, and
+`fresh-install-scan.cmd`. Attached to a virtual machine and started there
+as administrator, the script
+
+1. records what the machine is: edition, build, installed updates and
+   programs, whether a network is up, what the antivirus is doing;
+2. asks `warden rules info` whether the rule bundle can be read on this
+   machine, and the same of the control if there is one;
+3. runs `warden false-positives` over the whole of `C:\`;
+4. records what the machine's antivirus reported in the meantime;
+5. writes all of it to `C:\warden-out`.
+
+While it runs, the script asks Windows to stay awake: a fresh Windows goes
+to sleep after some minutes without input, and a scan of a whole drive
+takes longer.
+
+If the machine has a serial port, the script also sends the results
+through it, each with a checksum. That is the way out of a machine without
+a network: the hypervisor writes what arrives to a file on the host.
+There, a second script takes that file apart and checks each result
+against its checksum:
+
+```
+python3 scripts/read-scan-kit-output.py com1.txt --out results/
+```
+
+Three things to know before the first run:
+
+- **Microsoft Defender on a fresh Windows blocked the rule bundle of the
+  first kits**, as it did on the desktop
+  ([RULES.md](RULES.md#rule-files-and-your-antivirus)). That bundle stored
+  its rules as they are. Warden then cannot read it: "the file contains a
+  virus or potentially unwanted software". The script notices in step 2,
+  says so, and scans with the layers that need no bundle: the built-in
+  signature and rule, and the heuristics. The result is marked as such. A
+  bundle keeps its contents under a cipher now, so that this does not
+  happen: the same machine later read such a bundle, and blocked the old
+  one that the kit carried next to it as a control. Another antivirus may
+  decide differently, which is why the script still looks before it
+  scans. Whatever the bundle, it changes no antivirus setting, as no
+  script here does.
+- **Do not click into the script's window.** A click selects text, and
+  Windows holds a console program still for as long as text is selected.
+  The scan then waits, without a word, until Esc is pressed.
+- **The virtual machine may need switching off and on.** On VirtualBox 7.1
+  on a Windows host, the machine's firmware crashed at the first restart
+  of Windows Setup and left a black screen, and later a machine that had
+  apparently gone to sleep did not wake up. Neither has to do with Warden.
+  Powering the machine off and starting it again helped both times;
+  Windows Setup went on where it had stopped.
+
+The runs with the kit are in
+[BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11).
+
+`warden.exe` is built with the C runtime linked in (`.cargo/config.toml`),
+because a freshly installed Windows does not have it: the Windows 11 of
+the first run with the kit had no `vcruntime140.dll`, and this build
+started there. A test checks that the Windows build asks for no runtime
+library.
 
 ## Benchmarks
 

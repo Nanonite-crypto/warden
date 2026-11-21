@@ -69,6 +69,8 @@ pub struct YaraDetector {
 }
 
 /// How the rules of a detector are spread over scores and licences.
+///
+/// Every rule is counted once under `high`, `medium`, `low` or `generated`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RuleStats {
     /// Rules whose matches are reported with high confidence.
@@ -77,8 +79,12 @@ pub struct RuleStats {
     pub medium: u64,
     /// Rules whose matches are reported with low confidence.
     pub low: u64,
-    /// Rules that state no score. They are also counted above, under the
-    /// confidence that the default score gives them.
+    /// Rules that a tool generated, see [`generator`], whatever their
+    /// score. A match of one counts only with a second sign from another
+    /// layer, and then with medium confidence at most.
+    pub generated: u64,
+    /// Rules that state no score. They are also counted above, by the
+    /// default score or as generated.
     pub unscored: u64,
     /// How many rules name each licence, by the `license_url` or `license`
     /// in their metadata. Rules that name none are counted under an empty
@@ -156,8 +162,10 @@ impl YaraDetector {
             let mut score = None;
             let mut licence_url = None;
             let mut licence = None;
+            let mut generated = false;
             for (key, value) in rule.metadata() {
                 match (key, value) {
+                    ("tool", MetaValue::String(text)) => generated |= generator(text).is_some(),
                     ("score", MetaValue::Integer(number)) => score = Some(number.clamp(0, 100)),
                     ("license_url", MetaValue::String(text)) => licence_url = Some(text.trim()),
                     ("license", MetaValue::String(text)) => licence = Some(text.trim()),
@@ -168,7 +176,9 @@ impl YaraDetector {
                 stats.unscored += 1;
             }
             let score = score.unwrap_or(self.options.default_score);
-            if score >= self.options.high_at {
+            if generated {
+                stats.generated += 1;
+            } else if score >= self.options.high_at {
                 stats.high += 1;
             } else if score >= self.options.medium_at {
                 stats.medium += 1;
@@ -217,6 +227,12 @@ impl Detector for YaraDetector {
                 .sum();
             details.insert("rules_excluded", InfoValue::Count(excluded));
         }
+        // How many of the rules count only with a second sign. Without this
+        // number a report could not say why a rule match changed nothing.
+        details.insert(
+            "rules_generated",
+            InfoValue::Count(bundle.generated_rules()),
+        );
         details.insert("engine", InfoValue::Text(ENGINE.to_owned()));
         details.insert(
             "origin",
@@ -305,12 +321,58 @@ impl Session for YaraSession<'_> {
     }
 }
 
+/// The tool that generated a rule, going by the rule's `tool` metadata.
+///
+/// Most rules are written by a person who decided what each pattern is
+/// evidence of. Some are written by a program. yara-signator, the tool
+/// behind the Malpedia rules, takes the samples of one malware family and
+/// picks instruction sequences they have in common and that its collection
+/// of other families does not have. Clean software is not part of that
+/// comparison, so a sequence from a library that the family links in, a
+/// compression routine or a C runtime, can end up in a rule. Such a rule
+/// matches every clean program built with that library.
+///
+/// Warden therefore lets the match of a generated rule count only together
+/// with a sign from another layer, see
+/// [`Counts::WithSecondSign`](warden_engine::Counts). Returns the tool's
+/// name as the rule gives it, or nothing for a rule that names no tool
+/// Warden knows.
+#[must_use]
+pub fn generator(tool: &str) -> Option<&str> {
+    let tool = tool.trim();
+    let known = tool
+        .get(..GENERATOR.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(GENERATOR));
+    known.then_some(tool)
+}
+
+/// The one rule generator met so far. Its rules say `tool = "yara-signator
+/// v0.6.0"`.
+const GENERATOR: &str = "yara-signator";
+
+impl RuleBundle {
+    /// How many of the rules a tool generated, see [`generator`]. A match
+    /// of one counts only together with a sign from another layer.
+    #[must_use]
+    pub fn generated_rules(&self) -> u64 {
+        self.rules()
+            .iter()
+            .filter(|rule| {
+                rule.metadata().into_iter().any(|(key, value)| {
+                    matches!((key, value), ("tool", MetaValue::String(text)) if generator(text).is_some())
+                })
+            })
+            .count() as u64
+    }
+}
+
 /// Turns one matching rule into a finding, and returns its score with it.
 fn finding_for(rule: &yara_x::Rule<'_, '_>, options: &YaraOptions) -> (i64, Finding) {
     let mut threat_name = None;
     let mut description = None;
     let mut author = None;
     let mut reference = None;
+    let mut generated_by = None;
     let mut category = ThreatCategory::Malware;
     let mut score = options.default_score;
 
@@ -331,18 +393,26 @@ fn finding_for(rule: &yara_x::Rule<'_, '_>, options: &YaraOptions) -> (i64, Find
             ("category", MetaValue::String(text)) => {
                 category = parse_category(text).unwrap_or(category);
             }
+            ("tool", MetaValue::String(text)) => {
+                generated_by = generated_by.or(generator(text));
+            }
             ("score", MetaValue::Integer(number)) => score = number.clamp(0, 100),
             _ => {}
         }
     }
 
-    let confidence = if score >= options.high_at {
+    let mut confidence = if score >= options.high_at {
         Confidence::High
     } else if score >= options.medium_at {
         Confidence::Medium
     } else {
         Confidence::Low
     };
+    if generated_by.is_some() {
+        // Whatever score its tool gave it: with a second sign a generated
+        // rule makes a file suspicious, and nothing more than that.
+        confidence = confidence.min(Confidence::Medium);
+    }
 
     let identifier = printable(rule.identifier(), MAX_NAME_CHARS);
     let mut reasons = Vec::with_capacity(3);
@@ -390,15 +460,24 @@ fn finding_for(rule: &yara_x::Rule<'_, '_>, options: &YaraOptions) -> (i64, Find
         ));
     }
     reasons.push(origin);
+    if let Some(tool) = generated_by {
+        reasons.push(format!(
+            "The rule was generated by a tool, {}, from samples of one malware family. Such a \
+             rule also matches code that those samples share with clean software, so its match \
+             counts only together with a sign from another layer",
+            printable(tool, MAX_NAME_CHARS)
+        ));
+    }
 
     let name = match threat_name {
         Some(name) => printable(name.trim(), MAX_NAME_CHARS),
         None => identifier,
     };
-    (
-        score,
-        Finding::new(YaraDetector::ID, name, category, confidence, reasons),
-    )
+    let mut finding = Finding::new(YaraDetector::ID, name, category, confidence, reasons);
+    if generated_by.is_some() {
+        finding = finding.with_second_sign();
+    }
+    (score, finding)
 }
 
 fn parse_category(text: &str) -> Option<ThreatCategory> {

@@ -15,7 +15,9 @@
 //! 3. Detectors report [`Finding`]s: what they saw and why it matters.
 //! 4. A [`VerdictPolicy`] turns the findings for a file into a [`Verdict`].
 //!    Detection and decision are separate on purpose, so that a new detector
-//!    never has to know what the product does about a finding.
+//!    never has to know what the product does about a finding. The policy
+//!    is also where layers meet: a finding that is too weak to count by
+//!    itself counts when another layer has a sign about the same file.
 //! 5. The calling thread collects the results into a [`ScanReport`]. Files
 //!    that could not be read are listed with a reason, never silently
 //!    dropped.
@@ -64,12 +66,13 @@ mod verdict;
 pub use cancel::CancelToken;
 pub use detector::{Detector, DetectorError, DetectorInfo, FileView, InfoValue, Session};
 pub use error::ScanError;
-pub use finding::{Confidence, Finding, Member, ThreatCategory, Verdict};
+pub use finding::{Confidence, Counts, Finding, Member, ThreatCategory, Verdict};
 pub use hash_detector::HashDetector;
 pub use observer::{NoObserver, Progress, ScanObserver};
 pub use options::{ArchiveOptions, ScanOptions};
 pub use report::{
-    Detection, Partial, PartialReason, PartialScan, ScanReport, ScanStats, SkipReason, Skipped,
+    Detection, Partial, PartialReason, PartialScan, Recorded, ScanReport, ScanStats, SkipReason,
+    Skipped,
 };
 pub use scanner::{Scanner, ScannerBuilder};
 pub use session::{FileResult, ScanSession};
@@ -86,7 +89,16 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Version 2 added archive members to findings and replaced the separate
 /// lists of oversized files and detector failures with one list of partially
 /// scanned files.
-pub const REPORT_SCHEMA: u32 = 2;
+///
+/// Version 3 added `counts` to the findings that do not count by
+/// themselves, and the list of files that kept a clean verdict with
+/// findings on record.
+///
+/// Version 4 tells folders from files among what could not be scanned.
+/// `files_skipped` used to count both and counts files only now; the
+/// folders are in `folders_skipped`, and every entry of `skipped` says
+/// which of the two it is.
+pub const REPORT_SCHEMA: u32 = 4;
 
 /// Computes the SHA-256 of a byte slice.
 #[must_use]

@@ -1,6 +1,9 @@
 //! Tests of the `warden` binary as a user would run it.
 
 #![allow(clippy::unwrap_used)]
+// The program itself may not print with `eprintln!` (see clippy.toml); a test
+// that says why it was skipped may.
+#![allow(clippy::disallowed_macros)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -14,6 +17,7 @@ fn warden() -> Command {
     command
         .env_remove("WARDEN_SIGDB")
         .env_remove("WARDEN_RULES")
+        .env_remove("WARDEN_QUARANTINE")
         .env_remove("SOURCE_DATE_EPOCH");
     command
 }
@@ -152,7 +156,7 @@ fn json_output_is_the_full_report() {
             .arg(&report_file),
     );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(json["schema"], 2);
+    assert_eq!(json["schema"], 4);
     assert_eq!(json["stats"]["files_scanned"], 3);
     assert_eq!(json["stats"]["detections"], 1);
     assert_eq!(json["detections"][0]["verdict"], "malicious");
@@ -203,6 +207,239 @@ fn impossible_requests_exit_two_with_a_message() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains("not a Warden signature database"));
+}
+
+/// Called by a test that took the right to list a folder away and found
+/// that this process can list it all the same. There is nothing to test
+/// then.
+///
+/// Access rights do not apply to root on Unix. On Windows they do not apply
+/// to the listing of folders for a process whose backup privilege is
+/// switched on, and the Git Bash of an administrator switches it on for
+/// every program it starts, `warden` included.
+///
+/// The test passes with a note. `WARDEN_REQUIRE_ACCESS_TESTS=1` turns the
+/// note into a failure; CI sets it, so that these tests run for real there.
+fn access_rights_do_not_apply(what: &str) {
+    let note = format!(
+        "{what} was not exercised: access rights do not apply to this process. \
+         See docs/TESTING.md."
+    );
+    let strict = std::env::var_os("WARDEN_REQUIRE_ACCESS_TESTS").is_some_and(|value| value == "1");
+    assert!(!strict, "{note}");
+    eprintln!("note: {note}");
+}
+
+/// Makes a folder impossible to list, the way `C:\Program Files\WindowsApps`
+/// is for a program without administrator rights. Says `false` if this
+/// process can list it all the same, see [`access_rights_do_not_apply`].
+#[cfg(unix)]
+fn close_folder(folder: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
+    true
+}
+
+#[cfg(unix)]
+fn open_folder(folder: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700)).unwrap();
+}
+
+#[cfg(windows)]
+fn icacls(folder: &Path, arguments: &[&str]) {
+    let status = std::process::Command::new("icacls")
+        .arg(folder)
+        .args(arguments)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success(), "icacls {arguments:?}");
+}
+
+/// Everyone (S-1-1-0) is denied the right to list the folder. A denial comes
+/// before every permission, an administrator's included. Says `false` if
+/// this process can list the folder all the same, see
+/// [`access_rights_do_not_apply`].
+#[cfg(windows)]
+fn close_folder(folder: &Path) -> bool {
+    icacls(folder, &["/deny", "*S-1-1-0:(RD)"]);
+    if fs::read_dir(folder).is_ok() {
+        open_folder(folder);
+        return false;
+    }
+    true
+}
+
+#[cfg(windows)]
+fn open_folder(folder: &Path) {
+    icacls(folder, &["/remove:d", "*S-1-1-0"]);
+}
+
+#[test]
+fn a_folder_that_cannot_be_opened_is_named_and_counted_apart_from_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    let closed = tree.join("closed");
+    fs::create_dir_all(closed.join("deeper")).unwrap();
+    fs::write(tree.join("open.txt"), "one file that can be read").unwrap();
+    for name in ["a.txt", "b.txt", "deeper/c.txt"] {
+        fs::write(closed.join(name), "three files that cannot").unwrap();
+    }
+    if !close_folder(&closed) {
+        access_rights_do_not_apply("a folder that cannot be opened");
+        return;
+    }
+
+    let check = warden()
+        .arg("false-positives")
+        .arg(&tree)
+        .arg("--json")
+        .output()
+        .unwrap();
+    let check_text = warden()
+        .arg("false-positives")
+        .arg(&tree)
+        .arg("--no-progress")
+        .output()
+        .unwrap();
+    let scan = warden()
+        .arg("scan")
+        .arg(&tree)
+        .arg("--show-skipped")
+        .output()
+        .unwrap();
+    let bench = warden()
+        .arg("bench")
+        .arg(&tree)
+        .args(["--runs", "1", "--json"])
+        .output()
+        .unwrap();
+    // Before anything can fail: the temporary folder has to go away again.
+    open_folder(&closed);
+
+    // One file was scanned. The folder is one entry, and it is not a file.
+    assert_eq!(check.status.code(), Some(0));
+    let json: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
+    assert_eq!(json["files_scanned"], 1);
+    assert_eq!(json["files_skipped"], 0);
+    assert_eq!(json["folders_skipped"], 1);
+    let skipped = json["skipped"].as_array().unwrap();
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0]["folder"], true);
+    assert_eq!(skipped[0]["reason"], "access_denied");
+    assert!(skipped[0]["path"].as_str().unwrap().ends_with("closed"));
+    assert!(!skipped[0]["detail"].as_str().unwrap().is_empty());
+    assert_eq!(json["skipped_truncated"], false);
+
+    let text = String::from_utf8(check_text.stdout).unwrap();
+    assert!(
+        text.contains("Not covered 1 folder could not be opened\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("was not scanned and is not counted."),
+        "{text}"
+    );
+    let listed = text
+        .split("Folders that could not be opened\n")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{text}"));
+    assert!(listed.starts_with("  access_denied  "), "{text}");
+    assert!(listed.lines().next().unwrap().ends_with("closed"), "{text}");
+    assert!(!text.contains("Files that could not be read"), "{text}");
+
+    assert_eq!(scan.status.code(), Some(0));
+    let text = String::from_utf8(scan.stdout).unwrap();
+    assert!(
+        text.contains("Skipped     1 folder (access_denied: 1)\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("What is in a folder that could not be opened was not scanned."),
+        "{text}"
+    );
+    assert!(
+        text.contains("Folders that could not be opened\n  access_denied  "),
+        "{text}"
+    );
+    assert!(!text.contains("Skipped files"), "{text}");
+
+    let json: serde_json::Value = serde_json::from_slice(&bench.stdout).unwrap();
+    let run = &json["configurations"][0]["runs"][0];
+    assert_eq!(run["files_scanned"], 1);
+    assert_eq!(run["files_skipped"], 0);
+    assert_eq!(run["folders_skipped"], 1);
+}
+
+/// Runs `warden` with a standard output, or a standard error, whose reader
+/// has already left: `warden … | head` after `head` has had enough.
+fn run_with_closed(
+    stream: fn(&mut std::process::Command, std::io::PipeWriter),
+    arguments: &[&std::ffi::OsStr],
+) -> std::process::Output {
+    let (reader, writer) = std::io::pipe().unwrap();
+    drop(reader);
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_warden"));
+    command
+        .args(arguments)
+        .env_remove("WARDEN_SIGDB")
+        .env_remove("WARDEN_RULES")
+        .env_remove("WARDEN_QUARANTINE")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    stream(&mut command, writer);
+    command.spawn().unwrap().wait_with_output().unwrap()
+}
+
+#[test]
+fn a_reader_that_leaves_ends_the_command_quietly() {
+    let fixture = fixture();
+    let commands: [&[&std::ffi::OsStr]; 5] = [
+        // One line.
+        &["hash".as_ref(), fixture.threat.as_os_str()],
+        // A report, as text and as JSON.
+        &["scan".as_ref(), fixture.tree.as_os_str()],
+        &["scan".as_ref(), "--json".as_ref(), fixture.tree.as_os_str()],
+        // Many lines, one write each.
+        &[
+            "sigdb".as_ref(),
+            "info".as_ref(),
+            fixture.database.as_os_str(),
+        ],
+        &["false-positives".as_ref(), fixture.tree.as_os_str()],
+    ];
+    for arguments in commands {
+        let output = run_with_closed(
+            |command, writer| {
+                command.stdout(writer);
+            },
+            arguments,
+        );
+        // Not 0 and not 1: the command did not get to say what it found.
+        // And not 101, which is how a panic ends.
+        assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stderr), "", "{arguments:?}");
+    }
+}
+
+#[test]
+fn a_closed_error_stream_does_not_turn_an_error_into_a_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    let missing = dir.path().join("not-here");
+    let output = run_with_closed(
+        |command, writer| {
+            command.stderr(writer);
+        },
+        &["hash".as_ref(), missing.as_os_str()],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
 }
 
 #[test]
@@ -457,7 +694,7 @@ fn bench_reports_every_run_as_json_and_text() {
             .arg(&results_file),
     );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(json["schema"], 2);
+    assert_eq!(json["schema"], 3);
     assert_eq!(json["label"], "unit test");
     assert!(json["system"]["logical_cpus"].as_u64().unwrap() >= 1);
     let configurations = json["configurations"].as_array().unwrap();
@@ -584,7 +821,8 @@ fn rules_build_and_info_describe_a_bundle() {
                 ))
                 .and(predicate::str::contains("Test_Broken: "))
                 .and(predicate::str::contains("this_identifier_does_not_exist"))
-                .and(predicate::str::contains("markers.wrb")),
+                .and(predicate::str::contains("markers.wrb"))
+                .and(predicate::str::contains("contents under a cipher")),
         );
 
     warden()
@@ -594,6 +832,9 @@ fn rules_build_and_info_describe_a_bundle() {
         .success()
         .stdout(
             predicate::str::contains("Rules        3")
+                .and(predicate::str::contains(
+                    "Format       version 2, contents under a cipher",
+                ))
                 .and(predicate::str::contains(
                     "Built        2027-01-15T08:00:00Z",
                 ))
@@ -609,6 +850,7 @@ fn rules_build_and_info_describe_a_bundle() {
     ))
     .unwrap();
     assert_eq!(json["rules"], 3);
+    assert_eq!(json["format_version"], 2);
     assert_eq!(json["created_unix_secs"], 1_800_000_000u64);
     assert_eq!(json["sources"][1]["name"], "markers.yar");
     assert_eq!(json["sources"][1]["rules"], 2);
@@ -631,6 +873,109 @@ fn rules_build_and_info_describe_a_bundle() {
         .arg(dir.path().join("does-not-exist.yar"))
         .assert()
         .code(2);
+}
+
+/// Whether `needle` occurs anywhere in `haystack`.
+fn holds(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
+
+#[test]
+fn a_bundle_is_written_under_a_cipher_unless_plain_is_asked_for() {
+    let dir = tempfile::tempdir().unwrap();
+    let sealed = marker_bundle(dir.path());
+    let rules = dir.path().join("markers.yar");
+    let plain = dir.path().join("plain.wrb");
+    warden()
+        .args([
+            "rules",
+            "build",
+            "--plain",
+            "--created",
+            "1800000000",
+            "--out",
+        ])
+        .arg(&plain)
+        .arg(&rules)
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("contents as they are")
+                .and(predicate::str::contains("An antivirus may take a bundle")),
+        );
+
+    // What the rules look for can be read in the plain bundle and not in
+    // the other one. That is what an antivirus goes by.
+    let sealed_bytes = fs::read(&sealed).unwrap();
+    let plain_bytes = fs::read(&plain).unwrap();
+    for pattern in [
+        &b"WARDEN-CLI-HIGH"[..],
+        b"WARDEN-CLI-MEDIUM",
+        b"markers.yar",
+    ] {
+        let shown = String::from_utf8_lossy(pattern);
+        assert!(holds(&plain_bytes, pattern), "{shown} in the plain bundle");
+        assert!(
+            !holds(&sealed_bytes, pattern),
+            "{shown} in the sealed bundle"
+        );
+    }
+
+    // `rules info` says which is which, and describes the same rules.
+    let info_of = |bundle: &Path| -> serde_json::Value {
+        serde_json::from_str(&stdout_of(
+            warden().args(["rules", "info", "--json"]).arg(bundle),
+        ))
+        .unwrap()
+    };
+    let (sealed_info, plain_info) = (info_of(&sealed), info_of(&plain));
+    assert_eq!(sealed_info["format_version"], 2);
+    assert_eq!(plain_info["format_version"], 1);
+    for field in ["rules", "created_unix_secs", "engine", "sources", "scores"] {
+        assert_eq!(sealed_info[field], plain_info[field], "{field}");
+    }
+    assert_ne!(sealed_info["digest"], plain_info["digest"]);
+    warden()
+        .args(["rules", "info"])
+        .arg(&plain)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Format       version 1, contents as they are",
+        ));
+
+    // A scan finds the same with either.
+    let tree = dir.path().join("tree");
+    fs::create_dir_all(&tree).unwrap();
+    fs::write(tree.join("high.txt"), "text with WARDEN-CLI-HIGH in it").unwrap();
+    fs::write(tree.join("clean.txt"), "text with nothing in it").unwrap();
+    for bundle in [&sealed, &plain] {
+        warden()
+            .arg("scan")
+            .arg(&tree)
+            .arg("--rules")
+            .arg(bundle)
+            .assert()
+            .code(1)
+            .stdout(
+                predicate::str::contains("Rules       3 YARA rules from 2 files")
+                    .and(predicate::str::contains("1 detection"))
+                    .and(predicate::str::contains("MALICIOUS   Test_Marker_High")),
+            );
+    }
+
+    // Built a second time, by another run of the program, a bundle comes
+    // out the same byte for byte.
+    let again = dir.path().join("again.wrb");
+    warden()
+        .args(["rules", "build", "--created", "1800000000", "--out"])
+        .arg(&again)
+        .arg(&rules)
+        .assert()
+        .success();
+    assert_eq!(fs::read(&again).unwrap(), sealed_bytes);
 }
 
 #[test]
@@ -783,11 +1128,18 @@ fn false_positives_reports_what_was_flagged_in_clean_files() {
         );
     let json: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&results).unwrap()).unwrap();
-    assert_eq!(json["schema"], 1);
+    assert_eq!(json["schema"], 3);
     assert_eq!(json["label"], "unit test");
     assert_eq!(json["files_scanned"], 8);
     assert_eq!(json["flagged_malicious"], 0);
     assert_eq!(json["flagged"], serde_json::json!([]));
+    assert_eq!(json["recorded_files"], 0);
+    assert_eq!(json["recorded"], serde_json::json!([]));
+    assert_eq!(json["recorded_truncated"], false);
+    assert_eq!(json["files_skipped"], 0);
+    assert_eq!(json["folders_skipped"], 0);
+    assert_eq!(json["skipped"], serde_json::json!([]));
+    assert_eq!(json["skipped_truncated"], false);
     assert!(json["system"]["logical_cpus"].as_u64().unwrap() >= 1);
 
     // Two files that the rules flag although they are "clean" by decree.
@@ -1310,6 +1662,306 @@ fn scan_reports_a_suspicious_structure_and_says_what_it_is_made_of() {
     assert!(!without.contains("Heuristics"), "{without}");
 }
 
+/// A rule that says a tool made it, like the generated rules of the public
+/// rule sets. It matches every file that starts the way a Windows
+/// executable does, which is about as much as some of those rules know.
+const GENERATED_RULE: &str = r#"
+rule Test_Generated_Starts_Like_A_Program
+{
+    meta:
+        description = "autogenerated rule brought to you by yara-signator"
+        score = 75
+        tool = "yara-signator v0.6.0"
+    condition:
+        uint16(0) == 0x5A4D
+}
+"#;
+
+/// The second sign end to end: a generated rule alone changes nothing, and
+/// together with an unusual structure it makes a file suspicious. The
+/// files are inert fixtures, but two of them look packed, so they are
+/// written only where the EICAR test file may be written: see
+/// `eicar_write_then_scan_detects_every_form`.
+#[test]
+fn a_generated_rule_counts_only_together_with_an_unusual_structure() {
+    use warden_pe::fixture::Fixture;
+
+    let strict = std::env::var_os("WARDEN_REQUIRE_EICAR").is_some_and(|value| value == "1");
+    let configured = std::env::var_os("WARDEN_EICAR_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if cfg!(windows) && configured.is_none() {
+        let note = "second sign not exercised: WARDEN_EICAR_DIR is not set to an antivirus-excluded folder. See docs/TESTING.md.";
+        assert!(!strict, "{note}");
+        eprintln!("note: {note}");
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let rules = temp.path().join("generated.yar");
+    fs::write(&rules, GENERATED_RULE).unwrap();
+    let bundle = temp.path().join("generated.wrb");
+    let built = stdout_of(
+        warden()
+            .args(["rules", "build", "--no-builtin", "--out"])
+            .arg(&bundle)
+            .arg(&rules),
+    );
+    assert!(
+        built.contains("A tool generated 1 of them. A match of one counts only together"),
+        "{built}"
+    );
+    let info = stdout_of(warden().args(["rules", "info"]).arg(&bundle));
+    assert!(
+        info.contains("suspicious, and only with a second sign from another layer,")
+            && info.contains("for 1 rule that a tool generated"),
+        "{info}"
+    );
+    let info: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden().args(["rules", "info", "--json"]).arg(&bundle),
+    ))
+    .unwrap();
+    assert_eq!(info["scores"]["with_second_sign"], 1);
+    assert_eq!(info["scores"]["suspicious"], 0);
+
+    let dir = match &configured {
+        Some(base) => base.join(format!("second-sign-{}", std::process::id())),
+        None => temp.path().join("zone"),
+    };
+    fs::create_dir_all(&dir).unwrap();
+    let files = [
+        // The rule matches all four. Only the structure tells them apart.
+        (
+            "a-note.txt",
+            b"MZ is how every Windows program starts".to_vec(),
+        ),
+        ("b-plain.exe", Fixture::plain().build()),
+        ("c-packed-looking.exe", Fixture::packed_looking().build()),
+        (
+            "d-suspicious-looking.exe",
+            Fixture::suspicious_looking().build(),
+        ),
+    ];
+    for (name, content) in &files {
+        fs::write(dir.join(name), content).unwrap();
+    }
+
+    let run = |arguments: &[&str]| {
+        let mut command = warden();
+        command
+            .arg(arguments[0])
+            .arg(&dir)
+            .arg("--rules")
+            .arg(&bundle);
+        command.args(&arguments[1..]);
+        command.assert().get_output().clone()
+    };
+    let json = run(&["scan", "--json"]);
+    let text = run(&["scan"]);
+    let without = run(&["scan", "--no-heuristics", "--json"]);
+    let check = run(&["false-positives", "--json"]);
+    let check_text = run(&["false-positives", "--no-progress"]);
+    for (name, _) in &files {
+        let _ = fs::remove_file(dir.join(name));
+    }
+    let _ = fs::remove_dir(&dir);
+
+    // Two files are flagged, and two are on record with a clean verdict.
+    assert_eq!(json.status.code(), Some(1));
+    let report: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(report["stats"]["files_scanned"], 4);
+    assert_eq!(report["stats"]["detections"], 2);
+    assert_eq!(report["stats"]["files_recorded"], 2);
+    let yara = report["detectors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|detector| detector["id"] == "yara")
+        .unwrap();
+    assert_eq!(yara["details"]["rules_generated"], 1);
+
+    let detections = report["detections"].as_array().unwrap();
+    assert_eq!(detections.len(), 2, "{report:#}");
+    // Packed-looking: the structure is not suspicious by itself. It is the
+    // second sign the rule was waiting for.
+    let packed = &detections[0];
+    assert!(
+        packed["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("c-packed-looking.exe")
+    );
+    assert_eq!(packed["verdict"], "suspicious");
+    let findings = packed["findings"].as_array().unwrap();
+    assert_eq!(findings.len(), 2, "{packed:#}");
+    assert_eq!(findings[0]["detector"], "yara");
+    assert_eq!(findings[0]["name"], "Test_Generated_Starts_Like_A_Program");
+    assert_eq!(findings[0]["counts"], "with_second_sign");
+    assert_eq!(findings[0]["confidence"], "medium");
+    assert_eq!(
+        findings[0]["reasons"].as_array().unwrap().last().unwrap(),
+        "Counts, because another layer has something to say about the same file: heuristic"
+    );
+    assert_eq!(findings[1]["detector"], "heuristic");
+    assert_eq!(findings[1]["name"], "Heuristic.UnusualExecutable");
+    assert_eq!(findings[1]["counts"], "as_second_sign");
+    assert_eq!(findings[1]["confidence"], "low");
+    assert_eq!(
+        findings[1]["reasons"][0],
+        "The structure of the file scores 28: less than the 32 that make a file suspicious, \
+         and at least the 14 from which it backs up a finding of another layer"
+    );
+    // Suspicious-looking: flagged by its structure anyway, and the rule
+    // counts next to it.
+    let suspicious = &detections[1];
+    assert!(
+        suspicious["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("d-suspicious-looking.exe")
+    );
+    assert_eq!(suspicious["verdict"], "suspicious");
+    assert_eq!(suspicious["findings"][0]["confidence"], "medium");
+    assert_eq!(
+        suspicious["findings"][1]["name"],
+        "Heuristic.SuspiciousExecutable"
+    );
+    assert!(suspicious["findings"][1].get("counts").is_none());
+
+    // The plain program and the text file: the rule matched, nothing backs
+    // it up, the verdict is clean, and the match is on record.
+    let recorded = report["recorded"].as_array().unwrap();
+    assert_eq!(recorded.len(), 2, "{report:#}");
+    for (entry, name) in recorded.iter().zip(["a-note.txt", "b-plain.exe"]) {
+        assert!(entry["path"].as_str().unwrap().ends_with(name));
+        let findings = entry["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 1, "{entry:#}");
+        assert_eq!(findings[0]["counts"], "with_second_sign");
+        assert_eq!(findings[0]["confidence"], "low");
+        let reasons = findings[0]["reasons"].as_array().unwrap();
+        assert!(
+            reasons[reasons.len() - 2]
+                .as_str()
+                .unwrap()
+                .starts_with("The rule was generated by a tool, yara-signator v0.6.0, "),
+            "{reasons:?}"
+        );
+        assert_eq!(
+            reasons[reasons.len() - 1],
+            "No other layer has anything to say about this file, so this is recorded and does \
+             not change the verdict"
+        );
+    }
+
+    assert_eq!(text.status.code(), Some(1));
+    let text = String::from_utf8(text.stdout).unwrap();
+    for expected in [
+        "Rules       1 YARA rule from 1 file",
+        "; a tool generated 1 of them, and a match of one counts only with a second sign",
+        "suspicious from a score of 32, a second sign from 14",
+        "2 detections",
+        "SUSPICIOUS  Test_Generated_Starts_Like_A_Program, Heuristic.UnusualExecutable",
+        "SUSPICIOUS  Test_Generated_Starts_Like_A_Program, Heuristic.SuspiciousExecutable",
+        "2 files have findings on record that did not count. The verdict of those files is clean.",
+        "  ON RECORD   Test_Generated_Starts_Like_A_Program",
+    ] {
+        assert!(text.contains(expected), "missing {expected:?} in:\n{text}");
+    }
+
+    // Without the heuristic layer nobody offers a second sign: nothing is
+    // flagged, and all four matches are on record.
+    assert_eq!(without.status.code(), Some(0));
+    let without: serde_json::Value = serde_json::from_slice(&without.stdout).unwrap();
+    assert_eq!(without["stats"]["detections"], 0);
+    assert_eq!(without["stats"]["files_recorded"], 4);
+
+    // The check of clean files counts both kinds, and keeps them apart.
+    assert_eq!(check.status.code(), Some(1));
+    let check: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap();
+    assert_eq!(check["schema"], 3);
+    assert_eq!(check["flagged_suspicious"], 2);
+    assert_eq!(check["flagged_malicious"], 0);
+    assert_eq!(check["recorded_files"], 2);
+    assert_eq!(
+        check["recorded_by_name"],
+        serde_json::json!([{"name": "Test_Generated_Starts_Like_A_Program", "files": 2}])
+    );
+    let listed = check["recorded"].as_array().unwrap();
+    assert_eq!(listed.len(), 2);
+    assert!(listed[0]["path"].as_str().unwrap().ends_with("a-note.txt"));
+    assert_eq!(listed[0]["sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(
+        listed[0]["names"],
+        serde_json::json!(["Test_Generated_Starts_Like_A_Program"])
+    );
+    assert_eq!(check["recorded_truncated"], false);
+    let check_text = String::from_utf8(check_text.stdout).unwrap();
+    for expected in [
+        "Flagged     2 of 4 files",
+        "On record   2 files have findings that did not count; the verdict is clean",
+        "On record, by the name of the finding",
+        "  ON RECORD   ",
+    ] {
+        assert!(
+            check_text.contains(expected),
+            "missing {expected:?} in:\n{check_text}"
+        );
+    }
+}
+
+/// What `inspect` says about the second sign.
+#[test]
+fn inspect_says_whether_a_structure_is_enough_for_a_second_sign() {
+    use warden_pe::fixture::Fixture;
+
+    let look = |file: Vec<u8>, code: i32| {
+        let output = warden()
+            .args(["inspect", "-"])
+            .write_stdin(file)
+            .assert()
+            .code(code)
+            .get_output()
+            .clone();
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let packed = look(Fixture::packed_looking().build(), 0);
+    assert!(packed.contains("Score       28"), "{packed}");
+    assert!(
+        packed
+            .contains("Verdict     not suspicious: a file counts as suspicious from a score of 32"),
+        "{packed}"
+    );
+    assert!(
+        packed.contains(
+            "Second sign yes: it backs up a finding of another layer that does not count alone, which takes a score of 14"
+        ),
+        "{packed}"
+    );
+    let plain = look(Fixture::plain().build(), 0);
+    assert!(
+        plain.contains(
+            "Second sign no: to back up a finding of another layer that does not count alone takes a score of 14"
+        ),
+        "{plain}"
+    );
+    // A suspicious file has no need of the line.
+    let suspicious = look(Fixture::suspicious_looking().build(), 1);
+    assert!(!suspicious.contains("Second sign"), "{suspicious}");
+
+    let json: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(
+        &warden()
+            .args(["inspect", "-", "--json"])
+            .write_stdin(Fixture::packed_looking().build())
+            .assert()
+            .success()
+            .get_output()
+            .stdout,
+    ))
+    .unwrap();
+    assert_eq!(json["assessment"]["second_sign_from"], 14);
+    assert_eq!(json["assessment"]["second_sign"], true);
+    assert_eq!(json["assessment"]["suspicious"], false);
+}
+
 #[test]
 fn inspect_finds_little_in_an_ordinary_program() {
     let plain = warden_pe::fixture::Fixture::plain().build();
@@ -1412,4 +2064,403 @@ fn control_characters_in_file_names_do_not_reach_the_terminal() {
             .arg("--json"),
     );
     assert!(json.contains("evil\\u001b[2Jname.bin"));
+}
+
+/// Harmless bytes that stand in for a file somebody wants out of the way.
+/// The marker is what a scanner "would look for".
+const QUARANTINE_MARKER: &str = "WARDEN-CLI-QUARANTINE-MARKER";
+
+fn suspect_bytes() -> Vec<u8> {
+    format!("some bytes, then {QUARANTINE_MARKER}, then some more\n")
+        .repeat(40)
+        .into_bytes()
+}
+
+/// A moment long past, with a fraction of a second: 2021-03-04 05:06:07.5 UTC.
+fn long_ago() -> std::time::SystemTime {
+    std::time::UNIX_EPOCH + std::time::Duration::new(1_614_834_367, 500_000_000)
+}
+
+fn write_dated(path: &Path, bytes: &[u8]) {
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, bytes).unwrap();
+    let file = fs::File::options().write(true).open(path).unwrap();
+    file.set_times(fs::FileTimes::new().set_modified(long_ago()))
+        .unwrap();
+}
+
+/// The acceptance test of the quarantine: a file goes in and comes back
+/// with its content, its timestamp and its permissions.
+#[test]
+fn quarantine_moves_a_file_out_and_puts_it_back_as_it_was() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+    let file = dir.path().join("files").join("suspect.bin");
+    let bytes = suspect_bytes();
+    write_dated(&file, &bytes);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+    }
+    let digest = sha256_hex(&bytes);
+    let shown = file.to_string_lossy().into_owned();
+
+    let added = stdout_of(
+        warden()
+            .args(["quarantine", "add"])
+            .arg(&file)
+            .args(["--reason", "a test of the round trip", "--dir"])
+            .arg(&store),
+    );
+    assert!(added.contains(&format!("Quarantined  {shown}")), "{added}");
+    assert!(
+        added.contains(&format!("sha256     {digest} (2,480 bytes)")),
+        "{added}"
+    );
+    assert!(!file.exists(), "the file is gone from its place");
+
+    // What lies in the quarantine is not the file.
+    let stored: Vec<PathBuf> = fs::read_dir(store.join("items"))
+        .unwrap()
+        .map(|item| item.unwrap().path())
+        .collect();
+    assert_eq!(stored.len(), 1);
+    let on_disk = fs::read(&stored[0]).unwrap();
+    assert!(
+        !on_disk
+            .windows(QUARANTINE_MARKER.len())
+            .any(|window| window == QUARANTINE_MARKER.as_bytes())
+    );
+
+    let listed = stdout_of(warden().args(["quarantine", "list", "--dir"]).arg(&store));
+    for expected in [
+        "1 entry",
+        shown.as_str(),
+        "2,480 bytes",
+        "reason: a test of the round trip",
+    ] {
+        assert!(
+            listed.contains(expected),
+            "missing {expected:?} in:\n{listed}"
+        );
+    }
+    let json: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden()
+            .args(["quarantine", "list", "--json", "--dir"])
+            .arg(&store),
+    ))
+    .unwrap();
+    let entry = &json["entries"][0];
+    let id = entry["id"].as_str().unwrap().to_owned();
+    assert_eq!(id.len(), 16);
+    assert_eq!(entry["original_path"], shown.as_str());
+    assert_eq!(entry["size"], 2480);
+    assert_eq!(entry["sha256"], digest.as_str());
+    assert_eq!(entry["reason"]["note"], "a test of the round trip");
+    assert_eq!(entry["cipher"]["algorithm"], "chacha20");
+    assert_eq!(entry["times"]["modified"]["secs"], 1_614_834_367);
+    assert_eq!(entry["times"]["modified"]["nanos"], 500_000_000);
+    assert_eq!(json["damaged"], serde_json::json!([]));
+
+    // The start of the identifier is enough from here on.
+    let short = &id[..6];
+    let info = stdout_of(
+        warden()
+            .args(["quarantine", "info", short, "--dir"])
+            .arg(&store),
+    );
+    for expected in [
+        format!("Entry        {id}"),
+        format!("Was at       {shown}"),
+        format!("SHA-256      {digest}"),
+        "Modified     2021-03-04T05:06:07Z and 500,000,000 ns".to_owned(),
+        "Reason       a test of the round trip".to_owned(),
+    ] {
+        assert!(info.contains(&expected), "missing {expected:?} in:\n{info}");
+    }
+
+    let restored = stdout_of(
+        warden()
+            .args(["quarantine", "restore", short, "--dir"])
+            .arg(&store),
+    );
+    for expected in [
+        format!("Restored  {shown}"),
+        format!("sha256  {digest} (2,480 bytes), as recorded"),
+        "Its timestamps and permissions are what they were.".to_owned(),
+    ] {
+        assert!(
+            restored.contains(&expected),
+            "missing {expected:?} in:\n{restored}"
+        );
+    }
+    let metadata = fs::metadata(&file).unwrap();
+    assert_eq!(metadata.modified().unwrap(), long_ago());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(metadata.permissions().mode() & 0o7777, 0o640);
+    }
+    assert_eq!(fs::read(&file).unwrap(), bytes);
+    assert_eq!(hash_of(&file), digest);
+
+    let empty = stdout_of(warden().args(["quarantine", "list", "--dir"]).arg(&store));
+    assert!(empty.contains("Nothing is in quarantine."), "{empty}");
+}
+
+#[test]
+fn quarantine_says_no_and_why_and_leaves_things_as_they_are() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+    let file = dir.path().join("files").join("suspect.bin");
+    let bytes = suspect_bytes();
+    write_dated(&file, &bytes);
+    // The folder comes from the environment in this test.
+    let quarantine = || {
+        let mut command = warden();
+        command.env("WARDEN_QUARANTINE", &store).arg("quarantine");
+        command
+    };
+
+    // A folder is not a file, and one refusal does not stop the others.
+    let other = dir.path().join("files").join("other.bin");
+    write_dated(&other, b"another file");
+    quarantine()
+        .arg("add")
+        .arg(file.parent().unwrap())
+        .arg(&other)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "is a folder, and only a regular file can be quarantined",
+        ))
+        .stdout(predicate::str::contains("Quarantined  "));
+    assert!(!other.exists() && file.exists());
+
+    // Identifiers are hexadecimal, so no entry can start with this.
+    quarantine()
+        .args(["restore", "xyz"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("there is no quarantine entry xyz"));
+
+    // Something else has taken the file's place by the time it comes back.
+    let added = stdout_of(quarantine().arg("add").arg(&file));
+    let id = added
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("entry"))
+        .unwrap()
+        .trim()
+        .to_owned();
+    fs::write(&file, b"a newer file").unwrap();
+    quarantine()
+        .args(["restore", &id])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("exists already"));
+    assert_eq!(fs::read(&file).unwrap(), b"a newer file");
+
+    // Somewhere else it can go.
+    let elsewhere = dir.path().join("elsewhere.bin");
+    quarantine()
+        .args(["restore", &id, "--to"])
+        .arg(&elsewhere)
+        .assert()
+        .success();
+    assert_eq!(fs::read(&elsewhere).unwrap(), bytes);
+
+    // Or over what is there, if that is asked for.
+    let added = stdout_of(quarantine().arg("add").arg(&elsewhere));
+    let id = added
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("entry"))
+        .unwrap()
+        .trim()
+        .to_owned();
+    quarantine()
+        .args(["restore", &id, "--overwrite", "--to"])
+        .arg(&file)
+        .assert()
+        .success();
+    assert_eq!(fs::read(&file).unwrap(), bytes);
+
+    // Deleting is for good, and takes the other entry with it here.
+    let listed: serde_json::Value =
+        serde_json::from_str(&stdout_of(quarantine().args(["list", "--json"]))).unwrap();
+    let left = listed["entries"].as_array().unwrap();
+    assert_eq!(left.len(), 1);
+    let last = left[0]["id"].as_str().unwrap().to_owned();
+    quarantine()
+        .args(["delete", &last, "xyz"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains(format!("Deleted  {last}")))
+        .stderr(predicate::str::contains("there is no quarantine entry xyz"));
+    assert!(stdout_of(quarantine().arg("list")).contains("Nothing is in quarantine."));
+    assert!(!other.exists());
+}
+
+/// A run that died in the middle, as the next command meets it. The crash
+/// is made with the library's own switch for it, and the command line is
+/// what a person would type next.
+#[test]
+fn quarantine_settles_what_an_interrupted_run_left_behind() {
+    use warden_quarantine::{Quarantine, QuarantineError, Reason, RestoreOptions, Step};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+    let file = dir.path().join("files").join("suspect.bin");
+    let bytes = suspect_bytes();
+    write_dated(&file, &bytes);
+    let shown = file.to_string_lossy().into_owned();
+
+    // Dies when the copy is safe and the original is still there.
+    {
+        let (mut quarantine, _) = Quarantine::open(&store).unwrap();
+        quarantine.interrupt_after(Step::EntryCommitted);
+        let died = quarantine.add(&file, Reason::default()).unwrap_err();
+        assert!(matches!(died, QuarantineError::Interrupted(_)), "{died}");
+    }
+    assert!(file.exists());
+
+    let next = warden()
+        .args(["quarantine", "list", "--dir"])
+        .arg(&store)
+        .assert()
+        .success();
+    let output = next.get_output();
+    let said = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        said.contains(&format!(
+            "note: Quarantining {shown} had been cut off after the copy was safe. It was finished: the file is in quarantine as "
+        )),
+        "{said}"
+    );
+    let listed = String::from_utf8_lossy(&output.stdout).into_owned();
+    assert!(listed.contains("1 entry"), "{listed}");
+    assert!(!file.exists(), "the original is gone now");
+
+    // Dies while the file is being written back.
+    let id = {
+        let (mut quarantine, recovered) = Quarantine::open(&store).unwrap();
+        assert!(recovered.is_empty(), "the command before settled it");
+        let id = quarantine.list().unwrap().entries[0].info.id.clone();
+        quarantine.interrupt_after(Step::RestoreWritten);
+        quarantine
+            .restore(&id, &RestoreOptions::default())
+            .unwrap_err();
+        id
+    };
+    assert!(!file.exists());
+    assert_eq!(fs::read_dir(file.parent().unwrap()).unwrap().count(), 1);
+
+    let next = warden()
+        .args(["quarantine", "restore", &id, "--dir"])
+        .arg(&store)
+        .assert()
+        .success();
+    let said = String::from_utf8_lossy(&next.get_output().stderr).into_owned();
+    assert!(
+        said.contains(&format!(
+            "note: Restoring {shown} had been cut off before the file was back. It was undone: entry {id} is still in quarantine."
+        )),
+        "{said}"
+    );
+    // The same command then did what it was asked to.
+    assert_eq!(fs::read(&file).unwrap(), bytes);
+    assert_eq!(fs::read_dir(file.parent().unwrap()).unwrap().count(), 1);
+}
+
+/// The EICAR test file through the quarantine. It is written only where
+/// the test file may be written: see `eicar_write_then_scan_detects_every_form`.
+#[test]
+fn the_test_file_is_harmless_in_quarantine_and_itself_again_afterwards() {
+    let strict = std::env::var_os("WARDEN_REQUIRE_EICAR").is_some_and(|value| value == "1");
+    let not_exercised = |why: &str| {
+        let note = format!("EICAR in quarantine not exercised: {why}. See docs/TESTING.md.");
+        assert!(!strict, "{note}");
+        eprintln!("note: {note}");
+    };
+    let configured = std::env::var_os("WARDEN_EICAR_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if cfg!(windows) && configured.is_none() {
+        not_exercised("WARDEN_EICAR_DIR is not set to an antivirus-excluded folder");
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let dir = match &configured {
+        Some(base) => base.join(format!("quarantine-{}", std::process::id())),
+        None => temp.path().join("zone"),
+    };
+    let store = temp.path().join("quarantine");
+    let file = dir.join("eicar.com");
+    let scan = |path: &Path| {
+        let output = warden().arg("scan").arg(path).assert().get_output().clone();
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+        )
+    };
+
+    let written = warden()
+        .args(["eicar", "write"])
+        .arg(&dir)
+        .assert()
+        .get_output()
+        .status
+        .success();
+    let before = scan(&dir);
+    if !written || before.0 != Some(1) {
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_dir(&dir);
+        not_exercised("the test file could not be written, or was removed before the scan");
+        return;
+    }
+
+    let added = warden()
+        .args(["quarantine", "add"])
+        .arg(&file)
+        .args(["--reason", "detected as EICAR-Test-File", "--dir"])
+        .arg(&store)
+        .assert()
+        .get_output()
+        .clone();
+    let in_place = scan(&dir);
+    let in_store = scan(&store);
+    let id: Option<String> = String::from_utf8_lossy(&added.stdout)
+        .lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("entry")
+                .map(|id| id.trim().to_owned())
+        });
+    let restored = id.as_ref().map(|id| {
+        warden()
+            .args(["quarantine", "restore", id, "--dir"])
+            .arg(&store)
+            .assert()
+            .get_output()
+            .clone()
+    });
+    let after = scan(&dir);
+    let digest = file.exists().then(|| hash_of(&file));
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_dir(&dir);
+
+    assert!(added.status.success(), "{added:?}");
+    // Where the file was, there is nothing left to find.
+    assert_eq!(in_place.0, Some(0), "{}", in_place.1);
+    // And what is kept does not set off a scanner: not this one, and for
+    // the same reason not a resident antivirus that watches the folder.
+    assert_eq!(in_store.0, Some(0), "{}", in_store.1);
+    assert!(in_store.1.contains("No threats found."), "{}", in_store.1);
+
+    assert!(restored.is_some_and(|output| output.status.success()));
+    assert_eq!(after.0, Some(1), "it is detected again: {}", after.1);
+    assert_eq!(
+        digest.as_deref(),
+        Some("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")
+    );
 }

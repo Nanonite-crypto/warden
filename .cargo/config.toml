@@ -1,0 +1,22 @@
+# Link the C runtime into Warden's Windows programs.
+#
+# Left alone, a Rust program built with Microsoft's toolchain loads
+# vcruntime140.dll when it starts. That file belongs to the Visual C++
+# runtime, which most machines have because some other program installed it,
+# and which a freshly installed Windows does not have to have. A scanner is
+# exactly the kind of program that gets run on a machine nobody has prepared,
+# so Warden carries the runtime inside itself.
+#
+# A test reads the built program's import table and fails if such a library
+# is back: crates/warden-cli/tests/cli.rs.
+#
+# RUSTFLAGS in the environment replaces these flags, it does not add to them.
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

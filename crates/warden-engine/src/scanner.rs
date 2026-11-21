@@ -18,7 +18,7 @@ use crate::finding::Verdict;
 use crate::observer::{Progress, ScanObserver};
 use crate::options::ScanOptions;
 use crate::paths::{self, ExcludeSet};
-use crate::report::{Detection, PartialScan, ScanReport, ScanStats, SkipReason, Skipped};
+use crate::report::{Detection, PartialScan, Recorded, ScanReport, ScanStats, SkipReason, Skipped};
 use crate::session::{FileResult, ScanSession};
 use crate::verdict::VerdictPolicy;
 use crate::{ENGINE_VERSION, REPORT_SCHEMA};
@@ -255,6 +255,7 @@ impl Scanner {
                 },
                 Ok(Err((reason, detail))) => Outcome::Skipped(Skipped {
                     path,
+                    folder: false,
                     reason,
                     detail,
                 }),
@@ -264,6 +265,7 @@ impl Scanner {
                     session = self.session();
                     Outcome::Skipped(Skipped {
                         path,
+                        folder: false,
                         reason: SkipReason::InternalError,
                         detail: format!(
                             "checking this file panicked: {}",
@@ -314,9 +316,25 @@ fn walk_guarded(
     if let Err(payload) = attempt {
         let _ = outcomes.send(Outcome::Skipped(Skipped {
             path: PathBuf::new(),
+            folder: false,
             reason: SkipReason::InternalError,
             detail: format!("directory traversal panicked: {}", panic_message(&*payload)),
         }));
+    }
+}
+
+/// Whether an error of the traversal is about a folder.
+///
+/// The usual case is a folder that may not be listed. What it is can still
+/// be asked, because that is written in the folder above it. An error
+/// without a path comes from reading the entries of a folder, so it is
+/// about a folder too: its listing broke off. A path that cannot be asked
+/// about at all, a root that does not exist for one, is not counted as a
+/// folder.
+fn about_a_folder(error: &walkdir::Error) -> bool {
+    match error.path() {
+        Some(path) => std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()),
+        None => true,
     }
 }
 
@@ -348,6 +366,7 @@ fn walk(
                     };
                     let skipped = Skipped {
                         path: error.path().map(Path::to_path_buf).unwrap_or_default(),
+                        folder: about_a_folder(&error),
                         reason,
                         detail: error.to_string(),
                     };
@@ -380,6 +399,7 @@ fn walk(
             if !file_type.is_file() {
                 let skipped = Skipped {
                     path: entry.into_path(),
+                    folder: false,
                     reason: SkipReason::SpecialFile,
                     detail: "not a regular file".to_owned(),
                 };
@@ -398,6 +418,7 @@ fn walk(
             {
                 let skipped = Skipped {
                     path: entry.into_path(),
+                    folder: false,
                     reason,
                     detail: "content is not stored on this disk".to_owned(),
                 };
@@ -417,6 +438,8 @@ fn walk(
 struct Tally {
     stats: ScanStats,
     detections: Vec<Detection>,
+    recorded: Vec<Recorded>,
+    recorded_truncated: bool,
     skipped: Vec<Skipped>,
     skipped_truncated: bool,
     partially_scanned: Vec<PartialScan>,
@@ -438,6 +461,8 @@ impl Tally {
         Self {
             stats: ScanStats::default(),
             detections: Vec::new(),
+            recorded: Vec::new(),
+            recorded_truncated: false,
             skipped: Vec::new(),
             skipped_truncated: false,
             partially_scanned: Vec::new(),
@@ -486,10 +511,29 @@ impl Tally {
                     };
                     observer.on_detection(&detection);
                     self.detections.push(detection);
+                } else if !result.findings.is_empty() {
+                    self.stats.files_recorded += 1;
+                    let recorded = Recorded {
+                        path,
+                        size: result.size,
+                        sha256: warden_sigdb::hex::encode(&result.sha256),
+                        findings: result.findings,
+                        findings_omitted: result.findings_omitted,
+                    };
+                    observer.on_recorded(&recorded);
+                    if self.recorded.len() < self.max_recorded {
+                        self.recorded.push(recorded);
+                    } else {
+                        self.recorded_truncated = true;
+                    }
                 }
             }
             Outcome::Skipped(skipped) => {
-                self.stats.files_skipped += 1;
+                if skipped.folder {
+                    self.stats.folders_skipped += 1;
+                } else {
+                    self.stats.files_skipped += 1;
+                }
                 *self
                     .stats
                     .skipped_by_reason
@@ -522,6 +566,8 @@ impl Tally {
         // the same tree produce the same report.
         self.detections
             .sort_by(|left, right| left.path.cmp(&right.path));
+        self.recorded
+            .sort_by(|left, right| left.path.cmp(&right.path));
         self.skipped
             .sort_by(|left, right| left.path.cmp(&right.path));
         self.partially_scanned
@@ -546,6 +592,8 @@ impl Tally {
             detectors: context.detectors,
             stats: self.stats,
             detections: self.detections,
+            recorded: self.recorded,
+            recorded_truncated: self.recorded_truncated,
             skipped: self.skipped,
             skipped_truncated: self.skipped_truncated,
             partially_scanned: self.partially_scanned,
