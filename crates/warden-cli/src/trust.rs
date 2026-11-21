@@ -700,7 +700,7 @@ struct SurveyReport {
 fn reason_in_words(reason: Reason) -> &'static str {
     match reason {
         Reason::NoSignature => "no signature found",
-        Reason::Invalid => "a signature that does not hold",
+        Reason::Invalid => "a signature that does not hold, or does not cover the file",
         Reason::NotListed => "signed, by a publisher that is not on the list",
         Reason::RevocationUnknown => "a listed publisher, revocation could not be checked",
         Reason::Changed => "changed while it was checked",

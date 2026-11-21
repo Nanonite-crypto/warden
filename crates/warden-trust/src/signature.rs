@@ -130,7 +130,9 @@ pub struct RouteReport {
 pub enum Reason {
     /// No route found a signature.
     NoSignature,
-    /// A signature was found that does not hold.
+    /// A signature was found that does not hold, or that does not cover
+    /// this file: a file in the folder of a package that the package's
+    /// signature knows nothing of, for one.
     Invalid,
     /// A signature holds, and its signer is not on the trust list.
     NotListed,
