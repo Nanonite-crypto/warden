@@ -19,6 +19,13 @@
 //! it, is asked of Windows, with the very bytes this module read
 //! ([`PackageFiles::signature`]).
 //!
+//! Three files of a package are not in its block map, because they are
+//! what describes the package: the block map itself, `[Content_Types].xml`
+//! and `AppxMetadata\CodeIntegrity.cat`. The signature names each of them
+//! by a digest of its own, see [`PackageDigests::of_whole_file`]. The one
+//! file that nothing vouches for is the signature file: a signature cannot
+//! cover itself.
+//!
 //! Everything here is read from files that anyone may have written, so
 //! every size has a limit and every step that fails says no.
 
@@ -38,6 +45,11 @@ use crate::der::{self, CONTEXT_0, DerError, OBJECT_IDENTIFIER, OCTET_STRING, SEQ
 pub const SIGNATURE_FILE: &str = "AppxSignature.p7x";
 /// Name of the block map in a package's folder.
 pub const BLOCK_MAP_FILE: &str = "AppxBlockMap.xml";
+/// Name of the file that says what kinds of file a package holds.
+pub const CONTENT_TYPES_FILE: &str = "[Content_Types].xml";
+/// Name of the catalogue that lists the executables of a package, where a
+/// package has one, with the backslash this module names files with.
+pub const CODE_INTEGRITY_FILE: &str = "AppxMetadata\\CodeIntegrity.cat";
 /// A block map hashes a file in blocks of this many bytes; the last block
 /// of a file is whatever is left.
 pub const BLOCK_BYTES: usize = 65_536;
@@ -60,6 +72,10 @@ const MAX_LEVELS_UP: usize = 32;
 const DIGESTS_MAGIC: &[u8; 4] = b"APPX";
 /// The entry of that list that holds the SHA-256 of the block map.
 const DIGEST_BLOCK_MAP: &[u8; 4] = b"AXBM";
+/// The entry that holds the SHA-256 of `[Content_Types].xml`.
+const DIGEST_CONTENT_TYPES: &[u8; 4] = b"AXCT";
+/// The entry that holds the SHA-256 of the code integrity catalogue.
+const DIGEST_CODE_INTEGRITY: &[u8; 4] = b"AXCI";
 /// Each entry is a name of four bytes and a SHA-256.
 const DIGEST_ENTRY_BYTES: usize = 4 + 32;
 
@@ -104,11 +120,35 @@ pub enum PackageError {
 }
 
 /// The digests a package's signature signs, as far as this module uses
-/// them.
+/// them. Each is the SHA-256 of a whole file as it lies in the package's
+/// folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PackageDigests {
     /// SHA-256 of the block map.
     pub block_map: [u8; 32],
+    /// SHA-256 of `[Content_Types].xml`, if the signature names it.
+    pub content_types: Option<[u8; 32]>,
+    /// SHA-256 of `AppxMetadata\CodeIntegrity.cat`, if the package has
+    /// one.
+    pub code_integrity: Option<[u8; 32]>,
+}
+
+impl PackageDigests {
+    /// The SHA-256 that the signature names for one of the files that
+    /// describe the package, by the file's name inside the package's
+    /// folder. Nothing for any other file: those are in the block map.
+    #[must_use]
+    pub fn of_whole_file(&self, name: &str) -> Option<[u8; 32]> {
+        if name.eq_ignore_ascii_case(BLOCK_MAP_FILE) {
+            Some(self.block_map)
+        } else if name.eq_ignore_ascii_case(CONTENT_TYPES_FILE) {
+            self.content_types
+        } else if name.eq_ignore_ascii_case(CODE_INTEGRITY_FILE) {
+            self.code_integrity
+        } else {
+            None
+        }
+    }
 }
 
 /// Reads the digests out of the bytes of a package's signature file.
@@ -173,19 +213,34 @@ pub fn digests(signature_file: &[u8]) -> Result<PackageDigests, PackageError> {
         ));
     }
     let mut block_map = None;
+    let mut content_types = None;
+    let mut code_integrity = None;
     for entry in entries.chunks_exact(DIGEST_ENTRY_BYTES) {
         let (name, digest) = entry.split_at(4);
-        if name == DIGEST_BLOCK_MAP {
-            let digest: [u8; 32] = digest
-                .try_into()
-                .map_err(|_| PackageError::Signature("a digest has an odd length"))?;
-            if block_map.replace(digest).is_some() {
-                return Err(PackageError::Signature("it names the block map twice"));
-            }
+        let slot = if name == DIGEST_BLOCK_MAP {
+            &mut block_map
+        } else if name == DIGEST_CONTENT_TYPES {
+            &mut content_types
+        } else if name == DIGEST_CODE_INTEGRITY {
+            &mut code_integrity
+        } else {
+            continue;
+        };
+        let digest: [u8; 32] = digest
+            .try_into()
+            .map_err(|_| PackageError::Signature("a digest has an odd length"))?;
+        // Two digests for one file: which of them counts is not for a
+        // reader to choose.
+        if slot.replace(digest).is_some() {
+            return Err(PackageError::Signature("it names one file twice"));
         }
     }
     block_map
-        .map(|block_map| PackageDigests { block_map })
+        .map(|block_map| PackageDigests {
+            block_map,
+            content_types,
+            code_integrity,
+        })
         .ok_or(PackageError::Signature("it has no digest of the block map"))
 }
 
@@ -387,6 +442,7 @@ pub fn locate(path: &Path) -> Option<(PathBuf, String)> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageFiles {
     signature: Vec<u8>,
+    digests: PackageDigests,
     block_map: Vec<u8>,
 }
 
@@ -419,6 +475,7 @@ impl PackageFiles {
         }
         Ok(Self {
             signature,
+            digests: signed,
             block_map,
         })
     }
@@ -427,6 +484,14 @@ impl PackageFiles {
     #[must_use]
     pub fn signature(&self) -> &[u8] {
         &self.signature
+    }
+
+    /// The digests the signature file names. Like the block map, they
+    /// mean something once Windows has accepted
+    /// [`signature`](Self::signature).
+    #[must_use]
+    pub fn digests(&self) -> &PackageDigests {
+        &self.digests
     }
 
     /// Reads the block map. Call this once Windows has accepted
@@ -547,9 +612,39 @@ mod tests {
             (b"AXCI", [5; 32]),
         ]);
         let file = unsigned_signature_file(&list);
+        let found = digests(&file).expect("well-formed");
         assert_eq!(
-            digests(&file).expect("well-formed"),
-            PackageDigests { block_map: [4; 32] }
+            found,
+            PackageDigests {
+                block_map: [4; 32],
+                content_types: Some([3; 32]),
+                code_integrity: Some([5; 32]),
+            }
+        );
+        // The three files that describe a package are named whole, by
+        // any spelling of their names. Every other file is in the block
+        // map, and the signature file is nowhere.
+        assert_eq!(found.of_whole_file("AppxBlockMap.xml"), Some([4; 32]));
+        assert_eq!(found.of_whole_file("appxblockmap.XML"), Some([4; 32]));
+        assert_eq!(found.of_whole_file("[Content_Types].xml"), Some([3; 32]));
+        assert_eq!(
+            found.of_whole_file("AppxMetadata\\CodeIntegrity.cat"),
+            Some([5; 32])
+        );
+        assert_eq!(found.of_whole_file("AppxManifest.xml"), None);
+        assert_eq!(found.of_whole_file("AppxSignature.p7x"), None);
+        assert_eq!(found.of_whole_file("folder\\AppxBlockMap.xml"), None);
+
+        // A package without executables has no catalogue of them.
+        let without = digests(&unsigned_signature_file(&digest_list(&[
+            (b"AXCT", [3; 32]),
+            (b"AXBM", [4; 32]),
+        ])))
+        .expect("well-formed");
+        assert_eq!(without.code_integrity, None);
+        assert_eq!(
+            without.of_whole_file("AppxMetadata\\CodeIntegrity.cat"),
+            None
         );
     }
 

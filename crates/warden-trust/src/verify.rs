@@ -5,7 +5,10 @@
 //!
 //! - **The package route** hashes every byte of the file, so it needs no
 //!   precaution: either the file is what the package's block map says or
-//!   it is not.
+//!   it is not. The three files that describe a package are not in the
+//!   block map; the signature names each of them by its own digest. The
+//!   signature file itself is the one file of a package that nothing
+//!   covers.
 //! - **The embedded route** cannot cover the table that holds the
 //!   signature. It is tried for executables only, where
 //!   [`sigarea`] can look through that table, and it counts only when the
@@ -27,7 +30,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use sha2::{Digest, Sha256};
 
 use crate::list::TrustList;
-use crate::package::{self, BlockMap, PackageFiles};
+use crate::package::{self, BlockMap, PackageDigests, PackageFiles};
 use crate::sigarea::{self, SignatureArea};
 use crate::signature::{
     Examination, Found, Reason, Revocation, Route, RouteReport, Signer, Trust, hex,
@@ -76,8 +79,14 @@ impl Default for Options {
 
 /// What is remembered about one package's folder.
 enum Package {
-    /// Its signature holds, and this is its block map.
-    Signed { signer: Signer, block_map: BlockMap },
+    /// Its signature holds, and this is what it signs: the digests of the
+    /// files that describe the package, and through one of them the block
+    /// map.
+    Signed {
+        signer: Signer,
+        digests: PackageDigests,
+        block_map: BlockMap,
+    },
     /// It vouches for nothing, and this is what to say about it.
     Unusable(Found),
 }
@@ -219,7 +228,7 @@ impl Verifier {
                     },
                 },
                 Route::Package => match package::locate(path) {
-                    Some((folder, name)) => self.in_package(&folder, &name, &mut file),
+                    Some((folder, name)) => self.in_package(&folder, &name, &mut file, &sha256),
                     None => Found::Nothing,
                 },
             };
@@ -308,13 +317,41 @@ impl Verifier {
         }
     }
 
-    /// The package route for a file in a package's folder.
-    fn in_package(&self, folder: &Path, name: &str, file: &mut File) -> Found {
+    /// The package route for a file in a package's folder. `sha256` is
+    /// the digest of the whole file.
+    fn in_package(&self, folder: &Path, name: &str, file: &mut File, sha256: &[u8; 32]) -> Found {
         let package = self.package(folder);
-        let (signer, block_map) = match &*package {
+        let (signer, digests, block_map) = match &*package {
             Package::Unusable(found) => return found.clone(),
-            Package::Signed { signer, block_map } => (signer, block_map),
+            Package::Signed {
+                signer,
+                digests,
+                block_map,
+            } => (signer, digests, block_map),
         };
+        let vouched_for = || Found::Valid {
+            signer: signer.clone(),
+            place: Some(folder.display().to_string()),
+        };
+        // One of the files that describe the package: the signature names
+        // it whole.
+        if let Some(signed) = digests.of_whole_file(name) {
+            return if signed == *sha256 {
+                vouched_for()
+            } else {
+                Found::Invalid {
+                    why: "the file is not the one that the signature of its package names"
+                        .to_owned(),
+                }
+            };
+        }
+        if name.eq_ignore_ascii_case(package::SIGNATURE_FILE) {
+            return Found::Invalid {
+                why: "this is the signature file of a package, and a signature does not cover \
+                      itself"
+                    .to_owned(),
+            };
+        }
         let Some(entry) = block_map.file(name) else {
             return Found::Invalid {
                 why: "the block map of the file's package does not list the file".to_owned(),
@@ -324,10 +361,7 @@ impl Verifier {
             .seek(SeekFrom::Start(0))
             .and_then(|_| entry.matches(file));
         match matches {
-            Ok(true) => Found::Valid {
-                signer: signer.clone(),
-                place: Some(folder.display().to_string()),
-            },
+            Ok(true) => vouched_for(),
             Ok(false) => Found::Invalid {
                 why: "the file is not the one that the block map of its package describes"
                     .to_owned(),
@@ -386,7 +420,11 @@ impl Verifier {
             other => return Package::Unusable(other),
         };
         match files.block_map() {
-            Ok(block_map) => Package::Signed { signer, block_map },
+            Ok(block_map) => Package::Signed {
+                signer,
+                digests: *files.digests(),
+                block_map,
+            },
             Err(error) => Package::Unusable(Found::Invalid {
                 why: error.to_string(),
             }),
@@ -556,7 +594,9 @@ mod tests {
 
     use super::stand_in::{Answers, signer, valid, verifier};
     use super::*;
-    use crate::package::{BLOCK_BYTES, BLOCK_MAP_FILE, SIGNATURE_FILE, unsigned_signature_file};
+    use crate::package::{
+        BLOCK_BYTES, BLOCK_MAP_FILE, CONTENT_TYPES_FILE, SIGNATURE_FILE, unsigned_signature_file,
+    };
     use crate::sigarea::{executable_with_table, table_with_signature};
 
     const LIST: &str = r#"
@@ -840,11 +880,86 @@ machine = "a test"
         }
         xml.push_str("</BlockMap>");
         std::fs::write(root.join(BLOCK_MAP_FILE), &xml).expect("file");
+        // The two other files that describe a package, which the block map
+        // does not list.
+        std::fs::write(root.join(CONTENT_TYPES_FILE), CONTENT_TYPES).expect("file");
+        std::fs::create_dir_all(root.join("AppxMetadata")).expect("folder");
+        std::fs::write(
+            root.join("AppxMetadata").join("CodeIntegrity.cat"),
+            CATALOGUE,
+        )
+        .expect("file");
         let mut digests = b"APPX".to_vec();
-        digests.extend_from_slice(b"AXBM");
-        digests.extend_from_slice(&Sha256::digest(xml.as_bytes()));
+        for (name, content) in [
+            (b"AXCT", CONTENT_TYPES),
+            (b"AXBM", xml.as_bytes()),
+            (b"AXCI", CATALOGUE),
+        ] {
+            digests.extend_from_slice(name);
+            digests.extend_from_slice(&Sha256::digest(content));
+        }
         std::fs::write(root.join(SIGNATURE_FILE), unsigned_signature_file(&digests)).expect("file");
         root
+    }
+
+    const CONTENT_TYPES: &[u8] = b"<Types xmlns=\"http://example.test/content-types\"/>";
+    const CATALOGUE: &[u8] = b"stands in for a catalogue of the package's executables";
+
+    #[test]
+    fn the_files_that_describe_a_package_are_named_whole_by_its_signature() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let root = package_folder(&dir, &[("app\\main.js", b"console.log('an app');")]);
+        let (verifier, _) = verifier(
+            list(),
+            Answers {
+                package: valid(listed()),
+                ..Answers::default()
+            },
+        );
+        let catalogue = root.join("AppxMetadata").join("CodeIntegrity.cat");
+
+        // None of the three is in the block map, and each is trusted.
+        for path in [
+            root.join(BLOCK_MAP_FILE),
+            root.join(CONTENT_TYPES_FILE),
+            catalogue.clone(),
+        ] {
+            assert_eq!(
+                verifier.trust(&path, None),
+                Trust::Trusted {
+                    publisher: "Example".to_owned(),
+                    route: Route::Package
+                },
+                "{}",
+                path.display()
+            );
+        }
+
+        // Changed, such a file is not the one the signature names.
+        std::fs::write(&catalogue, b"another catalogue").expect("file");
+        let examination = verifier.examine(&catalogue, None, false);
+        assert_eq!(reason(&examination.trust), Some(Reason::Invalid));
+        assert!(
+            matches!(
+                &examination.trust,
+                Trust::NotTrusted { detail, .. }
+                    if detail == "the file is not the one that the signature of its package names"
+            ),
+            "{:?}",
+            examination.trust
+        );
+
+        // The signature file is the one file nothing vouches for.
+        let examination = verifier.examine(&root.join(SIGNATURE_FILE), None, false);
+        assert!(
+            matches!(
+                &examination.trust,
+                Trust::NotTrusted { reason: Reason::Invalid, detail }
+                    if detail.ends_with("a signature does not cover itself")
+            ),
+            "{:?}",
+            examination.trust
+        );
     }
 
     #[test]

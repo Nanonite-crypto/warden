@@ -363,13 +363,29 @@ fn a_file_of_a_signed_package_is_vouched_for_by_the_package() {
     assert_eq!(found(&tool, Route::Embedded), &Found::Nothing);
     assert!(matches!(found(&tool, Route::Package), Found::Valid { .. }));
 
-    // The files that make up the signature are part of the folder, and
-    // the block map does not list itself.
-    let block_map = examine(&package.join("AppxBlockMap.xml"));
-    assert!(matches!(
-        found(&block_map, Route::Package),
-        Found::Invalid { .. }
-    ));
+    // The files that describe the package are not in its block map. The
+    // signature names each of them whole.
+    for name in ["AppxBlockMap.xml", "[Content_Types].xml"] {
+        let described = examine(&package.join(name));
+        assert!(
+            matches!(found(&described, Route::Package), Found::Valid { .. }),
+            "{name}"
+        );
+    }
+    let catalogue = package.join("AppxMetadata").join("CodeIntegrity.cat");
+    if catalogue.exists() {
+        let described = examine(&catalogue);
+        assert!(matches!(
+            found(&described, Route::Package),
+            Found::Valid { .. }
+        ));
+    }
+    // The signature file is the one file of a package nothing vouches for.
+    let signature = examine(&package.join("AppxSignature.p7x"));
+    let Found::Invalid { why } = found(&signature, Route::Package) else {
+        panic!("{:?}", found(&signature, Route::Package));
+    };
+    assert!(why.ends_with("a signature does not cover itself"), "{why}");
 }
 
 #[test]
