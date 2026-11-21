@@ -73,8 +73,10 @@ jobs:
       # privilege of an administrator for every program it starts, and a
       # process with that privilege lists a folder whatever its access
       # rights say. The tests that close a folder have nothing to test then.
+      # --no-fail-fast: a failure in one crate does not keep the tests of
+      # the others from running, so one run shows everything that is wrong.
       - name: Run the test suite
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast
         env:
           # The tests that write the EICAR test file to disk are required to
           # run for real on both systems, in a folder of their own. Hosted

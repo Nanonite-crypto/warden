@@ -1842,10 +1842,27 @@ fn a_generated_rule_counts_only_together_with_an_unusual_structure() {
     assert_eq!(findings[0]["name"], "Test_Generated_Starts_Like_A_Program");
     assert_eq!(findings[0]["counts"], "with_second_sign");
     assert_eq!(findings[0]["confidence"], "medium");
+    // Where signatures can be checked, the scan asks who signed the file
+    // before it reports the match, and the finding says what that came to
+    // in a line of its own.
+    let reasons = findings[0]["reasons"].as_array().unwrap();
+    let counts = reasons.len() - if cfg!(windows) { 2 } else { 1 };
     assert_eq!(
-        findings[0]["reasons"].as_array().unwrap().last().unwrap(),
+        reasons[counts],
         "Counts, because another layer has something to say about the same file: heuristic"
     );
+    if cfg!(windows) {
+        assert!(
+            reasons[counts + 1].as_str().unwrap().starts_with(
+                "No signature of a publisher on the trust list speaks for the file: no \
+                 signature was found"
+            ),
+            "{reasons:?}"
+        );
+        assert_eq!(packed["trust"]["reason"], "no_signature");
+    } else {
+        assert!(packed.get("trust").is_none());
+    }
     assert_eq!(findings[1]["detector"], "heuristic");
     assert_eq!(findings[1]["name"], "Heuristic.UnusualExecutable");
     assert_eq!(findings[1]["counts"], "as_second_sign");
