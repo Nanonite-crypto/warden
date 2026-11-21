@@ -433,7 +433,7 @@ struct Tally {
 }
 
 impl Tally {
-    fn add(&mut self, path: &Path, examination: &Examination, took: Duration) {
+    fn add(&mut self, list: &TrustList, path: &Path, examination: &Examination, took: Duration) {
         let executable = examination.executable == Some(true);
         self.all.add(executable);
         let outcome = match &examination.trust {
@@ -469,15 +469,15 @@ impl Tally {
             .or_default()
             .push(u32::try_from(took.as_micros()).unwrap_or(u32::MAX));
 
-        // Every signature that holds, by the first route that found one.
-        let signed = examination
-            .routes
-            .iter()
-            .find_map(|report| match &report.found {
-                Found::Valid { signer, .. } => Some((report.route, signer)),
-                _ => None,
-            });
-        if let Some((route, signer)) = signed {
+        // Every signature that holds, on whichever route it was found. A
+        // file can have two: its own, and the one of its package. Whether
+        // a signer is on the list is for the list to say, not for the
+        // answer about the file: a file can be trusted through its package
+        // and carry a signature of somebody else.
+        for report in &examination.routes {
+            let Found::Valid { signer, .. } = &report.found else {
+                continue;
+            };
             let seen = self
                 .signers
                 .entry(SignerKey {
@@ -487,7 +487,7 @@ impl Tally {
                 })
                 .or_default();
             seen.files += 1;
-            *seen.by_route.entry(route).or_insert(0) += 1;
+            *seen.by_route.entry(report.route).or_insert(0) += 1;
             if signer.revocation == Revocation::Unknown {
                 seen.revocation_unknown += 1;
             }
@@ -497,8 +497,10 @@ impl Tally {
                     .last()
                     .map(|root| (root.subject.clone(), root.sha256.clone()));
             }
-            if let Trust::Trusted { publisher, .. } = &examination.trust {
-                seen.listed_as.get_or_insert_with(|| publisher.clone());
+            if seen.listed_as.is_none() {
+                seen.listed_as = list
+                    .publisher_of(signer)
+                    .map(|publisher| publisher.name.clone());
             }
         }
     }
@@ -621,6 +623,10 @@ struct SignerCount {
     /// The name the trust list has for this signer, if it is on it.
     #[serde(skip_serializing_if = "Option::is_none")]
     listed_as: Option<String>,
+    /// Files a signature of this signer was found on that holds, and by
+    /// which route. A file with a signature of its own in a signed package
+    /// counts for both signers, unless its own signature already made it
+    /// trusted: the check stops there.
     files: u64,
     embedded: u64,
     windows_catalog: u64,
@@ -636,6 +642,8 @@ struct SignerCount {
 #[derive(Debug, Default, Serialize)]
 struct Unlisted {
     signers: u64,
+    /// Files with a signature of one of them that holds. Such a file can
+    /// still be trusted, through its package.
     files: u64,
     /// How many of those signers have a chain that ends in a root of
     /// Microsoft's.
@@ -884,7 +892,12 @@ fn survey(args: &SurveyArgs) -> anyhow::Result<ExitCode> {
                         }
                         let before = Instant::now();
                         let examination = verifier.examine(entry.path(), None, false);
-                        tally.add(entry.path(), &examination, before.elapsed());
+                        tally.add(
+                            verifier.list(),
+                            entry.path(),
+                            &examination,
+                            before.elapsed(),
+                        );
                     }
                     tally
                 })
@@ -1045,8 +1058,8 @@ fn survey_text(report: &SurveyReport, duration: Duration, named: bool) -> String
     let unlisted = &report.signers_not_listed;
     if unlisted.signers > 0 {
         out.push_str(&format!(
-            "\nSigners that are not on the list: {}, on {} files. {} of them, on {} files, have a \
-             chain that ends in a root of Microsoft's.\n",
+            "\nSigners that are not on the list: {}, with signatures on {} files. {} of them, on \
+             {} files, have a chain that ends in a root of Microsoft's.\n",
             group_digits(unlisted.signers),
             group_digits(unlisted.files),
             group_digits(unlisted.signers_under_a_microsoft_root),
@@ -1206,37 +1219,56 @@ mod tests {
         )
     }
 
+    /// A list with the one publisher that the examinations above call
+    /// trusted.
+    fn list() -> TrustList {
+        TrustList::parse(&format!(
+            r#"
+[[publisher]]
+name = "Listed"
+common_name = "Listed Software"
+organization = "An organisation"
+anchor = "microsoft-root"
+signs = "The files of these tests."
+reason = "These tests need a publisher."
+added = 2026-11-21
+
+[[publisher.evidence]]
+file = "a.exe"
+sha256 = "{}"
+route = "embedded"
+seen = 2026-11-21
+machine = "a test"
+"#,
+            "ab".repeat(32)
+        ))
+        .expect("a well-formed list")
+    }
+
+    /// Counts one file as a worker would.
+    fn count(tally: &mut Tally, name: &str, examination: &Examination) {
+        tally.add(
+            &list(),
+            Path::new(name),
+            examination,
+            Duration::from_millis(2),
+        );
+    }
+
     /// Two workers' worth of files, merged.
     fn counted() -> Tally {
-        let took = Duration::from_millis(2);
         let mut first = Tally::default();
-        first.add(Path::new("a.exe"), &trusted(true, Route::Embedded), took);
-        first.add(
-            Path::new("b.dll"),
-            &trusted(true, Route::WindowsCatalog),
-            took,
-        );
-        first.add(Path::new("c.png"), &trusted(false, Route::Package), took);
-        first.add(
-            Path::new("d.exe"),
-            &not_listed("Somebody Else", false),
-            took,
-        );
+        count(&mut first, "a.exe", &trusted(true, Route::Embedded));
+        count(&mut first, "b.dll", &trusted(true, Route::WindowsCatalog));
+        count(&mut first, "c.png", &trusted(false, Route::Package));
+        count(&mut first, "d.exe", &not_listed("Somebody Else", false));
         first.walk_errors = 1;
         let mut second = Tally::default();
-        second.add(Path::new("e.exe"), &trusted(true, Route::Embedded), took);
-        second.add(
-            Path::new("f.exe"),
-            &not_listed("Somebody Else", false),
-            took,
-        );
-        second.add(
-            Path::new("g.sys"),
-            &not_listed("A Driver Maker", true),
-            took,
-        );
-        second.add(Path::new("h.exe"), &unsigned(true), took);
-        second.add(Path::new("i.txt"), &unsigned(false), took);
+        count(&mut second, "e.exe", &trusted(true, Route::Embedded));
+        count(&mut second, "f.exe", &not_listed("Somebody Else", false));
+        count(&mut second, "g.sys", &not_listed("A Driver Maker", true));
+        count(&mut second, "h.exe", &unsigned(true));
+        count(&mut second, "i.txt", &unsigned(false));
         first.merge(second);
         first
     }
@@ -1244,12 +1276,11 @@ mod tests {
     /// The same with three files whose signature does not hold, for two
     /// different reasons.
     fn counted_with_broken_signatures() -> Tally {
-        let took = Duration::from_millis(2);
         let mut first = counted();
-        first.add(Path::new("j.exe"), &does_not_hold("changed"), took);
+        count(&mut first, "j.exe", &does_not_hold("changed"));
         let mut second = Tally::default();
-        second.add(Path::new("k.exe"), &does_not_hold("changed"), took);
-        second.add(Path::new("l.exe"), &does_not_hold("padded"), took);
+        count(&mut second, "k.exe", &does_not_hold("changed"));
+        count(&mut second, "l.exe", &does_not_hold("padded"));
         first.merge(second);
         first
     }
@@ -1259,7 +1290,7 @@ mod tests {
     }
 
     fn reported(tally: Tally, signers: bool, examples: bool) -> SurveyReport {
-        let list = TrustList::empty();
+        let list = list();
         report_of(
             tally,
             SurveyContext {
@@ -1273,6 +1304,77 @@ mod tests {
                 examples,
             },
         )
+    }
+
+    #[test]
+    fn a_signer_is_on_the_list_only_if_the_list_says_so() {
+        // A program in a package: it carries a signature of somebody who
+        // is on no list, and its package is signed by a listed publisher.
+        // The file is trusted, through the package. Its own signer is
+        // still not on the list.
+        let in_a_package = Examination {
+            sha256: Some("ab".repeat(32)),
+            executable: Some(true),
+            routes: vec![
+                RouteReport {
+                    route: Route::Embedded,
+                    found: Found::Valid {
+                        signer: signer("Somebody Else", true),
+                        place: None,
+                    },
+                },
+                RouteReport {
+                    route: Route::WindowsCatalog,
+                    found: Found::NotApplicable {
+                        why: "it has a signature table".to_owned(),
+                    },
+                },
+                RouteReport {
+                    route: Route::Package,
+                    found: Found::Valid {
+                        signer: signer("Listed Software", true),
+                        place: Some("a folder".to_owned()),
+                    },
+                },
+            ],
+            trust: Trust::Trusted {
+                publisher: "Listed".to_owned(),
+                route: Route::Package,
+            },
+        };
+        let mut tally = Tally::default();
+        count(&mut tally, "tool.exe", &in_a_package);
+        let report = reported(tally, true, false);
+
+        assert_eq!((report.files, report.files_trusted), (1, 1));
+        let by_name: Vec<(&str, Option<&str>, u64, u64)> = report
+            .signers
+            .iter()
+            .map(|signer| {
+                (
+                    signer.common_name.as_str(),
+                    signer.listed_as.as_deref(),
+                    signer.embedded,
+                    signer.package,
+                )
+            })
+            .collect();
+        assert_eq!(
+            by_name,
+            [
+                ("Listed Software", Some("Listed"), 0, 1),
+                ("Somebody Else", None, 1, 0)
+            ]
+        );
+        let unlisted = &report.signers_not_listed;
+        assert_eq!((unlisted.signers, unlisted.files), (1, 1));
+        assert_eq!(unlisted.signers_under_a_microsoft_root, 1);
+
+        let text = survey_text(&report, Duration::from_secs(1), true);
+        assert!(
+            text.contains("Somebody Else (An organisation), not on the list"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -1359,7 +1461,10 @@ mod tests {
             assert!(!output.contains("A Driver Maker"), "{output}");
             assert!(!output.contains("d.exe"), "{output}");
         }
-        assert!(text.contains("Signers that are not on the list: 2, on 3 files."));
+        assert!(
+            text.contains("Signers that are not on the list: 2, with signatures on 3 files."),
+            "{text}"
+        );
     }
 
     #[test]
