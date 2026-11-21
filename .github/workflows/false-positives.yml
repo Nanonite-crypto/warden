@@ -2,7 +2,9 @@ name: False positives
 
 # Scans files that are known to be clean with every layer (signatures, the
 # rule bundle, the heuristics) and records what gets flagged anyway: Windows
-# system files, and the software that is installed on a hosted runner.
+# system files, and the software that is installed on a hosted runner. It
+# also records what the check of signatures changes about that, and who
+# signed the files it read.
 #
 # This reads many gigabytes from a slow disk, so it does not run on every
 # change. Start it by hand, or push a branch named fp-run/<anything>.
@@ -29,6 +31,11 @@ jobs:
     name: Windows system files and common software
     runs-on: windows-latest
     timeout-minutes: 150
+    env:
+      # Whatever of this list is installed on the runner is scanned and
+      # surveyed.
+      COMMON_SOFTWARE: >-
+        C:\Program Files\7-Zip;C:\Program Files\Git;C:\Program Files\Google\Chrome;C:\Program Files\Mozilla Firefox;C:\Program Files\PowerShell;C:\Program Files\dotnet;C:\Program Files\nodejs
     steps:
       - uses: actions/checkout@v6
       - name: Install the pinned toolchain
@@ -46,21 +53,12 @@ jobs:
           WARDEN_NO_PAUSE: "1"
           # Empty unless the run was started by hand with "all_rules" ticked.
           ALL_RULES: ${{ inputs.all_rules && '-AllRules' || '' }}
-      # Whatever of this list is installed on the runner. Exit code 1 means
-      # that something was flagged, which is a result, not a failure.
+      # Exit code 1 means that something was flagged, which is a result, not
+      # a failure.
       - name: Common software
         shell: pwsh
         run: |
-          $wanted = @(
-            'C:\Program Files\7-Zip',
-            'C:\Program Files\Git',
-            'C:\Program Files\Google\Chrome',
-            'C:\Program Files\Mozilla Firefox',
-            'C:\Program Files\PowerShell',
-            'C:\Program Files\dotnet',
-            'C:\Program Files\nodejs'
-          )
-          $present = @($wanted | Where-Object { Test-Path -LiteralPath $_ })
+          $present = @($env:COMMON_SOFTWARE -split ';' | Where-Object { Test-Path -LiteralPath $_ })
           Write-Host "Scanning: $($present -join ', ')"
           & target\release\warden.exe false-positives @present `
             --rules rules\vendor\rules.wrb `
@@ -69,6 +67,53 @@ jobs:
             --output target\check\fp-software.json
           if ($LASTEXITCODE -gt 1) { exit $LASTEXITCODE }
           exit 0
+      # What the check of signatures changes. The two scans above let the
+      # match of a bundle's rule yield to the signature of a trusted
+      # publisher. These two are the same scans without that, so the
+      # difference is what the check took off the list of flagged files.
+      - name: The same two scans without the signature check
+        shell: pwsh
+        run: |
+          $software = @($env:COMMON_SOFTWARE -split ';' | Where-Object { Test-Path -LiteralPath $_ })
+          $scans = [ordered]@{
+            'fp-no-trust'          = @{ Paths = @("$env:SystemRoot\System32"); Label = 'System32' }
+            'fp-software-no-trust' = @{ Paths = @($software); Label = 'common software' }
+          }
+          foreach ($name in $scans.Keys) {
+            $scan = $scans[$name]
+            & target\release\warden.exe false-positives @($scan.Paths) `
+              --rules rules\vendor\rules.wrb --no-trust `
+              --label "GitHub-hosted Windows runner, $($scan.Label), without the signature check" `
+              --no-progress `
+              --output "target\check\$name.json"
+            if ($LASTEXITCODE -gt 1) { exit $LASTEXITCODE }
+          }
+          exit 0
+      # Who signed the files of this machine, found by which of the three
+      # routes, and what a check costs: every file of System32 and of the
+      # software above is checked, not only the few a scan asks about. The
+      # signers are named, which is fine on a machine that is the same for
+      # everybody.
+      - name: Survey who signed what
+        shell: pwsh
+        run: |
+          $software = @($env:COMMON_SOFTWARE -split ';' | Where-Object { Test-Path -LiteralPath $_ })
+          $surveys = [ordered]@{
+            'trust-system32'    = @{ Paths = @("$env:SystemRoot\System32"); Label = 'System32' }
+            'trust-software'    = @{ Paths = @($software); Label = 'common software' }
+            'trust-windowsapps' = @{ Paths = @("$env:ProgramFiles\WindowsApps"); Label = 'app packages' }
+          }
+          foreach ($name in $surveys.Keys) {
+            $survey = $surveys[$name]
+            $paths = @($survey.Paths | Where-Object { Test-Path -LiteralPath $_ })
+            if ($paths.Count -eq 0) { Write-Host "Nothing to survey for $name."; continue }
+            Write-Host "::group::$($survey.Label)"
+            & target\release\warden.exe trust survey @paths --signers --examples `
+              --label "GitHub-hosted Windows runner, $($survey.Label)" `
+              --output "target\check\$name.json"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Host '::endgroup::'
+          }
       # What the heuristic layer costs: the same folder, mostly executables,
       # scanned with and without it, once next to hash matching alone and
       # once next to the rule bundle. Shared hardware, so the numbers are
@@ -94,7 +139,9 @@ jobs:
         if: always()
         shell: bash
         run: |
-          for file in summary.json system.json fp.json fp-software.json bench-hash.json bench-hash-heuristics.json bench-rules.json bench-rules-heuristics.json; do
+          for file in summary.json system.json fp.json fp-software.json fp-no-trust.json fp-software-no-trust.json \
+            trust-system32.json trust-software.json trust-windowsapps.json \
+            bench-hash.json bench-hash-heuristics.json bench-rules.json bench-rules-heuristics.json; do
             echo "::group::$file"
             cat "target/check/$file" 2>/dev/null || echo "(not written)"
             echo
