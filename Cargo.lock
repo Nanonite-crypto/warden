@@ -2876,6 +2876,7 @@ dependencies = [
  "toml",
  "warden-engine",
  "warden-sigdb",
+ "warden-trust",
  "yara-x",
  "yara-x-parser",
  "zip",

@@ -11,7 +11,7 @@ use warden_engine::{
 };
 use yara_x::MetaValue;
 
-use crate::builder::BundleBuilder;
+use crate::builder::{BUILTIN_SOURCE, BundleBuilder};
 use crate::bundle::{BundleError, ENGINE, RuleBundle};
 
 /// Longest rule name or threat name carried into a finding.
@@ -62,6 +62,15 @@ impl Default for YaraOptions {
 /// Rules describe byte patterns and file structure, so they still match
 /// when a file has been changed and its hash is no longer known. The engine
 /// underneath is YARA-X.
+///
+/// A rule that is part of the program was written for Warden, to match one
+/// thing. A rule that came with a bundle was written by somebody else, for
+/// uses of their own, and published rules are known to match clean
+/// software now and then. So the match of a bundle's rule
+/// [yields to a trusted signature](warden_engine::Finding::yields_to_trust),
+/// and the match of a built-in rule does not. The detector cannot tell a
+/// published rule in a bundle from one its user wrote, so this goes for
+/// every rule of a bundle.
 pub struct YaraDetector {
     bundle: Arc<RuleBundle>,
     options: YaraOptions,
@@ -476,6 +485,9 @@ fn finding_for(rule: &yara_x::Rule<'_, '_>, options: &YaraOptions) -> (i64, Find
     let mut finding = Finding::new(YaraDetector::ID, name, category, confidence, reasons);
     if generated_by.is_some() {
         finding = finding.with_second_sign();
+    }
+    if rule.namespace() != BUILTIN_SOURCE {
+        finding = finding.yielding_to_trust();
     }
     (score, finding)
 }
