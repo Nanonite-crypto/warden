@@ -298,10 +298,10 @@ only with administrator rights.
 Nobody has checked their signatures: Warden cannot verify an Authenticode
 signature yet. When it can, the signer belongs in the evidence.
 
-The seventh entry is two steps short of this. Nobody opened `xpdAgent.exe`
-to see which of the rule's sequences it has: the entry rests on the rule's
-text and on where the file sits. And the run has not been repeated with
-the list of seven
+The seventh entry is short of this in one point. Nobody opened
+`xpdAgent.exe` to see which of the rule's sequences it has: the entry
+rests on the rule's text and on where the file sits. The run was repeated
+with the list of seven a day later, and no file was flagged
 ([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-again-with-administrator-rights)).
 
 ### What the build does with it

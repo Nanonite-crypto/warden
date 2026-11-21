@@ -292,12 +292,13 @@ produced. In short, as of phase 4:
   535,859 on the runner, the desktop and a Linux tree. A later scan of the
   desktop's programs with administrator rights reached 52,636 files more,
   and one of those was flagged: a file of the Microsoft Defender app, by a
-  hand-written rule that is the seventh on the list now. That scan has not
-  been repeated with the list of seven. Across all runs, generated rules
-  match 21 clean files on three machines, and all are on record with a
-  clean verdict. Eight are the files that such rules had flagged before;
-  the other thirteen came up after the change, and nothing had to be done
-  about them. What the second sign costs in detection is not measured.
+  hand-written rule that is the seventh on the list now. Repeated with
+  that list, the scan flags none of 311,415 files. Across all runs,
+  generated rules match 21 clean files on three machines, and all are on
+  record with a clean verdict. Eight are the files that such rules had
+  flagged before; the other thirteen came up after the change, and nothing
+  had to be done about them. What the second sign costs in detection is
+  not measured.
 - **On a Windows 11 that was installed for the test**, with nothing else
   on it, no file is flagged: none of 153,317 with the built-in rule and
   the heuristic layer, and none of 153,370 with the 5,132 public rules as

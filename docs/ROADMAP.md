@@ -93,7 +93,8 @@ rights, which open the folder of the apps from the Microsoft Store. One
 file of 310,910 was flagged there: a clean one, by a rule that was written
 by hand. The four generated rules flagged nothing, and four more of their
 matches are on record. The hand-written rule is the seventh on the
-exclusion list now, and the run has not been repeated with that list
+exclusion list now, and the repeat with that list flagged none of 311,415
+files
 ([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-again-with-administrator-rights)).
 
 **What it cannot show.** What the change costs in detection. A generated
