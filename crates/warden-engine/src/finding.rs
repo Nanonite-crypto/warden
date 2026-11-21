@@ -106,6 +106,12 @@ pub struct Finding {
     /// when it counts by itself.
     #[serde(skip_serializing_if = "Counts::is_alone")]
     pub counts: Counts,
+    /// Whether the finding yields to a trusted signature: it is recorded
+    /// and does not count when the file has a valid signature of a
+    /// publisher on the trust list, see [`TrustCheck`](crate::TrustCheck).
+    /// Left out of a report when it does not yield.
+    #[serde(skip_serializing_if = "is_false")]
+    pub yields_to_trust: bool,
     /// The evidence, one human-readable sentence per item.
     pub reasons: Vec<String>,
     /// The archive member the finding is about. Absent when it is about the
@@ -131,6 +137,7 @@ impl Finding {
             category,
             confidence,
             counts: Counts::Alone,
+            yields_to_trust: false,
             reasons,
             member: None,
         }
@@ -151,6 +158,22 @@ impl Finding {
         self.counts = Counts::AsSecondSign;
         self
     }
+
+    /// Makes this a finding that yields to a trusted signature.
+    ///
+    /// That is for evidence that is known to be wrong about clean software
+    /// now and then, such as the match of a published rule. It is not for
+    /// evidence about one exact file, such as a hash.
+    #[must_use]
+    pub fn yielding_to_trust(mut self) -> Self {
+        self.yields_to_trust = true;
+        self
+    }
+}
+
+// Serde hands the field over by reference.
+fn is_false(flag: &bool) -> bool {
+    !*flag
 }
 
 /// The decision about one file, derived from its findings by a

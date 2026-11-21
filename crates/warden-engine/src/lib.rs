@@ -17,7 +17,10 @@
 //!    Detection and decision are separate on purpose, so that a new detector
 //!    never has to know what the product does about a finding. The policy
 //!    is also where layers meet: a finding that is too weak to count by
-//!    itself counts when another layer has a sign about the same file.
+//!    itself counts when another layer has a sign about the same file. And
+//!    it is where a signature comes in: the match of a published rule is
+//!    recorded and not reported when a [`TrustCheck`] says that a trusted
+//!    publisher signed the file.
 //! 5. The calling thread collects the results into a [`ScanReport`]. Files
 //!    that could not be read are listed with a reason, never silently
 //!    dropped.
@@ -61,6 +64,7 @@ mod report;
 mod scanner;
 mod session;
 pub mod text;
+mod trust;
 mod verdict;
 
 pub use cancel::CancelToken;
@@ -76,6 +80,7 @@ pub use report::{
 };
 pub use scanner::{Scanner, ScannerBuilder};
 pub use session::{FileResult, ScanSession};
+pub use trust::{TrustAnswer, TrustCheck, TrustCheckInfo};
 pub use verdict::VerdictPolicy;
 
 /// A SHA-256 digest.
@@ -98,7 +103,15 @@ pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `files_skipped` used to count both and counts files only now; the
 /// folders are in `folders_skipped`, and every entry of `skipped` says
 /// which of the two it is.
-pub const REPORT_SCHEMA: u32 = 4;
+///
+/// Version 5 adds the check of who signed a file. A finding says whether
+/// it yields to a trusted signature (`yields_to_trust`), a file says what
+/// the check found if it was asked (`trust`), the counters say how often
+/// it was asked and how often a trusted publisher had signed
+/// (`trust_checks`, `files_trusted`), and `trust_check` names the list of
+/// publishers. A file that an older report lists as a detection can be
+/// among the recorded files of a newer one for that reason.
+pub const REPORT_SCHEMA: u32 = 5;
 
 /// Computes the SHA-256 of a byte slice.
 #[must_use]

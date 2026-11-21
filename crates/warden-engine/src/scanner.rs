@@ -20,6 +20,7 @@ use crate::options::ScanOptions;
 use crate::paths::{self, ExcludeSet};
 use crate::report::{Detection, PartialScan, Recorded, ScanReport, ScanStats, SkipReason, Skipped};
 use crate::session::{FileResult, ScanSession};
+use crate::trust::{TrustCheck, TrustCheckInfo};
 use crate::verdict::VerdictPolicy;
 use crate::{ENGINE_VERSION, REPORT_SCHEMA};
 
@@ -33,6 +34,7 @@ const QUEUE_SLOTS_PER_THREAD: usize = 64;
 #[derive(Default)]
 pub struct ScannerBuilder {
     detectors: Vec<Arc<dyn Detector>>,
+    trust: Option<Arc<dyn TrustCheck>>,
     policy: VerdictPolicy,
     options: ScanOptions,
 }
@@ -49,6 +51,16 @@ impl ScannerBuilder {
     #[must_use]
     pub fn shared_detector(mut self, detector: Arc<dyn Detector>) -> Self {
         self.detectors.push(detector);
+        self
+    }
+
+    /// Sets what says whether a file comes from a trusted publisher.
+    ///
+    /// Without one, no finding yields to a signature. See
+    /// [`VerdictPolicy::settle_with_trust`] for what changes with one.
+    #[must_use]
+    pub fn trust(mut self, check: impl TrustCheck + 'static) -> Self {
+        self.trust = Some(Arc::new(check));
         self
     }
 
@@ -76,8 +88,16 @@ impl ScannerBuilder {
                 .detectors
                 .iter()
                 .any(|detector| detector.needs_content());
+        // A check that cannot check anything here is described in the
+        // report and never asked.
+        let trust_info = self.trust.as_ref().map(|check| check.describe());
+        let trust = self
+            .trust
+            .filter(|_| trust_info.as_ref().is_some_and(|info| info.available));
         Scanner {
             detectors: self.detectors,
+            trust,
+            trust_info,
             policy: self.policy,
             options: self.options,
             needs_content,
@@ -91,6 +111,11 @@ impl ScannerBuilder {
 /// [crate documentation](crate) for how a scan proceeds.
 pub struct Scanner {
     pub(crate) detectors: Vec<Arc<dyn Detector>>,
+    /// What is asked who signed a file. Absent also when there is a check
+    /// that cannot work on this system.
+    pub(crate) trust: Option<Arc<dyn TrustCheck>>,
+    /// How the check describes itself, whether or not it can work here.
+    trust_info: Option<TrustCheckInfo>,
     pub(crate) policy: VerdictPolicy,
     pub(crate) options: ScanOptions,
     /// Whether files are buffered: a detector reads content, or archives
@@ -108,6 +133,7 @@ impl std::fmt::Debug for Scanner {
         formatter
             .debug_struct("Scanner")
             .field("detectors", &detectors)
+            .field("trust", &self.trust_info)
             .field("policy", &self.policy)
             .field("options", &self.options)
             .finish()
@@ -234,6 +260,7 @@ impl Scanner {
                 .iter()
                 .map(|detector| detector.describe())
                 .collect(),
+            trust_check: self.trust_info.clone(),
         }))
     }
 
@@ -454,6 +481,7 @@ struct ReportContext {
     roots: Vec<PathBuf>,
     threads: usize,
     detectors: Vec<crate::detector::DetectorInfo>,
+    trust_check: Option<TrustCheckInfo>,
 }
 
 impl Tally {
@@ -499,6 +527,10 @@ impl Tally {
                         self.partially_scanned_truncated = true;
                     }
                 }
+                if let Some(trust) = &result.trust {
+                    self.stats.trust_checks += 1;
+                    self.stats.files_trusted += u64::from(trust.is_trusted());
+                }
                 if result.verdict != Verdict::Clean {
                     self.stats.detections += 1;
                     let detection = Detection {
@@ -506,6 +538,7 @@ impl Tally {
                         size: result.size,
                         sha256: warden_sigdb::hex::encode(&result.sha256),
                         verdict: result.verdict,
+                        trust: result.trust,
                         findings: result.findings,
                         findings_omitted: result.findings_omitted,
                     };
@@ -517,6 +550,7 @@ impl Tally {
                         path,
                         size: result.size,
                         sha256: warden_sigdb::hex::encode(&result.sha256),
+                        trust: result.trust,
                         findings: result.findings,
                         findings_omitted: result.findings_omitted,
                     };
@@ -590,6 +624,7 @@ impl Tally {
             roots: context.roots,
             threads: context.threads,
             detectors: context.detectors,
+            trust_check: context.trust_check,
             stats: self.stats,
             detections: self.detections,
             recorded: self.recorded,

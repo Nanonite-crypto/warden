@@ -156,7 +156,7 @@ fn json_output_is_the_full_report() {
             .arg(&report_file),
     );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
-    assert_eq!(json["schema"], 4);
+    assert_eq!(json["schema"], 5);
     assert_eq!(json["stats"]["files_scanned"], 3);
     assert_eq!(json["stats"]["detections"], 1);
     assert_eq!(json["detections"][0]["verdict"], "malicious");

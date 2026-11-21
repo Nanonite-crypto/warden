@@ -298,7 +298,7 @@ fn a_report_shows_when_a_finding_counts_and_leaves_the_usual_case_out() {
     let report = scan(&scanner(), dir.path());
 
     let json = serde_json::to_value(&report).unwrap();
-    assert_eq!(json["schema"], 4);
+    assert_eq!(json["schema"], 5);
     assert_eq!(json["stats"]["files_recorded"], 1);
     let flagged = &json["detections"][0]["findings"];
     assert_eq!(flagged[0]["counts"], "with_second_sign");
