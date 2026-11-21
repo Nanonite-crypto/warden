@@ -390,20 +390,31 @@ pip install pycdlib
 python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --out rules/vendor/warden-kit.iso
 ```
 
-The first kits had to go into `rules/vendor`: their rule bundle stored
-its rules as they are, and Microsoft Defender removes such a file anywhere
-else ([RULES.md](RULES.md#rule-files-and-your-antivirus)). A bundle keeps
-its contents under a cipher now. Until a kit with such a bundle has been
-through a run, the image stays where the bundle is.
+A kit can carry a second bundle as a control:
 
-The image holds the Windows build of Warden, a rule bundle and
+```
+warden rules build --plain rules/vendor/yara-forge-rules-core.zip --exclusions rules/exclusions.toml --out rules/vendor/rules-plain.wrb
+python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --control rules/vendor/rules-plain.wrb --out rules/vendor/warden-kit.iso
+```
+
+The control holds its rules as they are, where the bundle the scan uses
+keeps them under a cipher
+([RULES.md](RULES.md#rule-files-and-your-antivirus)). The scan never uses
+the control. The script only asks whether it can be read, so that one run
+shows whether the machine's antivirus tells the two apart.
+
+A kit that holds a bundle with its rules as they are, as a control or as
+its only bundle, has to stay in `rules/vendor`: Microsoft Defender removes
+such a file anywhere else, and may take the image for it too.
+
+The image holds the Windows build of Warden, the bundle or bundles, and
 `fresh-install-scan.cmd`. Attached to a virtual machine and started there
 as administrator, the script
 
 1. records what the machine is: edition, build, installed updates and
    programs, whether a network is up, what the antivirus is doing;
 2. asks `warden rules info` whether the rule bundle can be read on this
-   machine;
+   machine, and the same of the control if there is one;
 3. runs `warden false-positives` over the whole of `C:\`;
 4. records what the machine's antivirus reported in the meantime;
 5. writes all of it to `C:\warden-out`.

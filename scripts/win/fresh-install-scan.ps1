@@ -29,6 +29,13 @@
     scans with the layers that need no bundle: the built-in signature and
     rule, and the heuristics. The result says which layers it is from.
 
+    A second bundle, rules-plain.wrb, may lie next to the first as a
+    control. A bundle keeps its rules under a cipher so that an antivirus
+    does not take it for malware; the control holds rules as they are. The
+    script only asks whether the control can be read here, and never scans
+    with it. A machine whose antivirus blocks the one and reads the other
+    shows what the cipher is for.
+
     It installs nothing, and it changes no Windows or antivirus setting.
     While it runs it asks Windows to stay awake, the way an installer does:
     a fresh Windows goes to sleep after a few minutes without input, and a
@@ -61,6 +68,7 @@ $ErrorActionPreference = 'Stop'
 $kit = $PSScriptRoot
 $warden = Join-Path $kit 'warden.exe'
 $rules = Join-Path $kit 'rules.wrb'
+$control = Join-Path $kit 'rules-plain.wrb'
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 
 function Write-Utf8([string]$Path, [string]$Text) {
@@ -193,6 +201,11 @@ function Get-MachineFacts {
     try {
         $info.rules_sha256 = (Get-FileHash -LiteralPath $rules -Algorithm SHA256).Hash.ToLowerInvariant()
     } catch { }
+    if (Test-Path -LiteralPath $control) {
+        try {
+            $info.control_sha256 = (Get-FileHash -LiteralPath $control -Algorithm SHA256).Hash.ToLowerInvariant()
+        } catch { }
+    }
     return $info
 }
 
@@ -293,6 +306,24 @@ if (-not $failure) {
         Write-Host 'The rule bundle cannot be read on this machine:' -ForegroundColor Yellow
         Write-Host "  $why" -ForegroundColor Yellow
         Write-Host 'The scan runs without it: built-in signature and rule, and heuristics.' -ForegroundColor Yellow
+    }
+}
+
+# The control, if the kit brought one: a bundle with its rules as they are.
+# It is only asked about. Whether it could be read goes into the results,
+# next to the answer for rules.wrb.
+if (-not $failure -and (Test-Path -LiteralPath $control)) {
+    $said = cmd /c "(`"$warden`" rules info `"$control`") 2>&1"
+    if ($LASTEXITCODE -eq 0) {
+        $facts.control_bundle = 'read'
+        Send-Line 'WARDEN-KIT CONTROL read'
+        Write-Host 'The control bundle, with its rules as they are, can be read here as well.'
+    } else {
+        $why = ((@($said) | ForEach-Object { [string]$_ }) -join ' ').Trim()
+        $facts.control_bundle = "not read: $why"
+        Send-Line "WARDEN-KIT CONTROL not-read $why"
+        Write-Host 'The control bundle, with its rules as they are, cannot be read here:'
+        Write-Host "  $why"
     }
 }
 

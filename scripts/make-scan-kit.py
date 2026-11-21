@@ -11,8 +11,13 @@ and the two scripts from `scripts/win/`.
     python3 scripts/make-scan-kit.py --warden target/release/warden.exe \\
         --rules rules/vendor/rules.wrb --out rules/vendor/warden-kit.iso
 
+`--control` adds a fifth file: a bundle built with `warden rules build
+--plain`, which holds its rules as they are. The scan does not use it. The
+script on the kit only asks whether it can be read, so that one run shows
+whether the machine's antivirus tells it from the bundle under the cipher.
+
 Keep the image where the bundle is. It holds the bundle, and an antivirus
-that takes the bundle for malware may take the image for it too: see
+that takes a bundle for malware may take the image for it too: see
 docs/RULES.md, "Rule files and your antivirus".
 
 Attach the image to the machine's CD drive, open the drive there, right-click
@@ -40,10 +45,24 @@ def iso_name(name: str) -> str:
     return f"/{clean}.{extension.upper()[:3]};1"
 
 
+def bundle_version(path: Path):
+    """The format version in a rule bundle's header, or None if the file is
+    not a rule bundle: 1 holds the rules as they are, 2 under a cipher."""
+    header = path.read_bytes()[:12]
+    if len(header) < 12 or header[:8] != b"WRDNRUL\0":
+        return None
+    return int.from_bytes(header[8:12], "little")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--warden", required=True, type=Path, help="warden.exe, built for Windows")
     parser.add_argument("--rules", required=True, type=Path, help="the rule bundle to scan with")
+    parser.add_argument(
+        "--control",
+        type=Path,
+        help="a bundle built with --plain, to see whether the machine's antivirus blocks it",
+    )
     parser.add_argument("--out", required=True, type=Path, help="the CD image to write")
     args = parser.parse_args()
 
@@ -53,9 +72,14 @@ def main() -> None:
         "fresh-install-scan.cmd": SCRIPTS / "fresh-install-scan.cmd",
         "fresh-install-scan.ps1": SCRIPTS / "fresh-install-scan.ps1",
     }
+    if args.control is not None:
+        files["rules-plain.wrb"] = args.control
     for name, path in files.items():
         if not path.is_file():
             sys.exit(f"{name}: {path} is not a file")
+    # A control that is itself under the cipher would show nothing.
+    if args.control is not None and bundle_version(args.control) != 1:
+        sys.exit(f"--control: {args.control} is not a bundle that holds its rules as they are")
 
     iso = pycdlib.PyCdlib()
     iso.new(interchange_level=3, joliet=3, vol_ident="WARDEN_KIT")
@@ -64,9 +88,12 @@ def main() -> None:
     iso.write(str(args.out))
     iso.close()
 
+    kinds = {1: "rules as they are", 2: "rules under a cipher"}
     for name, path in files.items():
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        print(f"{digest}  {name}")
+        version = bundle_version(path) if name.endswith(".wrb") else None
+        kind = f"  (bundle format {version}, {kinds.get(version, 'unknown')})" if version else ""
+        print(f"{digest}  {name}{kind}")
     print(f"Wrote {args.out} ({args.out.stat().st_size:,} bytes)")
 
 
