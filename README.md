@@ -318,9 +318,10 @@ produced. In short, as of phase 4:
 ## Roadmap
 
 [docs/ROADMAP.md](docs/ROADMAP.md) lists every phase with its exit
-criterion. Next, in phase 5: removing the autostart entries that point at
-a quarantined file, and putting them back on restore, tried in a virtual
-machine.
+criterion. Now, in phase 5: checking who signed a file, so that a match of
+a published rule on a file from a trusted publisher is recorded instead of
+reported. Then: removing the autostart entries that point at a quarantined
+file, and putting them back on restore, tried in a virtual machine.
 
 ## Licence
 
