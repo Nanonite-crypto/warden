@@ -89,6 +89,21 @@ jobs:
             if ($LASTEXITCODE -gt 1) { exit $LASTEXITCODE }
           }
           exit 0
+      # The exclusion list names clean files that rules flagged. Some of
+      # them are on this machine. Who signed them says whether a rule could
+      # come off the list if its file's publisher were trusted instead. A
+      # step for looking, so it never stops the run.
+      - name: Who signed the files the exclusion list names
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $list = Get-Content -LiteralPath rules\exclusions.toml -Raw
+          $files = @([regex]::Matches($list, "(?m)^file = '([^']+)'") |
+            ForEach-Object { $_.Groups[1].Value } |
+            Where-Object { Test-Path -LiteralPath $_ })
+          if ($files.Count -eq 0) { Write-Host 'None of those files is on this machine.'; exit 0 }
+          & target\release\warden.exe trust check @files
+          exit 0
       # Who signed the files of this machine, found by which of the three
       # routes, and what a check costs: every file of System32 and of the
       # software above is checked, not only the few a scan asks about. The

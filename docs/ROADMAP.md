@@ -92,8 +92,8 @@ The desktop's programs were also scanned once more, with administrator
 rights, which open the folder of the apps from the Microsoft Store. One
 file of 310,910 was flagged there: a clean one, by a rule that was written
 by hand. The four generated rules flagged nothing, and four more of their
-matches are on record. The hand-written rule is the seventh on the
-exclusion list now, and the repeat with that list flagged none of 311,415
+matches are on record. The hand-written rule went on the exclusion list as
+its seventh entry, and the repeat with that list flagged none of 311,415
 files
 ([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-again-with-administrator-rights)).
 
@@ -104,7 +104,8 @@ cannot be measured. It is stated as a limit.
 
 The exclusion list stays, with seven entries by the end of the phase. It
 is still the right tool for a rule that is wrong in a way of its own, such
-as one that recognises an installer plug-in.
+as one that recognises an installer plug-in. The seventh entry was not of
+that kind, and phase 5 took it off again.
 
 ## Phase 5, first piece: a signature-trust check
 

@@ -909,9 +909,10 @@ loader that is itself a .NET program. It asks for four of five short
 sequences of .NET instructions, three of them ordinary, in a program under
 6 MB with exactly one embedded resource of more than 300 KB. The rule was
 in the bundle when these folders were first scanned, on 2026-11-18, and
-flagged nothing then. It is the seventh rule on the exclusion list now
-([RULES.md](RULES.md#rules-that-are-left-out)), and a bundle built with
-that list has 5,131 rules.
+flagged nothing then. It went on the exclusion list that day as the
+seventh rule ([RULES.md](RULES.md#rules-that-are-left-out)), and a bundle
+built with that list has 5,131 rules. Phase 5 took it off again, for
+[a reason that has to do with who signed the file](RULES.md#a-rule-that-came-off-the-list-again).
 
 **Four more files are on record**, all of them in the folder that the run
 without those rights could not list, and all through the Triback rule:

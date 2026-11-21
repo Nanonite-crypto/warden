@@ -292,8 +292,11 @@ produced. In short, as of phase 4:
   535,859 on the runner, the desktop and a Linux tree. A later scan of the
   desktop's programs with administrator rights reached 52,636 files more,
   and one of those was flagged: a file of the Microsoft Defender app, by a
-  hand-written rule that is the seventh on the list now. Repeated with
-  that list, the scan flags none of 311,415 files. Across all runs,
+  hand-written rule. With that rule on the list as a seventh, the scan
+  flagged none of 311,415 files. Since phase 5 the rule is back in the
+  bundle: Microsoft signed that file, and the match of a public rule in a
+  file that a trusted publisher signed is recorded and not reported.
+  Across all runs,
   generated rules match 21 clean files on three machines, and all are on
   record with a clean verdict. Eight are the files that such rules had
   flagged before; the other thirteen came up after the change, and nothing
