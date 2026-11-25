@@ -35,9 +35,13 @@ route = "embedded"
 seen = 2026-11-21
 machine = "Windows 11 desktop"
 note = """\
-Read with Windows' own Get-AuthenticodeSignature, before Warden could check \
-a signature: valid, embedded, signed for Microsoft Corporation. The SHA-256 \
-is the one the scan of 2026-11-20 recorded for the file at this path."""
+First read with Windows' own Get-AuthenticodeSignature, before Warden could \
+check a signature: valid, embedded, signed for Microsoft Corporation. The \
+SHA-256 is the one the scan of 2026-11-20 recorded for the file at this \
+path. On 2026-11-25 warden trust check said the same about it on that \
+desktop: the chain is Microsoft Corporation, Microsoft Windows Code Signing \
+PCA 2024, Microsoft Root Certificate Authority 2010, and revocation was \
+checked."""
 
 [[publisher.evidence]]
 file = 'C:\Program Files\PowerShell\7\pwsh.exe'
