@@ -94,6 +94,13 @@ jobs:
           # exist on Windows.
           WARDEN_SIGNED_FIXTURES: ${{ runner.temp }}/warden-signed
           WARDEN_REQUIRE_SIGNED_FIXTURES: "1"
+          # And the tests that register a service, tasks, Run values and a
+          # Startup shortcut with Windows' own tools, to see Warden remove
+          # them and put them back. They run only where this variable says
+          # in as many words that the machine may be changed. That is true
+          # of a hosted runner, which is deleted when the job ends, and of
+          # no developer's machine. They only exist on Windows.
+          WARDEN_AUTOSTART_TESTS: this-machine-may-be-changed
       # What the tests assert, for a person to read: what Warden says about
       # each of the files made above and about a few files of Windows, route
       # by route, next to what Windows itself said when they were made.
@@ -123,6 +130,25 @@ jobs:
           Write-Host '::endgroup::'
           Write-Host '::group::The same as JSON'
           & $warden trust check --json @files
+          Write-Host '::endgroup::'
+          exit 0
+      # What Warden finds in the four places it looks at for autostart
+      # entries, and how long the look takes with this unoptimised build.
+      # Shown in full, which is fine on a machine that is the same for
+      # everybody. On a person's machine this list says what is installed,
+      # and it is never recorded.
+      - name: Show what starts programs on this machine
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $warden = 'target\debug\warden.exe'
+          if (-not (Test-Path -LiteralPath $warden)) { Write-Host 'warden.exe was not built.'; exit 0 }
+          $watch = [System.Diagnostics.Stopwatch]::StartNew()
+          $listing = & $warden autostart list
+          $watch.Stop()
+          Write-Host "The look took $($watch.ElapsedMilliseconds) ms."
+          Write-Host '::group::warden autostart list'
+          $listing
           Write-Host '::endgroup::'
           exit 0
       - name: Take the test roots out of the machine's list again
