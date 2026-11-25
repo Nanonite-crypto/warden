@@ -348,6 +348,11 @@ tested against a sample.
 | 2026-11-25 | One case stays open in phase 10 and is accepted: a mod that no scan knows, that never leaves the game and that talks to a bare address is recorded and not cut. From outside it looks exactly like a game server that was joined by its address. |
 | 2026-11-25 | Before a flagged jar may cut anything in phase 10, the scan layers are measured on a set of clean jar files, as they were on System32 and on the desktop's programs. Nobody has that number yet, and of the 5,137 rules in the pinned rule package only 26 are named for Java. |
 | 2026-11-25 | The design of phase 10 is written up in the repository under `docs/design/` at the portfolio checkpoint, so that the planned feature can be read before it is built. No code for it is written before phase 10. |
+| 2026-11-25 | In phase 10 a planted program is cut off when it connects out to a bare address, and also when it connects to a host name on a port that is not a usual one. The one contact that the published analyses of Fractureiser's planted loader document is of the second kind. Which ports are usual is a short list kept as data: web, mail, name lookup and time. A runtime with a flagged file loaded keeps the narrower form, because every game server sits on a port of its own. |
+| 2026-11-25 | Rules for Java malware come onto an additions list: rules taken by name from the extended package of the same pinned YARA Forge release, each with its reason, the way the exclusion list takes rules out. The first entries are the four rules for the Adwind family. They go in behind the measurement on clean jar files and the standing false-positive runs. |
+| 2026-11-25 | The community rules for STRRAT on MalwareBazaar are not taken as a second source of rules yet: no licence is stated for them, and the download needs the abuse.ch key. |
+| 2026-11-25 | Warden gets no rule of its own for the code that Fractureiser injects into mods, as long as it scans no real sample: such a rule could not be tried against what it is for. This is looked at again if the testing rule changes. |
+| 2026-11-25 | With that, the design of phase 10 is final until the watch data of phase 10 says otherwise. |
 
 ## Open decisions
 
