@@ -2753,6 +2753,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "warden-autostart"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "warden-quarantine",
+ "warden-sigdb",
+]
+
+[[package]]
 name = "warden-calibrate"
 version = "0.1.0"
 dependencies = [

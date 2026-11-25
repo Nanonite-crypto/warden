@@ -7,6 +7,7 @@ members = [
     "crates/warden-pe",
     "crates/warden-quarantine",
     "crates/warden-trust",
+    "crates/warden-autostart",
     "crates/warden-cli",
     "crates/warden-calibrate",
 ]
@@ -27,6 +28,7 @@ warden-yara = { path = "crates/warden-yara" }
 warden-sigdb = { path = "crates/warden-sigdb" }
 warden-quarantine = { path = "crates/warden-quarantine" }
 warden-trust = { path = "crates/warden-trust" }
+warden-autostart = { path = "crates/warden-autostart" }
 
 anyhow = "1.0.104"
 # Decodes the hashes in the block map of an app package, which are written
