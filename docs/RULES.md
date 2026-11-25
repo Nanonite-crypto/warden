@@ -725,5 +725,5 @@ A bundle is therefore trusted in the same way as the program itself: it
 must come from a place that only trusted users can write to. For the
 command-line tool that is your own folder. For the service planned in phase
 6 it is a folder that only the service and administrators can write to, and
-phase 10 adds a signed manifest that covers the program, the signature
+phase 11 adds a signed manifest that covers the program, the signature
 database and the rule bundle together.

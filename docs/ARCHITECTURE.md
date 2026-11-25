@@ -47,19 +47,22 @@ flowchart TB
         realtime["Real-time monitor"]
         store["Data store<br/>signatures, history"]
         remediation["Remediation"]
+        isolation["Remote access isolation"]
         realtime --> jobs --> engine --> vault --> remediation
         store --> engine
+        isolation --> vault
     end
-    events["Windows event sources<br/>file changes, process starts"]
+    events["Windows event sources<br/>file changes, process starts, connections"]
     app <--> pipe
     cli <--> pipe
     pipe <--> service
     events --> realtime
+    events --> isolation
 ```
 
 - **Core service** (phase 6). A Windows service running as SYSTEM. It owns
   the engine, the signature store, the quarantine vault, remediation, the
-  real-time monitor and all state. Anything that needs privilege, or must
+  real-time monitor, remote access isolation and all state. Anything that needs privilege, or must
   keep running with nobody logged in, lives here.
 - **Desktop app** (phase 7). Tauri with a React front end, running with the
   user's normal rights. A thin client with no engine code; it cannot delete
@@ -152,7 +155,8 @@ code. It implements a trait of the engine, as the detection layers do, and
 the engine never learns what a certificate is.
 
 Crates planned for later phases: `remediation`, `realtime`, `ipc`,
-`service`, and the Tauri app.
+`service`, `netwatch` and `isolate` for remote access isolation, and the
+Tauri app.
 
 ## The scan pipeline
 
@@ -424,9 +428,30 @@ User mode hears about events after they happen, so a file can start running
 before the verdict arrives. This is detect-and-respond, not prevention, and
 the measured delay will be published. Blocking before execution needs a
 filter in the kernel's I/O path that holds the operation until a scanner
-answers; that is the optional, VM-only phase 12.
+answers; that is the optional, VM-only phase 13.
 
-## Self-protection (phase 10)
+## Remote access isolation (phase 10)
+
+Planned, and nothing of it is built. The service will notice a program
+that opens a channel for remote control, cut that program off from the
+network, and leave what happens next to the user.
+
+- It reads what Windows already publishes about process starts,
+  connections and name lookups. No driver is involved.
+- It cuts with filters of the Windows Filtering Platform. A program that
+  hosts other code, such as a Java runtime, loses one destination. A
+  program of its own that is unsigned and downloaded, or that a scan
+  flags, loses its network access as a whole.
+- Nothing is deleted or stopped by it. An alert offers to keep the
+  program isolated, to quarantine it or to allow it.
+- It has a mode that only watches and records, which is how its false
+  positives are measured before it may cut anything.
+
+A filter added from user mode comes after the connection it reacts to, so
+the first packets get out. The design is written up under `docs/design/`
+at the portfolio checkpoint.
+
+## Self-protection (phase 11)
 
 In user mode the service will:
 
