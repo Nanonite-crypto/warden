@@ -43,6 +43,15 @@
 //! engine asks only about a file with a finding that yields to a trusted
 //! signature, and what it does with the answer is described there.
 //!
+//! # Before a quarantine
+//!
+//! The same check answers a second question: is this file part of the
+//! operating system? A quarantine asks it before it takes a file away,
+//! because a system file that is gone can keep Windows from starting.
+//! [`Verifier::origin`] answers with an [`Origin`]. The trust list says
+//! which publisher is the operating system; no name is written into the
+//! program.
+//!
 //! # Example
 //!
 //! ```
@@ -66,7 +75,7 @@ mod windows;
 
 pub use list::{Anchor, Evidence, ListError, Publisher, TrustList};
 pub use signature::{
-    Certificate, Examination, Found, Reason, Revocation, Route, RouteReport, Signer, Trust,
+    Certificate, Examination, Found, Origin, Reason, Revocation, Route, RouteReport, Signer, Trust,
 };
 pub use verify::{Options, Verifier, stand_in};
 

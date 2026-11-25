@@ -219,6 +219,12 @@ An entry is a signing identity, not a company:
   Microsoft's own roots by Windows' check of the root's key, or
   `"sha256:..."`, a certificate that has to be in the chain: the
   publisher's own, the one of the authority that issued it, or the root.
+- `operating_system = true` marks an identity that signs the operating
+  system itself. A scan does nothing with it. The quarantine goes by it:
+  [a file with such a signature stays where it is](QUARANTINE.md#the-guard)
+  unless it is taken on purpose. Only an entry with the anchor
+  `"microsoft-root"` can carry the mark, and an entry without it is not
+  the operating system.
 - `signs` says in words what this identity is used for, and what it is not.
 - `reason` says why the entry is there: which false positive it answers.
 - `evidence` is at least one real file that was seen with such a signature:
@@ -243,7 +249,8 @@ Two signing identities, both Microsoft's, both added on 2026-11-21:
 | Microsoft Corporation | name and organisation "Microsoft Corporation" | Microsoft's applications, and the packages of the apps Microsoft itself publishes in the Microsoft Store | `xpdAgent.exe` of the Microsoft Defender app on a desktop; `pwsh.exe` of PowerShell 7 on the CI runner |
 | Microsoft Windows | name "Microsoft Windows", organisation "Microsoft Corporation" | Windows itself: its system files, through the catalogues and in the file | `ntdll.dll`, which carries its signature, and `whoami.exe`, which a catalogue lists, on the CI runner |
 
-For both, the chain has to end in one of Microsoft's own roots.
+For both, the chain has to end in one of Microsoft's own roots. Microsoft
+Windows is the one that is marked as the operating system.
 
 Microsoft signs under many more names than these two, and they are not on
 the list: ".NET" for the .NET runtime, "Microsoft Windows Hardware
@@ -377,6 +384,10 @@ of a private machine shows which programs are installed on it.
 
 `warden scan`, `false-positives` and `bench` check signatures unless
 `--no-trust` is given.
+
+`warden quarantine add` asks the same check another question: whether a
+file is part of Windows. It leaves such a file where it is
+([QUARANTINE.md](QUARANTINE.md#the-guard)).
 
 ## Limits
 

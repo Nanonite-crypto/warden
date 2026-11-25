@@ -8,6 +8,10 @@
 # - It names at least one real file with such a signature: where it was
 #   seen, its SHA-256, the route its signature was found by, the day and
 #   the machine.
+# - It can say operating_system = true: this identity signs the operating
+#   system itself. The scan does nothing with that. The quarantine leaves
+#   such a file where it is unless it is told to take it all the same,
+#   because Windows may not start without one of its own files.
 #
 # The list is compiled into the program. A valid signature of a publisher
 # that is not here changes nothing.
@@ -59,6 +63,7 @@ name = "Microsoft Windows"
 common_name = "Microsoft Windows"
 organization = "Microsoft Corporation"
 anchor = "microsoft-root"
+operating_system = true
 signs = """\
 Windows itself: its system files, most of them through the catalogues that \
 Windows keeps and some in the file. Not Microsoft's applications, which are \

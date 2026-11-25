@@ -267,6 +267,7 @@ struct ListedPublisher<'a> {
     common_name: &'a str,
     organization: &'a str,
     anchor: String,
+    operating_system: bool,
     signs: &'a str,
     reason: &'a str,
     added: &'a str,
@@ -299,6 +300,7 @@ fn list(args: &ListArgs) -> anyhow::Result<ExitCode> {
                     common_name: &publisher.common_name,
                     organization: &publisher.organization,
                     anchor: publisher.anchor.to_string(),
+                    operating_system: publisher.operating_system,
                     signs: &publisher.signs,
                     reason: &publisher.reason,
                     added: &publisher.added,
@@ -341,6 +343,11 @@ fn list(args: &ListArgs) -> anyhow::Result<ExitCode> {
             "  Chain        has to pass through {}",
             anchor_in_words(&publisher.anchor)
         )?;
+        if publisher.operating_system {
+            outln!(
+                "  Quarantine   leaves its files where they are: this is the operating system itself"
+            )?;
+        }
         outln!("  Signs        {}", shown(&publisher.signs))?;
         outln!("  Why          {}", shown(&publisher.reason))?;
         outln!("  Added        {}", publisher.added)?;

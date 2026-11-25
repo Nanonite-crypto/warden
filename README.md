@@ -115,8 +115,11 @@ other scanner trips over it. On Windows it comes back with its access
 rights, its attribute bits and the mark that says it was downloaded. An
 operation that is cut off is finished or undone the next time the
 quarantine is opened; the tests stop every operation after every step,
-the way a program that dies would. [docs/QUARANTINE.md](docs/QUARANTINE.md)
-has the format, the reasoning and the limits.
+the way a program that dies would. A file that Windows itself signed is
+left where it is, because Windows may not start without it; a flag that
+has to be typed out takes it all the same.
+[docs/QUARANTINE.md](docs/QUARANTINE.md) has the format, the reasoning and
+the limits.
 
 A published rule is sometimes wrong about clean software, and for a file
 of Windows there is better evidence than a rule: its signature.
@@ -160,7 +163,7 @@ routes to a signature, the list, and the limits.
 |---|---|
 | `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report, `--no-trust` reports every rule match whoever signed the file. |
 | `warden trust check <file>...` / `list` / `survey <folder>` | Says who signed a file, by which of three routes, and whether that publisher is on the trust list; prints the list; or checks every file of a folder and counts. Windows only. |
-| `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. |
+| `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. `add` leaves a file that Windows itself signed where it is, unless `--even-if-signed-by-windows` is given. |
 | `warden inspect <file>` | Shows what the heuristics see in one Windows executable: its sections, imports and header, every indicator that applies with its weight, the score and the threshold. |
 | `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. The bundle keeps its contents under a cipher, so that an antivirus does not take it for the malware its rules describe. |
 | `warden rules info <file>` | Shows what a bundle holds: how many rules lead to which verdict, the rule files it was built from, the rules that were left out on purpose, the licences the rules name. |
@@ -396,10 +399,10 @@ produced. In short, as of the first piece of phase 5:
 [docs/ROADMAP.md](docs/ROADMAP.md) lists every phase with its exit
 criterion. Phase 5 so far: Warden checks who signed a file, so that a
 match of a published rule in a file from a trusted publisher is recorded
-instead of reported. Next in that phase: a guard that keeps a file that
-Windows itself signed out of the quarantine, and then removing the
-autostart entries that point at a quarantined file and putting them back
-on restore, tried in a virtual machine.
+instead of reported, and the quarantine leaves a file that Windows itself
+signed where it is. Next in that phase: removing the autostart entries
+that point at a quarantined file and putting them back on restore, tried
+in a virtual machine.
 
 ## How this project is built
 

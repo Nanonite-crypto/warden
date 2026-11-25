@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Digest, Sha256};
 
 use crate::format::{self, EXTENSION, Problem};
+use crate::guard::{AddOptions, Guard, Verdict};
 use crate::info::{CIPHER, Cipher, EntryInfo, ExactPath, Reason};
 use crate::journal::{self, Note, NotedPath, create_new_private, sync_dir};
 use crate::{hex, meta};
@@ -39,6 +40,15 @@ pub enum QuarantineError {
     Changed {
         /// The file.
         path: String,
+    },
+    /// The quarantine's guard said that the file should stay, see
+    /// [`Guard`].
+    #[error("{path} was left where it is: {why}")]
+    Guarded {
+        /// The file.
+        path: String,
+        /// What the guard said.
+        why: String,
     },
     /// No entry has this identifier.
     #[error("there is no quarantine entry {0}")]
@@ -252,6 +262,8 @@ pub struct Quarantine {
     /// Held for as long as this value lives.
     _lock: File,
     interrupt_after: Option<Step>,
+    /// Asked about every file before it is taken, if there is one.
+    guard: Option<Box<dyn Guard>>,
 }
 
 impl Quarantine {
@@ -301,6 +313,7 @@ impl Quarantine {
             tmp,
             _lock: lock,
             interrupt_after: None,
+            guard: None,
         };
         let recovered = quarantine.recover().map_err(failed(format!(
             "cannot read the journal of the quarantine in {}",
@@ -313,6 +326,13 @@ impl Quarantine {
     #[must_use]
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    /// Gives the quarantine a guard. From here on [`add`](Self::add) asks
+    /// it about every file and leaves the file where it is if the guard
+    /// says so.
+    pub fn set_guard(&mut self, guard: Box<dyn Guard>) {
+        self.guard = Some(guard);
     }
 
     /// Makes the next operation stop right after `step`, and leave
@@ -363,9 +383,27 @@ impl Quarantine {
     /// # Errors
     ///
     /// Fails if `path` is not a regular file, cannot be read or cannot be
-    /// removed, if it changes while it is being read, or if the quarantine
-    /// cannot be written to.
+    /// removed, if it changes while it is being read, if the quarantine's
+    /// guard says the file should stay, or if the quarantine cannot be
+    /// written to.
     pub fn add(&self, path: &Path, reason: Reason) -> Result<Entry, QuarantineError> {
+        self.add_with(path, reason, &AddOptions::default())
+    }
+
+    /// Moves a file into the quarantine, as [`add`](Self::add) does, with
+    /// a say in how. This is the way past a [`Guard`]:
+    /// [`AddOptions::overrule_guard`] takes a file that the guard would
+    /// leave.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`add`](Self::add).
+    pub fn add_with(
+        &self,
+        path: &Path,
+        reason: Reason,
+        options: &AddOptions,
+    ) -> Result<Entry, QuarantineError> {
         let path = std::path::absolute(path)
             .map_err(failed(format!("cannot tell where {} is", path.display())))?;
         let shown = path.display().to_string();
@@ -388,6 +426,18 @@ impl Quarantine {
             return Err(QuarantineError::Changed { path: shown });
         }
         let captured = meta::capture(&source, &opened, &path);
+
+        // The guard looks before anything is written, so that a file that
+        // stays leaves no trace in the quarantine.
+        let looked_at = match &self.guard {
+            Some(guard) if !options.overrule_guard => match guard.look_at(&path) {
+                Verdict::Take { sha256 } => sha256,
+                Verdict::Leave { why } => {
+                    return Err(QuarantineError::Guarded { path: shown, why });
+                }
+            },
+            _ => None,
+        };
 
         let id = self
             .new_id()
@@ -444,6 +494,13 @@ impl Quarantine {
                 });
             }
         };
+        // What the guard let through is a content. If what was copied is
+        // another, the guard was not asked about it.
+        if looked_at.is_some_and(|sha256| hex::encode(&sha256) != info.sha256) {
+            let _ = fs::remove_file(&partial);
+            let _ = journal::remove(&self.journal, &id);
+            return Err(QuarantineError::Changed { path: shown });
+        }
         self.reached(Step::EntryWritten)?;
 
         let entry_file = self.entry_path(&id);

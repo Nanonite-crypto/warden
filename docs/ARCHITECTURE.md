@@ -90,11 +90,13 @@ elevated caller.
    something backs it up is again for the policy to see, not for the
    detector.
 3. **Nothing is destroyed.** Quarantine is journaled and reversible. A
-   guard that refuses to quarantine signed Windows system files belongs to
-   this rule, because a false positive there can stop Windows from
-   starting. It is not built yet. What it was waiting for exists now:
-   `warden-trust` can tell a file that Windows itself signed. Until the
-   guard exists, nothing is quarantined unless a person names the file.
+   guard belongs to this rule: a file that Windows itself signed stays
+   where it is, because a false positive there can stop Windows from
+   starting, and then nothing is left to undo it with. The quarantine
+   states what it asks before it takes a file as a trait, `Guard`, and
+   `warden` answers it with `warden-trust`; taking such a file all the
+   same needs a flag that has to be given on purpose. Nothing is
+   quarantined yet unless a person names the file.
 4. **Files are hostile input.** Parsers get limits, and fuzz targets from
    phase 3 on. A file that cannot be read is reported as skipped with a
    reason, and a file that could only be checked in part is reported as
@@ -116,8 +118,9 @@ crates/
                     and inert executables for tests
   warden-quarantine/
                     the quarantine: the entry format, the journal that
-                    settles interrupted operations, and what a file has
-                    besides its content on Unix and on Windows
+                    settles interrupted operations, what a file has
+                    besides its content on Unix and on Windows, and the
+                    guard it asks before it takes a file
   warden-trust/     who signed a file: the three routes to a signature,
                     the trust list, and the one module that asks Windows
   warden-cli/       the `warden` command-line tool
@@ -386,6 +389,12 @@ Implemented in `warden-quarantine` and driven by `warden quarantine`.
 - **What a file has besides its content comes back too**: timestamps, on
   Unix the owner and permission bits, on Windows the attribute bits, the
   security descriptor and the mark of a downloaded file.
+- **A guard has the last look.** Before a file is taken, the quarantine
+  asks a `Guard`, if it was given one. `warden` gives it one that asks
+  `warden-trust` whether Windows itself signed the file, and such a file
+  stays. The quarantine learns nothing about signatures, and
+  `warden-trust` nothing about quarantines; the command-line program is
+  where the two meet.
 
 It runs with the rights of whoever calls it and keeps its folder in that
 user's own data folder. What a quarantine for a whole machine needs comes

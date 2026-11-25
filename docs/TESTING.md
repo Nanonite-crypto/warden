@@ -309,6 +309,9 @@ with made-up bytes in temporary folders:
 | Windows | Windows | Attribute bits, all three timestamps, the mark of the internet, and the security descriptor come back; so do access rights that deny the restoring user everything but reading; a restore cut off after the file had its name still gives the file its rights |
 | The check of security descriptors | Everywhere | A descriptor whose parts do not lie inside it is refused, and no input makes the check panic: every prefix of a good descriptor and a good one with each byte changed in turn |
 | The command line | Everywhere | The round trip, the refusals and a run that died, through `warden quarantine` the way a person would type it; and the EICAR file, see above |
+| The guard, with made-up guards | Everywhere | A file the guard would leave stays, and the quarantine holds nothing afterwards: no entry, no half-written copy, no note; the guard is asked about every file, by its full path, and not about what cannot be quarantined anyway; a file is taken past it only when that is asked for; a file whose content is another than the one the guard looked at stays |
+| The guard, with a stand-in for Windows | Everywhere | With the trust list that is part of the program: a file signed for Microsoft Windows stays, also when its certificates could not be looked up; one signed for Microsoft Corporation, one with the names of Windows under another root and one without a signature go; a file that could not be checked stays |
+| The guard, with real files of Windows | Windows | Copies of `ntdll.dll`, which carries its signature, and of `whoami.exe`, which a catalogue lists: each stays, with the reason and the flag in the message, goes with the flag, and comes back byte for byte. The same file with one byte more goes without the flag, and so does a program that Microsoft signed as Microsoft Corporation |
 
 Two things about the Windows tests.
 

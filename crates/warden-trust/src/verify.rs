@@ -33,7 +33,7 @@ use crate::list::{Anchor, TrustList};
 use crate::package::{self, BlockMap, PackageDigests, PackageFiles};
 use crate::sigarea::{self, SignatureArea};
 use crate::signature::{
-    Examination, Found, Reason, Revocation, Route, RouteReport, Signer, Trust, hex,
+    Examination, Found, Origin, Reason, Revocation, Route, RouteReport, Signer, Trust, hex,
 };
 
 /// How many packages are remembered. A survey goes through a package file
@@ -251,6 +251,68 @@ impl Verifier {
             executable: Some(area != SignatureArea::NotExecutable),
             routes,
             trust,
+        }
+    }
+
+    /// Checks one file by every route and says whether it is part of the
+    /// operating system: whether a signature holds for it that was made by
+    /// a publisher the trust list marks so.
+    ///
+    /// This is another question than [`trust`](Self::trust), and it is
+    /// answered more readily. Trust lets a finding go, so it asks for a
+    /// chain whose certificates were looked up. This keeps a file from
+    /// being taken away, where the mistake to avoid is the other one: a
+    /// signature of the system counts whether or not its certificates
+    /// could be looked up, and where Windows could not be asked at all the
+    /// answer is [`Origin::Unknown`] and not "no".
+    #[must_use]
+    pub fn origin(&self, path: &Path) -> (Examination, Origin) {
+        let examination = self.examine(path, None, true);
+        let origin = self.origin_in(&examination);
+        (examination, origin)
+    }
+
+    /// Reads the answer to [`origin`](Self::origin) off an examination
+    /// that tried every route.
+    fn origin_in(&self, examination: &Examination) -> Origin {
+        let mut failed = None;
+        for report in &examination.routes {
+            match &report.found {
+                Found::Valid { signer, .. } => {
+                    if let Some(publisher) = self
+                        .list
+                        .publisher_of(signer)
+                        .filter(|publisher| publisher.operating_system)
+                    {
+                        return Origin::OperatingSystem {
+                            publisher: publisher.name.clone(),
+                            route: report.route,
+                            revocation: signer.revocation,
+                        };
+                    }
+                }
+                Found::Failed { why } => {
+                    failed.get_or_insert(why);
+                }
+                Found::Nothing | Found::Invalid { .. } | Found::NotApplicable { .. } => {}
+            }
+        }
+        if let Some(why) = failed {
+            return Origin::Unknown { why: why.clone() };
+        }
+        match &examination.trust {
+            Trust::NotTrusted {
+                reason: Reason::Unavailable,
+                ..
+            } => Origin::Unavailable,
+            // The file could not be opened or read, so no route was tried.
+            Trust::NotTrusted {
+                reason: Reason::NotChecked | Reason::Changed,
+                detail,
+            } if examination.routes.is_empty() => Origin::Unknown {
+                why: detail.clone(),
+            },
+            Trust::Trusted { .. } | Trust::NotTrusted { .. } => Origin::Elsewhere,
         }
     }
 
@@ -1130,6 +1192,203 @@ machine = "a test"
         assert!(matches!(examination.routes[2].found, Found::Valid { .. }));
     }
 
+    /// The test list, with a second publisher that is marked as the
+    /// operating system.
+    fn list_with_a_system() -> TrustList {
+        let system = LIST
+            .replace("name = \"Example\"", "name = \"The System\"")
+            .replace("\"Example Ltd\"", "\"System Maker\"")
+            .replace(
+                "anchor = \"microsoft-root\"",
+                "anchor = \"microsoft-root\"\noperating_system = true",
+            );
+        TrustList::parse(&format!("{LIST}{system}")).expect("the test list with a system")
+    }
+
+    fn of_the_system() -> Signer {
+        signer("System Maker", "System Maker", true)
+    }
+
+    #[test]
+    fn a_file_of_the_system_is_told_by_its_signature() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let path = write(&dir, "kernel.dll", &unsigned_executable());
+        let (verifier, _) = verifier(
+            list_with_a_system(),
+            Answers {
+                catalog: valid(of_the_system()),
+                ..Answers::default()
+            },
+        );
+        let (examination, origin) = verifier.origin(&path);
+        assert_eq!(
+            origin,
+            Origin::OperatingSystem {
+                publisher: "The System".to_owned(),
+                route: Route::WindowsCatalog,
+                revocation: Revocation::Checked,
+            }
+        );
+        // The examination is the one the answer was read off.
+        assert_eq!(examination.routes.len(), 3);
+        assert!(examination.trust.is_trusted());
+    }
+
+    #[test]
+    fn a_file_of_the_system_stays_one_when_its_certificates_cannot_be_looked_up() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let path = write(&dir, "kernel.dll", &unsigned_executable());
+        let mut unchecked = of_the_system();
+        unchecked.revocation = Revocation::Unknown;
+        let (verifier, _) = verifier(
+            list_with_a_system(),
+            Answers {
+                catalog: valid(unchecked),
+                ..Answers::default()
+            },
+        );
+        let (examination, origin) = verifier.origin(&path);
+        // Not enough to let a finding go …
+        assert_eq!(reason(&examination.trust), Some(Reason::RevocationUnknown));
+        // … and enough to leave the file where it is.
+        assert_eq!(
+            origin,
+            Origin::OperatingSystem {
+                publisher: "The System".to_owned(),
+                route: Route::WindowsCatalog,
+                revocation: Revocation::Unknown,
+            }
+        );
+    }
+
+    #[test]
+    fn a_later_route_can_show_a_file_to_be_of_the_system() {
+        // The file carries the signature of another listed publisher, which
+        // settles trust at the first route. The package it is in belongs to
+        // the system, and that is still found.
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let root = package_folder(&dir, &[("tool.exe", &signed_executable())]);
+        let (verifier, _) = verifier(
+            list_with_a_system(),
+            Answers {
+                embedded: valid(listed()),
+                package: valid(of_the_system()),
+                ..Answers::default()
+            },
+        );
+        let (examination, origin) = verifier.origin(&root.join("tool.exe"));
+        assert_eq!(
+            examination.trust,
+            Trust::Trusted {
+                publisher: "Example".to_owned(),
+                route: Route::Embedded
+            }
+        );
+        assert!(
+            matches!(
+                &origin,
+                Origin::OperatingSystem { publisher, route: Route::Package, .. }
+                    if publisher == "The System"
+            ),
+            "{origin:?}"
+        );
+    }
+
+    #[test]
+    fn other_files_are_not_of_the_system() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let signed = write(&dir, "tool.exe", &signed_executable());
+        let unsigned = write(&dir, "plain.exe", &unsigned_executable());
+        let text = write(&dir, "notes.txt", b"no executable at all");
+
+        for (what, embedded) in [
+            // On the list, trusted, and not marked as the system.
+            ("another listed publisher", valid(listed())),
+            ("a publisher that is not listed", valid(stranger())),
+            // The system's names without the system's root.
+            (
+                "the names without the root",
+                valid(signer("System Maker", "System Maker", false)),
+            ),
+            (
+                "a signature that does not hold",
+                Found::Invalid {
+                    why: "the file was changed after it was signed".to_owned(),
+                },
+            ),
+        ] {
+            let (verifier, _) = verifier(
+                list_with_a_system(),
+                Answers {
+                    embedded,
+                    ..Answers::default()
+                },
+            );
+            assert_eq!(verifier.origin(&signed).1, Origin::Elsewhere, "{what}");
+        }
+
+        let (silent, _) = verifier(list_with_a_system(), Answers::default());
+        assert_eq!(silent.origin(&unsigned).1, Origin::Elsewhere);
+        assert_eq!(silent.origin(&text).1, Origin::Elsewhere);
+
+        // A list that marks nobody leaves nothing alone.
+        let (unmarked, _) = verifier(
+            list(),
+            Answers {
+                embedded: valid(listed()),
+                ..Answers::default()
+            },
+        );
+        assert_eq!(unmarked.origin(&signed).1, Origin::Elsewhere);
+    }
+
+    #[test]
+    fn what_could_not_be_checked_is_unknown_and_not_a_no() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let path = write(&dir, "kernel.dll", &unsigned_executable());
+        let (deaf, _) = verifier(
+            list_with_a_system(),
+            Answers {
+                catalog: Found::Failed {
+                    why: "the catalogues could not be opened".to_owned(),
+                },
+                ..Answers::default()
+            },
+        );
+        assert_eq!(
+            deaf.origin(&path).1,
+            Origin::Unknown {
+                why: "the catalogues could not be opened".to_owned()
+            }
+        );
+
+        // A route that failed does not hide what another route found.
+        let root = package_folder(&dir, &[("bin\\helper.dll", &unsigned_executable())]);
+        let (half_deaf, _) = verifier(
+            list_with_a_system(),
+            Answers {
+                catalog: Found::Failed {
+                    why: "the catalogues could not be opened".to_owned(),
+                },
+                package: valid(of_the_system()),
+                ..Answers::default()
+            },
+        );
+        assert!(matches!(
+            half_deaf.origin(&root.join("bin").join("helper.dll")).1,
+            Origin::OperatingSystem {
+                route: Route::Package,
+                ..
+            }
+        ));
+
+        // A file that cannot be read.
+        let (silent, _) = verifier(list_with_a_system(), Answers::default());
+        let (examination, origin) = silent.origin(&dir.path().join("not-there.dll"));
+        assert!(examination.routes.is_empty());
+        assert!(matches!(origin, Origin::Unknown { .. }), "{origin:?}");
+    }
+
     #[test]
     fn a_system_that_cannot_check_signatures_trusts_nothing() {
         struct Nowhere;
@@ -1155,5 +1414,8 @@ machine = "a test"
             reason(&verifier.trust(&path, None)),
             Some(Reason::Unavailable)
         );
+        // And it cannot tell a file of the system either, which is
+        // another answer than "it is none".
+        assert_eq!(verifier.origin(&path).1, Origin::Unavailable);
     }
 }

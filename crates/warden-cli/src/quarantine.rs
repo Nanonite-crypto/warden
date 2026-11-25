@@ -7,8 +7,10 @@ use anyhow::{Context, anyhow};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use warden_quarantine::{
-    Damaged, Entry, EntryInfo, Quarantine, Reason, RestoreOptions, Stamp, default_dir,
+    AddOptions, Damaged, Entry, EntryInfo, Guard, Quarantine, QuarantineError, Reason,
+    RestoreOptions, Stamp, Verdict, default_dir,
 };
+use warden_trust::{Options, Origin, TrustList, Verifier};
 
 use crate::EXIT_ERROR;
 use crate::render::{group_digits, human_timestamp, shown, shown_path};
@@ -29,6 +31,10 @@ pub enum QuarantineCommand {
     /// that cannot be run and that other scanners find nothing in, together
     /// with its timestamps and permissions, so that `restore` can put it
     /// back exactly as it was.
+    ///
+    /// A file that is part of Windows stays where it is: Windows may not
+    /// start without it, and then nothing is left to restore it with.
+    /// Warden tells such a file by its signature, see `warden trust check`.
     Add {
         /// Files to quarantine
         #[arg(required = true, value_name = "FILE")]
@@ -37,6 +43,11 @@ pub enum QuarantineCommand {
         /// Why, in your own words; kept with the entry
         #[arg(long, value_name = "TEXT")]
         reason: Option<String>,
+
+        /// Quarantine a file even if it is part of Windows, or if it
+        /// could not be checked whether it is
+        #[arg(long)]
+        even_if_signed_by_windows: bool,
 
         #[command(flatten)]
         place: Place,
@@ -160,12 +171,90 @@ fn attributes(bits: u32) -> String {
     }
 }
 
-fn add(files: &[PathBuf], reason: Option<&String>, place: &Place) -> anyhow::Result<ExitCode> {
-    let quarantine = open(place)?;
+/// The flag that takes a file past the guard, as it is typed.
+const PAST_THE_GUARD: &str = "--even-if-signed-by-windows";
+
+/// The guard of this quarantine: a file that is part of the operating
+/// system stays where it is.
+///
+/// Which signature makes a file part of the operating system is not
+/// written here. The trust list marks the publisher, and
+/// [`Verifier::origin`] finds its signature by any of the three routes.
+/// The check asks nothing over the network: whether a certificate was
+/// revoked makes no difference to this answer.
+#[derive(Debug)]
+struct SystemFiles {
+    verifier: Verifier,
+}
+
+impl SystemFiles {
+    fn new() -> anyhow::Result<Self> {
+        let list = TrustList::builtin().context("the built-in trust list is broken")?;
+        Ok(Self {
+            verifier: Verifier::new(list, Options { network: false }),
+        })
+    }
+}
+
+impl Guard for SystemFiles {
+    fn look_at(&self, path: &Path) -> Verdict {
+        let (examination, origin) = self.verifier.origin(path);
+        match origin {
+            Origin::OperatingSystem {
+                publisher, route, ..
+            } => Verdict::Leave {
+                why: format!(
+                    "it is part of the operating system (signed for {publisher}, found in {})",
+                    route.in_words()
+                ),
+            },
+            // Not knowing is no reason to take the file: where Windows
+            // cannot be asked, every file of Windows would pass.
+            Origin::Unknown { why } => Verdict::Leave {
+                why: format!(
+                    "it could not be checked whether it is part of the operating system ({why})"
+                ),
+            },
+            // On a system without such signatures there is nothing to
+            // guard, and nothing was read.
+            Origin::Elsewhere | Origin::Unavailable => Verdict::Take {
+                sha256: examination.sha256_bytes(),
+            },
+        }
+    }
+}
+
+fn add(
+    files: &[PathBuf],
+    reason: Option<&String>,
+    even_if_signed_by_windows: bool,
+    place: &Place,
+) -> anyhow::Result<ExitCode> {
+    let mut quarantine = open(place)?;
+    let guard = SystemFiles::new()?;
+    // Told to take such files, the quarantine gets no guard. It is still
+    // asked here, so that what was taken all the same can be said.
+    let overruled = if even_if_signed_by_windows {
+        Some(guard)
+    } else {
+        quarantine.set_guard(Box::new(guard));
+        None
+    };
+    let options = AddOptions {
+        overrule_guard: even_if_signed_by_windows,
+    };
+
     let mut failed = false;
+    let mut guarded = false;
     for file in files {
         let reason = reason.map_or_else(Reason::default, Reason::note);
-        match quarantine.add(file, reason) {
+        let although = overruled.as_ref().and_then(|guard| {
+            match guard.look_at(&std::path::absolute(file).ok()?) {
+                Verdict::Leave { why } => Some(why),
+                Verdict::Take { .. } => None,
+            }
+        });
+        match quarantine.add_with(file, reason, &options) {
             Ok(entry) => {
                 outln!("Quarantined  {}", shown(&entry.info.original_path))?;
                 outln!("  entry      {}", entry.info.id)?;
@@ -174,12 +263,21 @@ fn add(files: &[PathBuf], reason: Option<&String>, place: &Place) -> anyhow::Res
                     entry.info.sha256,
                     group_digits(entry.info.size)
                 )?;
+                if let Some(why) = although {
+                    outln!("  although   {}", shown(&why))?;
+                }
             }
             Err(error) => {
                 failed = true;
+                guarded |= matches!(error, QuarantineError::Guarded { .. });
                 errln!("error: {}", shown(&error.to_string()));
             }
         }
+    }
+    if guarded {
+        errln!(
+            "Without a file of its own the system may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add {PAST_THE_GUARD}."
+        );
     }
     if failed {
         return Ok(ExitCode::from(EXIT_ERROR));
@@ -389,8 +487,9 @@ pub fn run(command: &QuarantineCommand) -> anyhow::Result<ExitCode> {
         QuarantineCommand::Add {
             files,
             reason,
+            even_if_signed_by_windows,
             place,
-        } => add(files, reason.as_ref(), place),
+        } => add(files, reason.as_ref(), *even_if_signed_by_windows, place),
         QuarantineCommand::List { json, place } => list(*json, place),
         QuarantineCommand::Info { id, json, place } => info(id, *json, place),
         QuarantineCommand::Restore {
@@ -405,7 +504,119 @@ pub fn run(command: &QuarantineCommand) -> anyhow::Result<ExitCode> {
 
 #[cfg(test)]
 mod tests {
+    use warden_trust::sigarea::executable_with_table;
+    use warden_trust::stand_in::{Answers, signer, valid, verifier};
+    use warden_trust::{Found, Revocation};
+
     use super::*;
+
+    /// A guard that asks the stand-in for Windows, with the list that is
+    /// part of the program: what it leaves alone is what that list marks.
+    fn guard(answers: Answers) -> SystemFiles {
+        let list = TrustList::builtin().expect("the built-in list");
+        SystemFiles {
+            verifier: verifier(list, answers).0,
+        }
+    }
+
+    /// A Windows executable without a signature of its own, which is what
+    /// most files of Windows are: the catalogues vouch for them.
+    fn system_file(dir: &tempfile::TempDir) -> PathBuf {
+        let path = dir.path().join("kernel.dll");
+        std::fs::write(&path, executable_with_table(&[])).expect("a file");
+        path
+    }
+
+    fn windows() -> warden_trust::Signer {
+        signer("Microsoft Windows", "Microsoft Corporation", true)
+    }
+
+    #[test]
+    fn the_guard_leaves_a_file_that_windows_signed() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let path = system_file(&dir);
+        let verdict = guard(Answers {
+            catalog: valid(windows()),
+            ..Answers::default()
+        })
+        .look_at(&path);
+        assert_eq!(
+            verdict,
+            Verdict::Leave {
+                why: "it is part of the operating system (signed for Microsoft Windows, found in a catalogue of Windows)".to_owned()
+            }
+        );
+
+        // Also when its certificates could not be looked up, which is the
+        // normal case here: the guard asks nothing over the network.
+        let mut unchecked = windows();
+        unchecked.revocation = Revocation::Unknown;
+        let verdict = guard(Answers {
+            catalog: valid(unchecked),
+            ..Answers::default()
+        })
+        .look_at(&path);
+        assert!(matches!(verdict, Verdict::Leave { .. }), "{verdict:?}");
+    }
+
+    #[test]
+    fn the_guard_takes_what_windows_did_not_sign() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let path = system_file(&dir);
+        let content = std::fs::read(&path).expect("the file");
+        let expected: [u8; 32] = warden_engine::sha256(&content);
+
+        for (what, catalog) in [
+            ("no signature", Found::Nothing),
+            // One of Microsoft's applications is not Windows.
+            (
+                "Microsoft Corporation",
+                valid(signer(
+                    "Microsoft Corporation",
+                    "Microsoft Corporation",
+                    true,
+                )),
+            ),
+            // The names of Windows under somebody else's root.
+            (
+                "the names without the root",
+                valid(signer("Microsoft Windows", "Microsoft Corporation", false)),
+            ),
+        ] {
+            let verdict = guard(Answers {
+                catalog,
+                ..Answers::default()
+            })
+            .look_at(&path);
+            // It says which content it let through.
+            assert_eq!(
+                verdict,
+                Verdict::Take {
+                    sha256: Some(expected)
+                },
+                "{what}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_guard_leaves_a_file_it_could_not_check() {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        let path = system_file(&dir);
+        let verdict = guard(Answers {
+            catalog: Found::Failed {
+                why: "the catalogues of Windows could not be opened".to_owned(),
+            },
+            ..Answers::default()
+        })
+        .look_at(&path);
+        assert_eq!(
+            verdict,
+            Verdict::Leave {
+                why: "it could not be checked whether it is part of the operating system (the catalogues of Windows could not be opened)".to_owned()
+            }
+        );
+    }
 
     #[test]
     fn attribute_bits_are_named_where_they_have_a_name() {

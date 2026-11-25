@@ -279,15 +279,81 @@ offset by offset, in ordinary code that runs and is tested on every system.
 - **A record it does not understand in every part.** A field the format
   does not know is an error, not something to skip.
 
+## The guard
+
+A quarantined file can be put back, unless Windows needed it in order to
+start: then there may be nothing left to put it back with. So one kind of
+file stays where it is. It is a file that Windows itself signed.
+
+```text
+> warden quarantine add C:\Windows\System32\ntdll.dll
+error: C:\Windows\System32\ntdll.dll was left where it is: it is part of the operating system (signed for Microsoft Windows, found in the file itself)
+Without a file of its own the system may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add --even-if-signed-by-windows.
+```
+
+- **What makes a file one of Windows** is its signature, by any of the
+  three routes that [TRUST.md](TRUST.md#three-routes-to-a-signature)
+  describes: in the file, in a catalogue of Windows, or in the signature of
+  its package. Its place and its name say nothing. A copy of `ntdll.dll` in
+  a download folder stays, and a file that somebody put into System32 does
+  not.
+- **Which signature** is for the trust list to say, not for the program:
+  the entry for "Microsoft Windows" carries `operating_system = true`
+  ([TRUST.md](TRUST.md#what-an-entry-holds)). Microsoft's applications,
+  which are signed as "Microsoft Corporation", are not Windows and go into
+  the quarantine like any other file.
+- **Whether a certificate was revoked makes no difference here.** A scan
+  lets a finding go only for a signature whose certificates were looked up.
+  The guard is after the opposite mistake, so it does not ask for that: a
+  file of Windows whose certificates cannot be looked up right now is still
+  a file of Windows. It asks nothing over the network.
+- **Not knowing is not a no.** If Windows could not be asked, or the file
+  could not be read in a way that keeps it from changing meanwhile, the
+  file stays too, and the message says that it could not be checked.
+  Otherwise every file of Windows would pass whenever the check is out of
+  order.
+- **A changed file is nobody's.** With one byte more, no catalogue lists
+  the content and no signature holds. Such a file is quarantined like any
+  other.
+- **The way past the guard** is a flag that has to be typed out,
+  `--even-if-signed-by-windows`. The file is then taken, and the output has
+  one line more, which says what was taken all the same:
+
+  ```text
+    although   it is part of the operating system (signed for Microsoft Windows, found in the file itself)
+  ```
+
+- **The content the guard looked at is the content that goes.** The guard
+  says which SHA-256 it saw. If the file has another by the time it is
+  copied, it stays, as any file does that changes on the way.
+
+The guard sits in the quarantine itself, at the one place that every file
+passes on its way in. The quarantine does not know what a signature is. It
+asks a `Guard` that whoever opens it has given it, the way the scan engine
+asks a trust check, and `warden` gives it one that asks `warden-trust`.
+Whatever quarantines files later, the service or a scan, gets the guard
+without having to think of it. Going past it is a call of its own,
+`add_with` with `overrule_guard`.
+
+What the guard does not cover:
+
+- **Files of Windows that are no executables.** A catalogue is asked about
+  executables only, so a data file of Windows is not recognised, unless it
+  is part of a package that Windows signed.
+- **Drivers of other companies.** Windows can need one of those in order to
+  start, a storage driver for one. Microsoft signs them under another name,
+  which is not on the list.
+- **Systems that are not Windows.** Nothing can be checked there, and there
+  is nothing to guard.
+
 ## What is not there yet
 
 | | Comes with |
 |---|---|
 | A quarantine for the whole machine, in a folder that ordinary users cannot read. Today it is a folder of the user who runs Warden, used with that user's rights | The Windows service (phase 6) |
 | Refusing to restore, on behalf of a user, to a place that user could not write to. A program with more rights than its user that restores through a link into a system folder is how antivirus products have been turned into a way of planting files. With the user's own rights there is nothing to gain | The Windows service (phase 6) |
-| A guard that refuses to quarantine signed Windows system files, because a false positive there can stop Windows from starting | Phase 5, decided on 2026-11-25. It rests on the check of who signed a file ([TRUST.md](TRUST.md)) |
 | Removing a file that is in use, when Windows next starts | Remediation (phase 5) |
-| Quarantine as the consequence of a scan. Today a person names the file | Later phases. Nothing is quarantined automatically before the guard exists |
+| Quarantine as the consequence of a scan. Today a person names the file | Later phases. The [guard](#the-guard) that had to come first is there |
 
 ## Tests
 

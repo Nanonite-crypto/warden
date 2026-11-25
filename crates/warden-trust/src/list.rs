@@ -44,6 +44,12 @@
 //! No entry gets on the list without evidence: a real file with such a
 //! signature, where it was seen, and by which route. `docs/TRUST.md` says
 //! what else an entry takes.
+//!
+//! An entry can also say `operating_system = true`: this identity signs
+//! the operating system itself. The scan does nothing with that. The
+//! quarantine goes by it when it leaves such a file where it is
+//! ([`Verifier::origin`](crate::Verifier::origin)). Only an entry with the
+//! anchor `"microsoft-root"` can say so.
 
 use std::collections::BTreeSet;
 
@@ -149,6 +155,10 @@ pub struct Publisher {
     pub organization: String,
     /// What the chain has to pass through.
     pub anchor: Anchor,
+    /// Whether this identity signs the operating system itself. The
+    /// quarantine leaves a file with such a signature where it is unless
+    /// somebody insists, because the system may not start without it.
+    pub operating_system: bool,
     /// What this identity signs, and what it does not.
     pub signs: String,
     /// Why it is on the list.
@@ -192,6 +202,8 @@ struct RawPublisher {
     common_name: String,
     organization: String,
     anchor: String,
+    #[serde(default)]
+    operating_system: bool,
     signs: String,
     reason: String,
     added: toml::value::Datetime,
@@ -236,8 +248,9 @@ impl TrustList {
     /// # Errors
     ///
     /// Fails if the text is not valid TOML, uses a field that is not part
-    /// of the format, names a publisher or a signing identity twice, or
-    /// has an entry without evidence.
+    /// of the format, names a publisher or a signing identity twice, has
+    /// an entry without evidence, or marks an entry as the operating
+    /// system whose anchor is not `"microsoft-root"`.
     pub fn parse(text: &str) -> Result<Self, ListError> {
         let raw: RawList =
             toml::from_str(text).map_err(|error| ListError::Syntax(error.to_string()))?;
@@ -269,6 +282,14 @@ impl TrustList {
                     "{name}: the anchor must be \"microsoft-root\" or \"sha256:\" followed by 64 hexadecimal digits"
                 ))
             })?;
+            // A name and a certificate say who a publisher is. That a file
+            // is part of the system is a claim about Windows, and it rests
+            // on Windows' own check of the root.
+            if entry.operating_system && anchor != Anchor::MicrosoftRoot {
+                return Err(invalid(format!(
+                    "{name}: only an entry with the anchor \"microsoft-root\" can be marked as the operating system"
+                )));
+            }
             let identity = (
                 entry.common_name.clone(),
                 entry.organization.clone(),
@@ -326,6 +347,7 @@ impl TrustList {
                 common_name: entry.common_name,
                 organization: entry.organization,
                 anchor,
+                operating_system: entry.operating_system,
                 signs: entry.signs,
                 reason: entry.reason,
                 added,
@@ -493,6 +515,40 @@ machine = "a test"
         for publisher in list.publishers() {
             assert!(!publisher.evidence.is_empty(), "{}", publisher.name);
         }
+        // What the quarantine leaves alone is Windows, and nothing else on
+        // the list: not Microsoft's applications.
+        let system: Vec<&str> = list
+            .publishers()
+            .iter()
+            .filter(|publisher| publisher.operating_system)
+            .map(|publisher| publisher.name.as_str())
+            .collect();
+        assert_eq!(system, ["Microsoft Windows"]);
+    }
+
+    #[test]
+    fn an_entry_can_be_marked_as_the_operating_system() {
+        let plain = entry("Alpha", "microsoft-root");
+        let list = TrustList::parse(&plain).expect("acceptable");
+        assert!(!list.publishers()[0].operating_system);
+
+        let marked = plain.replace(
+            "anchor = \"microsoft-root\"",
+            "anchor = \"microsoft-root\"\noperating_system = true",
+        );
+        let list = TrustList::parse(&marked).expect("acceptable");
+        assert!(list.publishers()[0].operating_system);
+        // The mark is not who the publisher is: the same signatures count.
+        let signature = signer("Alpha Ltd", "Alpha Ltd", true, &[]);
+        assert!(list.publisher_of(&signature).is_some());
+
+        // A pinned certificate says who signed. It does not make a file
+        // part of Windows.
+        let pinned = entry("Beta", &format!("sha256:{}", "ab".repeat(32)))
+            .replace("signs =", "operating_system = true\nsigns =");
+        let error = TrustList::parse(&pinned).expect_err("a pin is no system");
+        assert!(matches!(error, ListError::Invalid(_)), "{error}");
+        assert!(error.to_string().contains("operating system"), "{error}");
     }
 
     #[test]

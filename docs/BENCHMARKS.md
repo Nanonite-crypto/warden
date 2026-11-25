@@ -545,7 +545,8 @@ publishers both times, and the machines had a network, over which Windows
 asks whether a certificate was revoked. Every result carries the SHA-256
 of the list it was made with, which begins `6f21a3f5`. The list has the
 same two publishers now, and another digest: one piece of its evidence
-gained a note after the run on the desktop.
+gained a note after the run on the desktop, and the entry for Microsoft
+Windows the mark that the quarantine's guard goes by.
 
 ### Who signed what
 

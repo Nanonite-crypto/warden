@@ -195,6 +195,35 @@ impl Trust {
     }
 }
 
+/// What a file's signatures say about whether it is part of the operating
+/// system. A quarantine asks this before it takes a file away.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "origin", rename_all = "snake_case")]
+pub enum Origin {
+    /// A signature holds for the file, and it was made by a publisher that
+    /// the trust list marks as the operating system itself.
+    OperatingSystem {
+        /// The publisher, by the name the trust list gives it.
+        publisher: String,
+        /// The route the signature was found by.
+        route: Route,
+        /// Whether its certificates were looked up. The answer does not
+        /// depend on it: a file of the system whose certificates cannot be
+        /// looked up right now is still a file of the system.
+        revocation: Revocation,
+    },
+    /// Every route was tried, and none found such a signature.
+    Elsewhere,
+    /// It could not be found out: the file could not be read, or Windows
+    /// could not be asked.
+    Unknown {
+        /// What went wrong, for a person to read.
+        why: String,
+    },
+    /// Signatures cannot be checked on this system.
+    Unavailable,
+}
+
 /// Everything a check found out about one file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Examination {
@@ -212,6 +241,15 @@ pub struct Examination {
     pub routes: Vec<RouteReport>,
     /// The answer.
     pub trust: Trust,
+}
+
+impl Examination {
+    /// SHA-256 of the file as it was checked, as bytes. Absent if the file
+    /// could not be read.
+    #[must_use]
+    pub fn sha256_bytes(&self) -> Option<[u8; 32]> {
+        self.sha256.as_deref().and_then(sha256_from_hex)
+    }
 }
 
 /// Lowercase hexadecimal.

@@ -2271,6 +2271,45 @@ fn quarantine_moves_a_file_out_and_puts_it_back_as_it_was() {
     assert!(empty.contains("Nothing is in quarantine."), "{empty}");
 }
 
+/// The quarantine's guard is about files of Windows. An ordinary file goes
+/// in whether or not the flag past the guard is given, and nothing is said
+/// about it. What the guard does with a file of Windows is tried on
+/// Windows, in `quarantine_windows.rs`.
+#[test]
+fn quarantine_takes_an_ordinary_file_with_and_without_the_flag_past_its_guard() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+
+    for (name, flag) in [
+        ("plain.bin", None),
+        ("insisted.bin", Some("--even-if-signed-by-windows")),
+    ] {
+        let file = dir.path().join(name);
+        fs::write(&file, suspect_bytes()).unwrap();
+        let mut command = warden();
+        command.args(["quarantine", "add"]).arg(&file);
+        if let Some(flag) = flag {
+            command.arg(flag);
+        }
+        command
+            .arg("--dir")
+            .arg(&store)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Quarantined"))
+            .stdout(predicate::str::contains("although").not())
+            .stderr(predicate::str::is_empty());
+        assert!(!file.exists(), "{name} is gone from its place");
+    }
+
+    let help = stdout_of(warden().args(["quarantine", "add", "--help"]));
+    assert!(help.contains("--even-if-signed-by-windows"), "{help}");
+    assert!(
+        help.contains("A file that is part of Windows stays where it is"),
+        "{help}"
+    );
+}
+
 #[test]
 fn quarantine_says_no_and_why_and_leaves_things_as_they_are() {
     let dir = tempfile::tempdir().unwrap();
