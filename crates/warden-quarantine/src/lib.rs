@@ -34,6 +34,15 @@
 //! such a file all the same is possible, and has to be asked for:
 //! [`Quarantine::add_with`] and [`AddOptions::overrule_guard`].
 //!
+//! # Records kept with an entry
+//!
+//! Taking a file away can mean taking more away than the file: what
+//! started it, for one. Whoever does that needs a place to write down
+//! what was taken, next to the entry, so that a restore can put it back.
+//! [`Quarantine::attach`] keeps such a record with an entry. The
+//! quarantine does not look into it; it keeps it whole, private, and for
+//! as long as it is wanted.
+//!
 //! # What the cipher is for
 //!
 //! Not secrecy: the key is stored next to the content. It makes sure that

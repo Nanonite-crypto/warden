@@ -2,7 +2,7 @@
 
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{self, BufWriter, Read};
+use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -88,6 +88,21 @@ pub enum QuarantineError {
         "entry {0} does not say where the file was in a form this system can use; say where to put it"
     )]
     NoTarget(String),
+    /// A record cannot be kept under this name, see
+    /// [`Quarantine::attach`].
+    #[error("{0} cannot name a record in the quarantine")]
+    BadRecordName(String),
+    /// A record is larger than the quarantine keeps, see
+    /// [`Quarantine::attach`].
+    #[error(
+        "a record of {bytes} bytes is more than the {limit} bytes the quarantine keeps with an entry"
+    )]
+    RecordTooLarge {
+        /// Size of the record.
+        bytes: u64,
+        /// The most that is kept.
+        limit: u64,
+    },
     /// The operation was stopped on purpose, see
     /// [`Quarantine::interrupt_after`].
     #[error("stopped after the step {0:?}, as a test asked for")]
@@ -259,6 +274,8 @@ pub struct Quarantine {
     items: PathBuf,
     journal: PathBuf,
     tmp: PathBuf,
+    /// Records that belong to entries, see [`Quarantine::attach`].
+    attached: PathBuf,
     /// Held for as long as this value lives.
     _lock: File,
     interrupt_after: Option<Step>,
@@ -282,7 +299,8 @@ impl Quarantine {
         let items = dir.join("items");
         let journal = dir.join("journal");
         let tmp = dir.join("tmp");
-        for folder in [&dir, &items, &journal, &tmp] {
+        let attached = dir.join("attached");
+        for folder in [&dir, &items, &journal, &tmp, &attached] {
             make_private_dir(folder).map_err(failed(format!(
                 "cannot make the folder {}",
                 folder.display()
@@ -311,6 +329,7 @@ impl Quarantine {
             items,
             journal,
             tmp,
+            attached,
             _lock: lock,
             interrupt_after: None,
             guard: None,
@@ -817,7 +836,173 @@ impl Quarantine {
             file.display()
         )))?;
         sync_dir(&self.items);
+        // What was kept with the entry goes with it. By the identifier the
+        // entry really has, which may be longer than what was given.
+        let whole_id = info.as_ref().map_or(id, |info| info.id.as_str());
+        self.forget_records_of(whole_id);
         Ok(info)
+    }
+
+    /// Keeps a record with an entry: a small piece of data that belongs to
+    /// the entry and that the quarantine does not look into. `kind` says
+    /// what the record is, in lowercase letters, digits and hyphens, and an
+    /// entry has at most one record of a kind. A record that is there
+    /// already is replaced, and never by half: after a power cut the old
+    /// one or the new one is there, whole.
+    ///
+    /// A record goes when its entry is [deleted](Self::delete). It stays
+    /// when the entry is [restored](Self::restore), until it is
+    /// [detached](Self::detach): whoever keeps it may have more to do
+    /// after the file is back.
+    ///
+    /// # Errors
+    ///
+    /// Fails if `id` is not a whole identifier, if `kind` has other
+    /// characters than those named or is longer than 32 of them, if the
+    /// record is larger than 16 MiB, or if the quarantine cannot be
+    /// written to.
+    pub fn attach(&self, id: &str, kind: &str, record: &[u8]) -> Result<(), QuarantineError> {
+        let target = self.record_path(id, kind)?;
+        if record.len() as u64 > MAX_RECORD_BYTES {
+            return Err(QuarantineError::RecordTooLarge {
+                bytes: record.len() as u64,
+                limit: MAX_RECORD_BYTES,
+            });
+        }
+        let cannot = || format!("cannot keep the {kind} record of entry {id}");
+        let suffix = random::<4>().map_err(failed(cannot()))?;
+        let partial = self
+            .tmp
+            .join(format!("{id}.{kind}.{}", hex::encode(&suffix)));
+        let written = (|| -> io::Result<()> {
+            let mut file = create_new_private(&partial)?;
+            file.write_all(record)?;
+            file.sync_all()?;
+            drop(file);
+            fs::rename(&partial, &target)
+        })();
+        if let Err(source) = written {
+            let _ = fs::remove_file(&partial);
+            return Err(QuarantineError::Io {
+                context: cannot(),
+                source,
+            });
+        }
+        sync_dir(&self.attached);
+        Ok(())
+    }
+
+    /// The record of a kind that is kept with an entry, if there is one.
+    ///
+    /// # Errors
+    ///
+    /// Fails if `id` or `kind` cannot name a record, or if the record
+    /// cannot be read.
+    pub fn attached(&self, id: &str, kind: &str) -> Result<Option<Vec<u8>>, QuarantineError> {
+        let path = self.record_path(id, kind)?;
+        let cannot = || format!("cannot read the {kind} record of entry {id}");
+        let file = match File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(failed(cannot())(error)),
+        };
+        let mut record = Vec::new();
+        // One byte more than is ever written, to tell a record that
+        // somebody else put there.
+        file.take(MAX_RECORD_BYTES + 1)
+            .read_to_end(&mut record)
+            .map_err(failed(cannot()))?;
+        if record.len() as u64 > MAX_RECORD_BYTES {
+            return Err(QuarantineError::RecordTooLarge {
+                bytes: record.len() as u64,
+                limit: MAX_RECORD_BYTES,
+            });
+        }
+        Ok(Some(record))
+    }
+
+    /// Removes the record of a kind that is kept with an entry. That there
+    /// is none is not an error.
+    ///
+    /// # Errors
+    ///
+    /// Fails if `id` or `kind` cannot name a record, or if the record
+    /// cannot be removed.
+    pub fn detach(&self, id: &str, kind: &str) -> Result<(), QuarantineError> {
+        let path = self.record_path(id, kind)?;
+        match fs::remove_file(&path) {
+            Ok(()) => {
+                sync_dir(&self.attached);
+                Ok(())
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(failed(format!(
+                "cannot remove the {kind} record of entry {id}"
+            ))(error)),
+        }
+    }
+
+    /// The identifiers that have a record of a kind, in order. An
+    /// identifier can be among them whose entry is gone: a record outlives
+    /// a restore until it is detached.
+    ///
+    /// # Errors
+    ///
+    /// Fails if `kind` cannot name a record, or if the quarantine cannot
+    /// be read.
+    pub fn attached_ids(&self, kind: &str) -> Result<Vec<String>, QuarantineError> {
+        check_record_kind(kind)?;
+        let mut ids = Vec::new();
+        let listing = fs::read_dir(&self.attached).map_err(failed(format!(
+            "cannot read the quarantine in {}",
+            self.dir.display()
+        )))?;
+        for item in listing {
+            let name = item
+                .map_err(failed(format!(
+                    "cannot read the quarantine in {}",
+                    self.dir.display()
+                )))?
+                .file_name();
+            if let Some((id, its_kind)) = name.to_str().and_then(|name| name.split_once('.'))
+                && its_kind == kind
+                && is_whole_id(id)
+            {
+                ids.push(id.to_owned());
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
+    fn record_path(&self, id: &str, kind: &str) -> Result<PathBuf, QuarantineError> {
+        if !is_whole_id(id) {
+            return Err(QuarantineError::BadRecordName(id.to_owned()));
+        }
+        check_record_kind(kind)?;
+        Ok(self.attached.join(format!("{id}.{kind}")))
+    }
+
+    /// Removes every record that is kept with an entry. Best effort: a
+    /// record that stays is found again by [`attached_ids`](Self::attached_ids).
+    fn forget_records_of(&self, id: &str) {
+        if !is_whole_id(id) {
+            return;
+        }
+        let Ok(listing) = fs::read_dir(&self.attached) else {
+            return;
+        };
+        let prefix = format!("{id}.");
+        for item in listing.flatten() {
+            if item
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(&prefix))
+            {
+                let _ = fs::remove_file(item.path());
+            }
+        }
+        sync_dir(&self.attached);
     }
 
     /// Deals with every note an earlier run left in the journal.
@@ -948,6 +1133,32 @@ pub fn default_dir() -> Option<PathBuf> {
 /// Makes a folder that only its owner can enter, where the system has such
 /// a thing as permission bits. A folder that is already there is left as it
 /// is.
+/// The most bytes a record kept with an entry may have.
+const MAX_RECORD_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Whether this is an identifier as entries have them, in full: sixteen
+/// lowercase hexadecimal digits. A record is filed under it, so nothing
+/// else may get near a file name.
+fn is_whole_id(id: &str) -> bool {
+    id.len() == 16
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn check_record_kind(kind: &str) -> Result<(), QuarantineError> {
+    let fine = !kind.is_empty()
+        && kind.len() <= 32
+        && kind
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    if fine {
+        Ok(())
+    } else {
+        Err(QuarantineError::BadRecordName(kind.to_owned()))
+    }
+}
+
 fn make_private_dir(path: &Path) -> io::Result<()> {
     if path.is_dir() {
         return Ok(());
