@@ -190,7 +190,9 @@ piece, phase 5 got one more thing, decided that day: a guard that keeps a
 file that Windows itself signed out of the quarantine. It is built.
 `warden quarantine add` leaves such a file where it is and says why, and
 `--even-if-signed-by-windows` takes it all the same
-([QUARANTINE.md](QUARANTINE.md#the-guard)).
+([QUARANTINE.md](QUARANTINE.md#the-guard)). In CI on Windows it does so
+with copies of `ntdll.dll`, which carries its signature, and of
+`whoami.exe`, which a catalogue lists; 482 tests pass there.
 
 **What it cannot show.** That a publisher on the list still holds its key:
 revocation helps only once a theft is known. Nothing about a file inside
@@ -200,6 +202,78 @@ a file that carries a trusted signature, and without malware samples that
 cost cannot be measured.
 
 The second piece of the phase, persistence remediation, follows it.
+
+## Phase 5, second piece: persistence remediation
+
+**What.** A program that wants to stay makes Windows start it again: with
+a value under a Run key, a scheduled task, a service, or a shortcut in the
+Startup folder. Taking the file away leaves those entries pointing at
+nothing. This piece finds the entries that start a file, removes them when
+the file goes into the quarantine, and puts them back when it is restored,
+each as it was.
+
+**Why.** An entry that starts a quarantined file is a loose end. Windows
+reports an error at every start, or something else is put at that path and
+gets started. And a restore that brings back the file without what started
+it has not undone the quarantine. The rule is the quarantine's own: nothing
+is destroyed, and what is taken can be put back exactly.
+
+**What it takes.**
+
+- **Four places.** Run and RunOnce values, of the machine and of every user
+  whose settings are loaded; scheduled tasks; services and drivers, by
+  their program and by the library that a shared service host loads for
+  them; shortcuts in the two Startup folders. Windows has many more places
+  that start programs. The document lists what is covered and what is not.
+- **What "starts the file" means.** The file's full path stands in the
+  entry's command line, as the program or as an argument, once the
+  variables in it are filled in. `rundll32 C:\x\a.dll,Start` starts
+  `a.dll`. A bare name that Windows would look for on its search path is
+  not followed.
+- **Windows is asked where Windows owns the format.** Tasks are read,
+  removed and registered through the Task Scheduler, shortcuts are read
+  through the shell, services through the service manager. Warden does not
+  edit their files or their registry keys behind their back.
+- **Record first, then remove.** Everything an entry is goes into a record
+  in the quarantine before the entry is touched: a value with its type and
+  its bytes; a task as the definition the Task Scheduler gives for it,
+  with its access rights; a service with its configuration, its registry
+  key and its access rights. A shortcut is a file and goes into the
+  quarantine as one. An operation that is cut off is finished or undone
+  the next time the quarantine is opened, as it is for files.
+- **A restore looks before it writes.** An entry that is there already and
+  the same is left. One that is there and differs is not replaced, and the
+  restore says so. Afterwards the entry is read back and compared with the
+  record; a difference is reported.
+- **Only for a file that is in the quarantine, and never for a file of
+  Windows.** Entries are removed once the file is safe in the quarantine,
+  not before. A file that was taken past the guard keeps its entries: a
+  program of Windows can have services of Windows that start it.
+- **Rights.** The machine's entries need administrator rights. Without
+  them, what belongs to the user is removed and the rest is named.
+- **Something to run.** `warden autostart find <file>` shows what starts a
+  file and changes nothing. `warden autostart list` shows every entry
+  Warden looks at.
+- **One more library.** Tasks and shortcuts are COM interfaces. Microsoft's
+  `windows` crate has them; `windows-sys`, which the project uses
+  elsewhere, leaves COM out by design. The crate is used in one module,
+  on Windows only.
+
+**Done when.**
+
+1. In CI on Windows, with a harmless dummy program and the four entries
+   made with Windows' own tools: `warden autostart find` names all four;
+   `warden quarantine add` removes the file and all four, as Windows' own
+   tools then show; `warden quarantine restore` brings the file and all
+   four back, and each is what Windows' tools showed before.
+2. The same in the virtual machine, from a kit, with the dummy registered
+   as a test threat that a scan reports. The result is in the repository.
+3. Cut off after every step, an operation leaves every entry either in
+   its place or in the record, whole.
+
+**What it cannot show.** That the persistence of real malware is found:
+the dummy uses the four places from the textbook, and nothing here is
+tested against a sample.
 
 ## Decisions
 
@@ -267,6 +341,11 @@ The second piece of the phase, persistence remediation, follows it.
 
 ## Open decisions
 
+- **Removing a file that is in use.** It was planned for phase 5, with the
+  remediation. It only makes sense together with stopping the program that
+  holds the file, and that takes the rights of the service. Proposed: it
+  moves to phase 6. Until then a file that is in use is not quarantined,
+  and the command says so.
 - **Which rules a release ships.** Of the 5,137 rules in YARA Forge's core
   package, 2,055 name no licence. Building a bundle for one's own use is
   one thing; putting those rules into an installer is another. To be
