@@ -255,7 +255,7 @@ The second piece of the phase, persistence remediation, follows it.
 | 2026-11-25 | ".NET" does not go on the trust list yet. It signs most of what a .NET installation holds, and no false positive asks for it. |
 | 2026-11-25 | A guard that refuses to quarantine a file that Windows itself signed is built in phase 5, now that Warden can tell. |
 | 2026-11-25 | Until GitHub's included Actions minutes are reset on 2026-12-01, tests run on the desktop where they can, and CI runs are kept for final checks. Commits that change no code say `[skip ci]`. |
-| 2026-11-25 | The repository goes public now, in phase 5, and not at the portfolio checkpoint. Before that, its whole history was read for anything private: nothing was found that had to be taken out. A public repository also runs its CI without using up minutes. |
+| 2026-11-25 | The repository goes public now, in phase 5, and not at the portfolio checkpoint. Before that, its whole history was read for anything private: nothing in the commits had to be taken out, and one pull request's description lost a path on the author's disk. A public repository also runs its CI without using up minutes. |
 | 2026-11-25 | The licence is MIT. |
 | 2026-11-25 | The README says how the project is built: with an AI agent that writes the code, and an author who makes the design decisions, tests each phase on real hardware and reviews it. |
 | 2026-11-25 | The guard that keeps a file that Windows signed out of the quarantine can be overridden, with a flag that has to be given on purpose. |

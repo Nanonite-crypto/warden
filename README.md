@@ -409,8 +409,8 @@ it as the author of its commits. What the project's author does:
 
 - **The design decisions.** The agent proposes, the author decides. Each
   decision is in the [decision log](docs/ROADMAP.md#decisions) with its
-  date, from the choice of libraries to which publishers the scanner
-  trusts.
+  date, from the choice of libraries to which public rules are left out
+  of the rule bundle.
 - **Testing on real hardware.** The acceptance script and the scans run on
   a Windows 11 desktop and in a virtual machine with a fresh Windows, and
   what they measure is in [docs/BENCHMARKS.md](docs/BENCHMARKS.md) next to
