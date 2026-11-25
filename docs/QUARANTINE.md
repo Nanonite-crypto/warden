@@ -285,7 +285,7 @@ offset by offset, in ordinary code that runs and is tested on every system.
 |---|---|
 | A quarantine for the whole machine, in a folder that ordinary users cannot read. Today it is a folder of the user who runs Warden, used with that user's rights | The Windows service (phase 6) |
 | Refusing to restore, on behalf of a user, to a place that user could not write to. A program with more rights than its user that restores through a link into a system folder is how antivirus products have been turned into a way of planting files. With the user's own rights there is nothing to gain | The Windows service (phase 6) |
-| A guard that refuses to quarantine signed Windows system files, because a false positive there can stop Windows from starting | Not scheduled yet. What it needs exists since phase 5: the check of who signed a file ([TRUST.md](TRUST.md)) |
+| A guard that refuses to quarantine signed Windows system files, because a false positive there can stop Windows from starting | Phase 5, decided on 2026-11-25. It rests on the check of who signed a file ([TRUST.md](TRUST.md)) |
 | Removing a file that is in use, when Windows next starts | Remediation (phase 5) |
 | Quarantine as the consequence of a scan. Today a person names the file | Later phases. Nothing is quarantined automatically before the guard exists |
 

@@ -290,7 +290,16 @@ Java runtime, Microsoft's Windows SDK, Visual Studio Code and Clipchamp,
 and Image-Line's FL Studio, each in the folder its installer puts it in.
 The six entries were made before Warden could check a signature, and who
 signed their files was not part of the evidence. Step 3 is newer than they
-are.
+are, and on 2026-11-25 it was done for the four named files that are on
+the desktop. The two uninstallers are signed for Image Line. The archive
+of Visual Studio Code is no executable and belongs to no package, so
+there is no signature to look for. `Clipchamp.Widgets.exe` is covered by
+the signature of its package, and the signer there is an identity of the
+Microsoft Store for the app's publisher. None of the three is on the
+trust list, so no entry could give way to it
+([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-with-the-rule-back-in-the-bundle)).
+The three files of the CI runner were looked for on 2026-11-21, and the
+runner no longer had them.
 
 ### What the build does with it
 
@@ -359,6 +368,13 @@ a file before it reports the match of a bundle's rule
 ([TRUST.md](TRUST.md)). A match in a file of a publisher on the trust list
 is recorded and not reported, and the rule stays in the bundle for every
 other file. On 2026-11-21 the entry was taken out again.
+
+The scan that had put the rule on the list was repeated on 2026-11-25,
+with administrator rights and the rule in the bundle. It matched
+`xpdAgent.exe` again, the same file by its SHA-256. Warden found the
+signature of Microsoft Corporation in it, the match went on record with
+that reason, and none of 312,347 files was flagged
+([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-with-the-rule-back-in-the-bundle)).
 
 ## Generated rules
 

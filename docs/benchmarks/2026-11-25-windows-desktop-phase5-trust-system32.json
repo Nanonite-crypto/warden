@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "label": "Windows 11 desktop, C:\\WINDOWS\\System32, with administrator rights",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\WINDOWS\\System32"
+  ],
+  "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+  "publishers_listed": 2,
+  "network": true,
+  "threads": 16,
+  "duration_ms": 56567,
+  "files": 27676,
+  "executables": 12132,
+  "could_not_list": 3,
+  "files_trusted": 11491,
+  "executables_trusted": 11491,
+  "trusted": [
+    {
+      "publisher": "Microsoft Corporation",
+      "route": "embedded",
+      "files": 537,
+      "executables": 537
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "embedded",
+      "files": 1489,
+      "executables": 1489
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "windows_catalog",
+      "files": 9465,
+      "executables": 9465
+    }
+  ],
+  "not_trusted": [
+    {
+      "reason": "no_signature",
+      "files": 15391,
+      "executables": 89
+    },
+    {
+      "reason": "invalid",
+      "files": 2,
+      "executables": 2
+    },
+    {
+      "reason": "not_listed",
+      "files": 550,
+      "executables": 550
+    },
+    {
+      "reason": "not_checked",
+      "files": 242,
+      "executables": 0
+    }
+  ],
+  "details": [
+    {
+      "reason": "not_checked",
+      "detail": "the file cannot be opened in a way that keeps it from changing during the check: The process cannot access the file because it is being used by another process. (os error 32)",
+      "files": 236
+    },
+    {
+      "reason": "not_checked",
+      "detail": "the file cannot be opened in a way that keeps it from changing during the check: The file cannot be accessed by the system. (os error 1920)",
+      "files": 6
+    },
+    {
+      "reason": "invalid",
+      "detail": "the signer's chain ends in a root that this machine does not trust (Windows error 0x800B0109)",
+      "files": 2
+    }
+  ],
+  "details_truncated": false,
+  "signers": [
+    {
+      "common_name": "Microsoft Windows",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Windows",
+      "files": 10954,
+      "embedded": 1489,
+      "windows_catalog": 9465,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Corporation",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Corporation",
+      "files": 537,
+      "embedded": 537,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    }
+  ],
+  "signers_not_listed": {
+    "signers": 51,
+    "files": 550,
+    "signers_under_a_microsoft_root": 11,
+    "files_under_a_microsoft_root": 180
+  },
+  "timing": [
+    {
+      "outcome": "all",
+      "files": 27676,
+      "mean_ms": 30.739634737678855,
+      "median_ms": 15.069,
+      "p95_ms": 80.609,
+      "max_ms": 7217.36
+    },
+    {
+      "outcome": "embedded",
+      "files": 2026,
+      "mean_ms": 52.151162882527146,
+      "median_ms": 18.247,
+      "p95_ms": 139.305,
+      "max_ms": 7217.36
+    },
+    {
+      "outcome": "windows_catalog",
+      "files": 9465,
+      "mean_ms": 29.150082197569994,
+      "median_ms": 22.053,
+      "p95_ms": 67.945,
+      "max_ms": 485.244
+    },
+    {
+      "outcome": "not_trusted",
+      "files": 16185,
+      "mean_ms": 28.988961816496758,
+      "median_ms": 10.253,
+      "p95_ms": 83.13,
+      "max_ms": 4459.234
+    }
+  ]
+}

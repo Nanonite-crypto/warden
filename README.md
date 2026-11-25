@@ -6,15 +6,15 @@ Warden is a portfolio project by Vevang Technologies. It is built in phases,
 each ending with something that can be run and tested. The aim is depth in
 the scan engine, a clean architecture and measured results.
 
-> **Status: phase 5 of 10, first of its two pieces.** The scan engine has
-> three detection layers: hash matching, YARA rules, and heuristics that
-> judge a Windows executable by its structure. It looks inside zip
-> archives. On Windows it checks who signed a file before it reports the
-> match of a published rule. A file can be moved into a quarantine and put
-> back exactly as it was. Everything is driven from the command line: there
-> is no GUI, no background service and no real-time protection yet. Warden
-> is not a replacement for your antivirus; it runs next to Microsoft
-> Defender.
+> **Status: phase 5 of 10. Its first piece, the signature check, is
+> done.** The scan engine has three detection layers: hash matching, YARA
+> rules, and heuristics that judge a Windows executable by its structure.
+> It looks inside zip archives. On Windows it checks who signed a file
+> before it reports the match of a published rule. A file can be moved into
+> a quarantine and put back exactly as it was. Everything is driven from
+> the command line: there is no GUI, no background service and no real-time
+> protection yet. Warden is not a replacement for your antivirus; it runs
+> next to Microsoft Defender.
 
 ## What works today
 
@@ -341,7 +341,9 @@ produced. In short, as of the first piece of phase 5:
   hand-written rule. With that rule on the list as a seventh, the scan
   flagged none of 311,415 files. Since phase 5 the rule is back in the
   bundle: Microsoft signed that file, and the match of a public rule in a
-  file that a trusted publisher signed is recorded and not reported.
+  file that a trusted publisher signed is recorded and not reported. The
+  same scan with the rule in the bundle flags none of 312,347 files; the
+  rule's match in that one file is on record with the reason.
   Across all runs,
   generated rules match 23 clean files on three machines, and all are on
   record with a clean verdict. Eight are the files that such rules had
@@ -360,7 +362,10 @@ produced. In short, as of the first piece of phase 5:
   the median, and 154 ms through a catalogue on a machine that is asked
   for the first time. A scan asks only about a file with a rule match
   that it would otherwise report, which was no file of 112,675 on that
-  runner.
+  runner and one of 312,347 among the programs of a desktop. On that
+  desktop, 13,440 files of other publishers' apps from the Microsoft
+  Store are not trusted, although nearly all of them are signed under a
+  root of Microsoft's: the list names signers, not roots.
 - **Signatures that have to be turned down.** CI makes them: Windows'
   own tool calls a signed program with bytes added next to its signature
   "Valid", and one that is signed for "Microsoft Corporation" under a
@@ -384,10 +389,12 @@ produced. In short, as of the first piece of phase 5:
 ## Roadmap
 
 [docs/ROADMAP.md](docs/ROADMAP.md) lists every phase with its exit
-criterion. Now, in phase 5: checking who signed a file, so that a match of
-a published rule on a file from a trusted publisher is recorded instead of
-reported. Then: removing the autostart entries that point at a quarantined
-file, and putting them back on restore, tried in a virtual machine.
+criterion. Phase 5 so far: Warden checks who signed a file, so that a
+match of a published rule in a file from a trusted publisher is recorded
+instead of reported. Next in that phase: a guard that keeps a file that
+Windows itself signed out of the quarantine, and then removing the
+autostart entries that point at a quarantined file and putting them back
+on restore, tried in a virtual machine.
 
 ## Licence
 

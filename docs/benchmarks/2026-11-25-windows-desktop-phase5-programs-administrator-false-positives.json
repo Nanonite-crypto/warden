@@ -1,0 +1,236 @@
+{
+  "schema": 4,
+  "label": "Windows 11 desktop, installed programs, with administrator rights, phase 5",
+  "withheld": "The paths of the two files that could not be read were replaced after the run: they would show which programs are installed on a private machine. Everything else is as the tool wrote it.",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Program Files",
+    "C:\\Program Files (x86)"
+  ],
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795566730,
+        "bundle_digest": "b183640980294902809d7d0a3b9f204ed06346c53932255679b214850e91902c",
+        "engine": "yara-x 1.23.0",
+        "origin": "rule bundle",
+        "rule_files": 2,
+        "rules": 5132,
+        "rules_excluded": 6,
+        "rules_generated": 1622
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "trust_check": {
+    "available": true,
+    "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+    "publishers": 2
+  },
+  "trust_checks": 1,
+  "files_trusted": 1,
+  "threads": 16,
+  "duration_ms": 1276851,
+  "files_scanned": 312347,
+  "bytes_scanned": 77537995469,
+  "files_skipped": 2,
+  "folders_skipped": 0,
+  "files_partially_scanned": 1075,
+  "archive_members_scanned": 345740,
+  "files_per_second": 244.62280111124716,
+  "megabytes_per_second": 60.7259286760493,
+  "flagged_malicious": 0,
+  "flagged_suspicious": 0,
+  "flagged_percent": 0.0,
+  "by_name": [],
+  "flagged": [],
+  "flagged_truncated": false,
+  "recorded_files": 15,
+  "recorded_by_name": [
+    {
+      "name": "MALPEDIA_Win_Triback_Loader_Auto",
+      "files": 8
+    },
+    {
+      "name": "MALPEDIA_Win_Bqtlock_Auto",
+      "files": 2
+    },
+    {
+      "name": "MALPEDIA_Win_Mystic_Stealer_Auto",
+      "files": 2
+    },
+    {
+      "name": "MALPEDIA_Win_Yokai_Auto",
+      "files": 2
+    },
+    {
+      "name": "RUSSIANPANDA_Purecrypter",
+      "files": 1
+    }
+  ],
+  "recorded": [
+    {
+      "path": "C:\\Program Files\\Git\\mingw64\\bin\\libstdc++-6.dll",
+      "size": 2428323,
+      "sha256": "ac49a81529393ab27268a1b534340462daaa8386a718cf20890865c0caeece66",
+      "names": [
+        "MALPEDIA_Win_Bqtlock_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\Git\\mingw64\\libexec\\git-core\\libstdc++-6.dll",
+      "size": 2428323,
+      "sha256": "ac49a81529393ab27268a1b534340462daaa8386a718cf20890865c0caeece66",
+      "names": [
+        "MALPEDIA_Win_Bqtlock_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\Virtual Desktop Streamer\\OpenVRDriver\\bin\\win64\\driver_VirtualDesktop.dll",
+      "size": 676376,
+      "sha256": "9fa2b70005d4e0aea02a891ae48a5caa0314d0f30e1190001d7ea979ec10d5c1",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\WindowsApps\\Microsoft.6365217CE6EB4_102.2611.9002.0_x64__8wekyb3d8bbwe\\MicrosoftSecurityApp\\xpdAgent.exe",
+      "size": 2879696,
+      "sha256": "86f95974cb32af876d64a85b647b042e5aa3d215d8daff481d1f876b1373a8ec",
+      "names": [
+        "RUSSIANPANDA_Purecrypter"
+      ],
+      "trust": {
+        "answer": "trusted",
+        "publisher": "Microsoft Corporation",
+        "route": "embedded",
+        "detail": "signed for Microsoft Corporation, found in the file itself"
+      }
+    },
+    {
+      "path": "C:\\Program Files\\WindowsApps\\Microsoft.YourPhone_1.26101.118.0_x64__8wekyb3d8bbwe\\NativeHostNE.dll",
+      "size": 1191424,
+      "sha256": "8c87c3845ecbc93b72d5d73443c1833e735a7cf7a24336a139b7ad3aa659100d",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.PythonManager_26.4.240.0_x64__qbz5n2kfra8p0\\pyshellext.exe",
+      "size": 1026560,
+      "sha256": "7183e423364f3e18201c2f090ed3ae283771b53dc3bca36bd2f7acc62faa11a6",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.PythonManager_26.4.240.0_x64__qbz5n2kfra8p0\\templates\\launcher-64.exe",
+      "size": 591360,
+      "sha256": "2eed0b75425a581a0c1b69be9745520d13c46b051397d4a81bd232245c572446",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.PythonManager_26.4.240.0_x64__qbz5n2kfra8p0\\templates\\launcherw-64.exe",
+      "size": 590336,
+      "sha256": "91dc22ecaea49e482f932bf7589d299541f9b3108f3b745cecd4c36c10238c76",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files (x86)\\Java\\jre1.8.0_471\\bin\\unpack200.exe",
+      "size": 182456,
+      "sha256": "6612b9dac6ad3ebb3c2fee1db2758acdd9b2aec73a79dee1d16918a13d64fba3",
+      "names": [
+        "MALPEDIA_Win_Mystic_Stealer_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files (x86)\\Java\\jre1.8.0_471\\bin\\zip.dll",
+      "size": 81592,
+      "sha256": "710414d3610e133ddfce48a13a47efc8d31daf7799de48f22e5136a9e826de86",
+      "names": [
+        "MALPEDIA_Win_Mystic_Stealer_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files (x86)\\Microsoft SDKs\\Windows Kits\\10\\ExtensionSDKs\\Microsoft.UniversalCRT.Debug\\10.0.26100.0\\Redist\\Debug\\x86\\ucrtbased.dll",
+      "size": 1692096,
+      "sha256": "efbf2f43811e15785116880e45b955d3b7bfd5585107d9fded2c0e5a2a45feec",
+      "names": [
+        "MALPEDIA_Win_Yokai_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files (x86)\\Steam\\SDL3_image.dll",
+      "size": 1009304,
+      "sha256": "b8698e2126060a094b63caf021acc3d8c86751ee75191f17623e0676d3e3d638",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files (x86)\\Steam\\libavif-16.dll",
+      "size": 903832,
+      "sha256": "858624061d7cb14c2801ec64af698537a1bf16ba337e2dd989f235c50b9745ba",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files (x86)\\Steam\\libpng16-16.dll",
+      "size": 1051288,
+      "sha256": "c1b8ec6aec0cb2e09d719394a681c62fee914b71b9cf5604e6b95a32a8d13b2a",
+      "names": [
+        "MALPEDIA_Win_Triback_Loader_Auto"
+      ]
+    },
+    {
+      "path": "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x86\\ucrt\\ucrtbased.dll",
+      "size": 1692088,
+      "sha256": "c15f97935e113729974d55f4c881efc85fd5a0baadc2d81895a93e10d6e738fb",
+      "names": [
+        "MALPEDIA_Win_Yokai_Auto"
+      ]
+    }
+  ],
+  "recorded_truncated": false,
+  "skipped": [
+    {
+      "path": "withheld: a configuration file of an installed program",
+      "folder": false,
+      "reason": "access_denied",
+      "detail": "Access is denied. (os error 5)"
+    },
+    {
+      "path": "withheld: a lock file of another installed program",
+      "folder": false,
+      "reason": "in_use",
+      "detail": "The process cannot access the file because another process has locked a portion of the file. (os error 33)"
+    }
+  ],
+  "skipped_truncated": false
+}

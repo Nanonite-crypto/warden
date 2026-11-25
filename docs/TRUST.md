@@ -28,6 +28,12 @@ Leaving a rule out costs detection: the rule no longer finds what it was
 written for either. A signature costs less. The rule stays, and its match
 is set aside only in a file whose publisher is known and trusted.
 
+That is how it went. The rule is back in the bundle, and on 2026-11-25
+the same scan flagged none of 312,347 files: the rule matched
+`xpdAgent.exe` as before, Warden found the signature of Microsoft
+Corporation in the file, and the match went on record with that reason
+([BENCHMARKS.md](BENCHMARKS.md#the-desktops-programs-with-the-rule-back-in-the-bundle)).
+
 ## A valid signature is not trust
 
 A signature says two things: who signed the file, and that the file has not
@@ -247,6 +253,13 @@ chain that ends in a root of Microsoft's says that Microsoft signed, not
 that Microsoft wrote the code. How many files each of those names signs on
 a Windows machine is in
 [BENCHMARKS.md](BENCHMARKS.md#who-is-not-on-the-list).
+
+The apps of other publishers in the Microsoft Store are the plainest
+case. The Store signs a package with a certificate that names the app's
+publisher and chains to a root of Microsoft's. On a desktop, 13,440 files
+sit in packages whose signer the list does not name, nearly all of them
+under a root of Microsoft's, and none of them is trusted: the list names
+signers, not roots ([BENCHMARKS.md](BENCHMARKS.md#on-the-desktop)).
 
 ### How a publisher gets on the list
 

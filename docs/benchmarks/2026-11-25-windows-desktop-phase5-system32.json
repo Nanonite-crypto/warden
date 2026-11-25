@@ -1,0 +1,91 @@
+{
+  "schema": 4,
+  "label": "local machine",
+  "path": "C:\\WINDOWS\\System32",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "detectors": [
+    {
+      "id": "hash",
+      "details": {
+        "builtin_signatures": 1
+      }
+    },
+    {
+      "id": "yara",
+      "details": {
+        "bundle_created_unix_secs": 1795566681,
+        "bundle_digest": "130a3395905d4657a2324e8d164936bf479a971041f6c61bfcaa4743c544fc75",
+        "engine": "yara-x 1.23.0",
+        "origin": "built-in rules",
+        "rule_files": 1,
+        "rules": 1,
+        "rules_generated": 0
+      }
+    },
+    {
+      "id": "heuristic",
+      "details": {
+        "indicators": 43,
+        "indicators_scored": 13,
+        "second_sign_from": 14,
+        "suspicious_from": 32
+      }
+    }
+  ],
+  "trust_check": {
+    "available": true,
+    "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+    "publishers": 2
+  },
+  "configurations": [
+    {
+      "threads": 16,
+      "runs": [
+        {
+          "first": true,
+          "duration_ms": 28214.831700000002,
+          "files_scanned": 27646,
+          "bytes_scanned": 10287141932,
+          "files_skipped": 31,
+          "folders_skipped": 3,
+          "detections": 0,
+          "trust_checks": 0,
+          "files_per_second": 979.8392665939595,
+          "megabytes_per_second": 364.6005066193608
+        },
+        {
+          "first": false,
+          "duration_ms": 9671.8783,
+          "files_scanned": 27646,
+          "bytes_scanned": 10287141932,
+          "files_skipped": 31,
+          "folders_skipped": 3,
+          "detections": 0,
+          "trust_checks": 0,
+          "files_per_second": 2858.3899778805117,
+          "megabytes_per_second": 1063.6136656103295
+        },
+        {
+          "first": false,
+          "duration_ms": 8332.9477,
+          "files_scanned": 27646,
+          "bytes_scanned": 10287141932,
+          "files_skipped": 31,
+          "folders_skipped": 3,
+          "detections": 0,
+          "trust_checks": 0,
+          "files_per_second": 3317.6735286602125,
+          "megabytes_per_second": 1234.5141602172782
+        }
+      ],
+      "repeat_median_files_per_second": 3088.031753270362,
+      "repeat_median_megabytes_per_second": 1149.063912913804
+    }
+  ]
+}

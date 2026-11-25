@@ -536,11 +536,16 @@ and who signed them? What does one check cost? What the check changes
 about a scan is a question of false positives, and is under
 [With the signature check](#with-the-signature-check).
 
-Everything in this section was measured on GitHub-hosted Windows runners
-on 2026-11-21: Windows Server 2025 (10.0.26100, runner image
+Most of this section was measured on GitHub-hosted Windows runners on
+2026-11-21: Windows Server 2025 (10.0.26100, runner image
 `windows-2025-vs2026` 20261116.315), 2 logical processors, 8 GB RAM. The
-trust list had its two publishers, and the runners had a network, over
-which Windows asks whether a certificate was revoked.
+last part, [On the desktop](#on-the-desktop), is from the Windows 11
+desktop of the earlier phases, on 2026-11-25. The trust list had its two
+publishers both times, and the machines had a network, over which Windows
+asks whether a certificate was revoked. Every result carries the SHA-256
+of the list it was made with, which begins `6f21a3f5`. The list has the
+same two publishers now, and another digest: one piece of its evidence
+gained a note after the run on the desktop.
 
 ### Who signed what
 
@@ -736,6 +741,65 @@ Raw results:
 [machine](benchmarks/2026-11-21-github-windows-runner-phase5-machine.json);
 [drivers](benchmarks/2026-11-21-github-windows-runner-phase5-trust-drivers.json),
 [its machine](benchmarks/2026-11-21-github-windows-runner-phase5-trust-drivers-machine.json).
+
+#### On the desktop
+
+A runner is a tidy machine: Windows, and software that Microsoft or a
+handful of projects made. On 2026-11-25 the same survey ran over two
+folders of the desktop, with administrator rights. A survey of a private
+machine writes down numbers only: no file, and no signer that is not on
+the list, because both would show which programs are installed.
+
+| | `C:\Windows\System32` | `C:\Program Files\WindowsApps` |
+|---|---|---|
+| Files | 27,676 | 52,641 |
+| Windows executables among them | 12,132 | 20,205 |
+| **Trusted executables** | **11,491 (94.7 %)** | **20,115 (99.6 %)** |
+| by the signature in the file | 2,026 (16.7 %) | 15,412 (76.3 %) |
+| through a catalogue of Windows | 9,465 (78.0 %) | 22 |
+| through the signature of their app package | 0 | 4,681 (23.2 %) |
+| Signed, by a publisher that is not on the list | 550 | 90 |
+| No signature by any route | 89 | 0 |
+| A signature that does not hold | 2 | 0 |
+| Other files that are trusted | 0 of 15,544 | 18,645 of 32,436 (57.5 %) |
+| Signers that are not on the list | 51, on 550 files | 29, on 15,527 files |
+| of those, with a chain that ends in a root of Microsoft's | 11, on 180 files | 12, on 15,288 files |
+| One check at the median: in the file, catalogue, package | 18 ms, 22 ms, none | 16 ms, 26 ms, 12 ms |
+| The whole survey, on 16 threads | 57 s | 1 min 29 s |
+
+- **The routes share System32 as they do on the runner.** A catalogue
+  vouches for 78.0 % of the executables here and for 78.4 % there. What a
+  desktop adds is other people's software: 550 executables of 51 signers
+  that the list does not name, where the runner had 127.
+- **A root of Microsoft's is not the question.** In the folder of the app
+  packages, 13,440 files that are no executables sit in packages whose
+  signer the list does not name: the apps of other publishers. The
+  Microsoft Store signs the packages it hands out with a certificate that
+  names the publisher and chains to Microsoft; the answer about
+  `Clipchamp.Widgets.exe` under
+  [With the signature check](#with-the-signature-check) shows such a
+  chain. The numbers agree: all but 239 of the files with a signature of
+  an unlisted signer have a chain that ends in a root of Microsoft's. A
+  list that trusted the root would trust every app from the Store. This
+  one does not: those 13,440 files and 90 executables are not trusted,
+  and a rule match in one of them is reported.
+- **Nearly every executable in that folder is trusted**: 99.6 %, three
+  quarters of them by their own signature and the rest through their
+  package. The other files that are not trusted are the 13,440 above,
+  245 signature files, 71 files that no block map lists, and 35 without
+  any signature.
+- **A check took longer here**: 16 to 26 ms at the median, where the
+  runner took 4 to 8. The desktop checked on 16 threads at once, with
+  Microsoft Defender's real-time protection on; the runner has 2 threads
+  and that protection off. Which of the two makes the difference was not
+  measured.
+- In System32, 242 files could not be checked: 236 were in use, and 6
+  are aliases of Store apps. A scan of the folder could not read 34.
+
+Raw results:
+[System32](benchmarks/2026-11-25-windows-desktop-phase5-trust-system32.json),
+[app packages](benchmarks/2026-11-25-windows-desktop-phase5-trust-windowsapps.json),
+[machine](benchmarks/2026-11-25-windows-desktop-phase5-machine.json).
 
 ## False positives
 
@@ -1360,14 +1424,88 @@ checked in part; in the software folders 7 files were checked in part.
 This runner: AMD EPYC 9V74, 2 logical processors, 8 GB RAM, Windows
 Server 2025, Microsoft Defender real-time protection off.
 
-The file that `RUSSIANPANDA_Purecrypter` flagged is on no runner. It is on
-the desktop, in a folder that opens only with administrator rights, and
-the scan that proves this change has to run there. It had not run when
-this was written.
-
 Raw results:
 System32 [with the check](benchmarks/2026-11-21-github-windows-runner-phase5-system32-false-positives.json)
 and [without](benchmarks/2026-11-21-github-windows-runner-phase5-system32-false-positives-without-trust.json),
 software [with](benchmarks/2026-11-21-github-windows-runner-phase5-software-false-positives.json)
 and [without](benchmarks/2026-11-21-github-windows-runner-phase5-software-false-positives-without-trust.json),
 [machine](benchmarks/2026-11-21-github-windows-runner-phase5-machine.json).
+
+#### The desktop's programs, with the rule back in the bundle
+
+The file that `RUSSIANPANDA_Purecrypter` flagged is on no runner. It is on
+the desktop, in a folder that opens only with administrator rights, so
+the proof of this change had to come from there. On 2026-11-25 the scan
+of [2026-11-20](#the-desktops-programs-again-with-administrator-rights)
+was repeated with a build of commit `7d068c8`, made on the desktop, and a
+bundle built there from the pinned package and the list of six.
+
+| | |
+|---|---|
+| Rules | 5,132, with 6 left out. `RUSSIANPANDA_Purecrypter` is one of the 5,132 |
+| Scanned in `C:\Program Files` and `C:\Program Files (x86)` | 312,347 files, 77.54 GB, 345,740 files inside archives |
+| Could not be read | 2 files and no folder: as before, a configuration file of one program and a lock file of another |
+| Checked in part | 1,075 files |
+| Flagged | **0** |
+| On record, verdict clean | 15 |
+| Files the check was asked about | 1, and a trusted publisher had signed it |
+| Time | 21 min 17 s, at 61 MB/s |
+
+- **The rule matches the same file, and the file is not reported.**
+  `xpdAgent.exe` is at the same path with the same SHA-256 as on
+  2026-11-20. The match is on record with its reason, "signed for
+  Microsoft Corporation, found in the file itself", and the verdict is
+  clean.
+- **What Warden reads in that file.** The signature in the file holds;
+  its chain is Microsoft Corporation, Microsoft Windows Code Signing PCA
+  2024, Microsoft Root Certificate Authority 2010, and nothing in it is
+  revoked. The signature of the package the file belongs to holds as
+  well, for Microsoft Corporation again, through the certificates of the
+  Microsoft Store. Either route alone would have been enough.
+- **The check was asked once in 312,347 files.** The other 14 files on
+  record are the ones of the earlier runs, matched by generated rules
+  that wait for a second sign. Nobody was asked about them, because their
+  matches would not have been reported anyway. Thirteen have the SHA-256
+  they had then; Phone Link was updated in between, and the new version
+  of its `NativeHostNE.dll` matches as the old one did.
+- **The scan took four times as long as the two before it**, which ran in
+  4 min 54 s and 4 min 53 s. The check is not the reason: one file was
+  asked about. Twenty minutes earlier the same build had scanned System32
+  with the same rules at the usual speed. What else the machine was doing
+  during the scan was not recorded, so the reason is not known.
+
+The acceptance script ran on the desktop before that scan, with the same
+build. Its new step asked who signed two files of Windows, and both came
+back trusted as Microsoft Windows: `ntdll.dll` by its own signature and
+`whoami.exe` through a catalogue. System32 with the 5,132 rules: none of
+27,643 files flagged, `liblouis.dll` on record as before, the check asked
+about no file, 34 files and 3 folders that could not be read. The passes
+without the public rules took 28.2 s, 9.7 s and 8.3 s, and the pass with
+them 23.5 s.
+
+**Who signed the files that the exclusion list names.** Four of the seven
+files that [the list](RULES.md#rules-that-are-left-out) names by path are
+on the desktop, and the same run asked about them:
+
+| File | What Warden found | Trusted |
+|---|---|---|
+| `uninstall.exe` of FL Studio 2025 and of FL Studio 21 | A signature in the file that holds, for Image Line, under a root of DigiCert's | No: not on the list |
+| `node_modules.asar` of Visual Studio Code | Nothing to look for: no executable, and in no package | No |
+| `Clipchamp.Widgets.exe` | No signature of its own. Its package is signed for `33F0F141-36F3-4EC2-A77D-51B53D0BA0E4`, a publisher's identity in the Microsoft Store, with a chain that ends in Microsoft Root Certificate Authority 2011 | No: not on the list |
+
+None of the six entries could give way to the trust list as it is. The
+last row is why the list asks for names and not for a root: the chain is
+Microsoft's, and the signer is whoever published the app.
+
+As in the earlier results of the desktop, the paths of four files that
+could not be read are replaced in the raw results, two among the programs
+and two in System32, and each result says so at its top.
+
+Raw results:
+[programs](benchmarks/2026-11-25-windows-desktop-phase5-programs-administrator-false-positives.json),
+[what the script wrote down](benchmarks/2026-11-25-windows-desktop-phase5-programs-administrator-rights.txt),
+[the answer about `xpdAgent.exe`](benchmarks/2026-11-25-windows-desktop-phase5-trust-check-xpdagent.txt),
+[the answers about the files of the exclusion list](benchmarks/2026-11-25-windows-desktop-phase5-trust-check-exclusion-evidence.txt);
+System32 [benchmark](benchmarks/2026-11-25-windows-desktop-phase5-system32.json),
+[with rules](benchmarks/2026-11-25-windows-desktop-phase5-system32-false-positives.json),
+[machine](benchmarks/2026-11-25-windows-desktop-phase5-machine.json).

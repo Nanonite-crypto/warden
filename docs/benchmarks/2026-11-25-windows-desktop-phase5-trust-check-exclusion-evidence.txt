@@ -1,0 +1,36 @@
+C:\Program Files\Image-Line\FL Studio 2025\uninstall.exe
+  Trusted     no: signed for Image Line, found in the file itself; that publisher is not on the trust list
+  SHA-256     6ac5648118eee90c8a3e7dc1603c04ca15a0a9a2102578f7a82b26b0a6aa010f
+  In the file a signature that holds
+              signed for Image Line
+              chain: Image Line < DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1 < DigiCert Trusted Root G4 < DigiCert Assured ID Root CA
+              the chain ends in a root of Microsoft's: no; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+C:\Program Files\Image-Line\FL Studio 21\uninstall.exe
+  Trusted     no: signed for Image Line, found in the file itself; that publisher is not on the trust list
+  SHA-256     c67af996bed020d187ff7db741d98de654dd795bea9824ec102e1be5ae046919
+  In the file a signature that holds
+              signed for Image Line
+              chain: Image Line < DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1 < DigiCert Trusted Root G4 < DigiCert Assured ID Root CA
+              the chain ends in a root of Microsoft's: no; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     no signature
+
+C:\Program Files\Microsoft VS Code\a5b5009513\resources\app\node_modules.asar
+  Trusted     no: the file is no Windows executable and no package vouches for it; signatures of other files are not looked for
+  SHA-256     c70847141b1af286b1e29d4d06e12003c8a63f0c974866b307be072197d17c81
+  In the file not tried: the file is no Windows executable, and a signature inside a file is only looked for in those
+  Catalogue   not tried: the file is no Windows executable, and only those are looked up in the catalogues
+  Package     no signature
+
+C:\Program Files\WindowsApps\Clipchamp.Clipchamp_4.7.10220.0_x64__yxz26nhyzhsrt\Clipchamp.Widgets\Clipchamp.Widgets.exe
+  Trusted     no: signed for 33F0F141-36F3-4EC2-A77D-51B53D0BA0E4, found in the signature of the file's package; that publisher is not on the trust list
+  SHA-256     753b95dce14613debfab8f2e3b37f9467a8c6581681e76e3f87fd1b35bc98f5b
+  In the file no signature
+  Catalogue   no signature
+  Package     a signature that holds, in C:\Program Files\WindowsApps\Clipchamp.Clipchamp_4.7.10220.0_x64__yxz26nhyzhsrt
+              signed for 33F0F141-36F3-4EC2-A77D-51B53D0BA0E4
+              chain: 33F0F141-36F3-4EC2-A77D-51B53D0BA0E4 < Microsoft Marketplace CA G 022 < Microsoft MarketPlace PCA 2011 < Microsoft Root Certificate Authority 2011
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked

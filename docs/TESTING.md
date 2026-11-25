@@ -413,8 +413,11 @@ whether a certificate was revoked.
 **Not tested:** a certificate that was revoked, which nobody hands out
 either; what is tested is a certificate that names no place to ask. A
 catalogue that lists a file by SHA-1 only. A machine without a network.
-A package of a publisher other than Microsoft from the Store. In CI, no
-Windows other than the runner's Windows Server 2025.
+A package of a publisher other than Microsoft from the Store, as a test:
+a survey of a desktop met 13,440 files in such packages and trusted none
+([BENCHMARKS.md](BENCHMARKS.md#on-the-desktop)). In CI, no Windows other
+than the runner's Windows Server 2025; a Windows 11 desktop was checked by
+hand.
 
 ## False positives
 
