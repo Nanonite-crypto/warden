@@ -6,6 +6,11 @@ Warden is a portfolio project by Vevang Technologies. It is built in phases,
 each ending with something that can be run and tested. The aim is depth in
 the scan engine, a clean architecture and measured results.
 
+It is developed with an AI agent. The agent writes the code, and the
+project's author makes the design decisions, tests each phase on real
+hardware and reviews it before the next one starts:
+[How this project is built](#how-this-project-is-built).
+
 > **Status: phase 4 of 10.** The scan engine has three detection layers:
 > hash matching, YARA rules, and heuristics that judge a Windows executable
 > by its structure. It looks inside zip archives. A file can be moved into
@@ -322,6 +327,38 @@ criterion. Next, in phase 5: removing the autostart entries that point at
 a quarantined file, and putting them back on restore, tried in a virtual
 machine.
 
+## How this project is built
+
+Warden is developed with an AI agent, Claude. The agent writes the code,
+the tests and these documents, and runs the checks; the commit log names
+it as the author of its commits. What the project's author does:
+
+- **The design decisions.** The agent proposes, the author decides. Each
+  decision is in the [decision log](docs/ROADMAP.md#decisions) with its
+  date, from the choice of libraries to which public rules are left out
+  of the rule bundle.
+- **Testing on real hardware.** The acceptance script and the scans run on
+  a Windows 11 desktop and in a virtual machine with a fresh Windows, and
+  what they measure is in [docs/BENCHMARKS.md](docs/BENCHMARKS.md) next to
+  the numbers from CI. Several false positives were only found there.
+- **Review of each phase.** A phase is one pull request that says what
+  can be run and what was measured. It is merged when the author has run
+  it and accepted it, and no phase starts before that.
+
 ## Licence
 
-No licence has been chosen yet. Until one is, all rights are reserved.
+Warden is released under the MIT License: see [LICENSE](LICENSE).
+
+Two things it works with are other people's:
+
+- The counts in [`calibration/`](calibration/) were computed from the
+  EMBER2024 dataset by Robert J. Joyce, Gideon Miller, Phil Roth, Richard
+  Zak, Elliott Zaresky-Williams, Hyrum Anderson, Edward Raff and James
+  Holt ([paper](https://arxiv.org/abs/2506.05074),
+  [dataset](https://huggingface.co/datasets/joyce8/EMBER2024)), which is
+  published under the
+  [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). The
+  dataset itself is not in this repository.
+- The YARA rules that a rule bundle is built from are not in this
+  repository either. They belong to their authors and carry their own
+  licences ([docs/RULES.md](docs/RULES.md)).
