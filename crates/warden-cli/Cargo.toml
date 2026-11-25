@@ -17,6 +17,7 @@ name = "warden"
 path = "src/main.rs"
 
 [dependencies]
+warden-autostart.workspace = true
 warden-engine.workspace = true
 warden-pe.workspace = true
 warden-quarantine.workspace = true

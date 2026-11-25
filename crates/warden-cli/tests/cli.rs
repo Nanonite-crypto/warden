@@ -2815,3 +2815,122 @@ fn a_scan_says_whether_it_checks_signatures_and_can_be_told_not_to() {
         "{reasons:?}"
     );
 }
+
+#[test]
+fn autostart_has_its_three_commands_and_says_what_they_are_for() {
+    let help = stdout_of(warden().args(["autostart", "--help"]));
+    for expected in [
+        "find",
+        "Show what starts a file, and change nothing",
+        "list",
+        "Show every autostart entry Warden looks at",
+        "remove",
+        "Go on removing what starts a quarantined file",
+    ] {
+        assert!(help.contains(expected), "{expected} is missing:\n{help}");
+    }
+    let help = stdout_of(warden().args(["quarantine", "add", "--help"]));
+    assert!(
+        help.contains("What makes Windows start the file goes with it"),
+        "{help}"
+    );
+}
+
+/// The entries Warden looks at exist on Windows. Elsewhere the commands
+/// say so, succeed, and keep the shape of their output.
+#[cfg(not(windows))]
+#[test]
+fn on_another_system_autostart_says_that_it_looks_on_windows_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("file.bin");
+    fs::write(&file, suspect_bytes()).unwrap();
+
+    let listed = stdout_of(warden().args(["autostart", "list"]));
+    assert!(listed.contains("on Windows only"), "{listed}");
+    let found = stdout_of(warden().args(["autostart", "find"]).arg(&file));
+    assert!(found.contains("on Windows only"), "{found}");
+
+    for arguments in [
+        vec!["autostart", "list", "--json"],
+        vec!["autostart", "find", "--json", file.to_str().unwrap()],
+    ] {
+        let json: serde_json::Value =
+            serde_json::from_str(&stdout_of(warden().args(&arguments))).unwrap();
+        assert_eq!(json["entries"].as_array().unwrap().len(), 0);
+        assert!(
+            json["problems"][0]
+                .as_str()
+                .unwrap()
+                .contains("on Windows only")
+        );
+    }
+}
+
+/// A file that nothing starts goes into the quarantine with no record of
+/// autostart entries, and every command says the same about that.
+#[test]
+fn a_quarantined_file_that_nothing_started_has_nothing_to_remove_or_put_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("quarantine");
+    let file = dir.path().join("lonely.bin");
+    fs::write(&file, suspect_bytes()).unwrap();
+
+    let added = stdout_of(
+        warden()
+            .args(["quarantine", "add"])
+            .arg(&file)
+            .arg("--dir")
+            .arg(&store),
+    );
+    assert!(!added.contains("removed    "), "{added}");
+    assert!(!added.contains("left       "), "{added}");
+    let id = added
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("entry"))
+        .unwrap()
+        .trim()
+        .to_owned();
+
+    let listed = stdout_of(warden().args(["quarantine", "list", "--dir"]).arg(&store));
+    assert!(!listed.contains("removed with it"), "{listed}");
+    assert!(!listed.contains("Still owed"), "{listed}");
+    let json: serde_json::Value = serde_json::from_str(&stdout_of(
+        warden()
+            .args(["quarantine", "list", "--json", "--dir"])
+            .arg(&store),
+    ))
+    .unwrap();
+    assert_eq!(json["autostart"].as_array().unwrap().len(), 0);
+    let info = stdout_of(
+        warden()
+            .args(["quarantine", "info", &id, "--dir"])
+            .arg(&store),
+    );
+    assert!(!info.contains("What started it"), "{info}");
+
+    let removed = stdout_of(
+        warden()
+            .args(["autostart", "remove", &id[..8], "--dir"])
+            .arg(&store),
+    );
+    assert!(
+        removed.contains("Nothing is left to remove for")
+            && removed.contains("no entry that starts it was written down"),
+        "{removed}"
+    );
+    // An entry that is not in the quarantine is an error, as everywhere.
+    warden()
+        .args(["autostart", "remove", "ffffffff", "--dir"])
+        .arg(&store)
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("ffffffff"));
+
+    let restored = stdout_of(
+        warden()
+            .args(["quarantine", "restore", &id, "--dir"])
+            .arg(&store),
+    );
+    assert!(!restored.contains("What started it"), "{restored}");
+    assert!(file.exists());
+}

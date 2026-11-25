@@ -6,6 +6,7 @@ use std::process::ExitCode;
 use anyhow::{Context, anyhow};
 use clap::{Args, Subcommand};
 use serde::Serialize;
+use warden_autostart::{Record, Remedy, find_in, this_system};
 use warden_quarantine::{
     AddOptions, Damaged, Entry, EntryInfo, Guard, Quarantine, QuarantineError, Reason,
     RestoreOptions, Stamp, Verdict, default_dir,
@@ -13,6 +14,7 @@ use warden_quarantine::{
 use warden_trust::{Options, Origin, TrustList, Verifier};
 
 use crate::EXIT_ERROR;
+use crate::autostart::{print_put_back, print_record, print_removal};
 use crate::render::{group_digits, human_timestamp, shown, shown_path};
 
 /// Where the quarantine is.
@@ -35,6 +37,12 @@ pub enum QuarantineCommand {
     /// A file that is part of Windows stays where it is: Windows may not
     /// start without it, and then nothing is left to restore it with.
     /// Warden tells such a file by its signature, see `warden trust check`.
+    ///
+    /// What makes Windows start the file goes with it: values under the
+    /// Run keys, scheduled tasks, services, and shortcuts in the Startup
+    /// folders that name the file by its full path. Each is written down
+    /// whole before it is removed, and `restore` puts it back. See
+    /// `warden autostart find`.
     Add {
         /// Files to quarantine
         #[arg(required = true, value_name = "FILE")]
@@ -83,6 +91,11 @@ pub enum QuarantineCommand {
     /// and the permissions it had, and its entry is removed. The content is
     /// checked against the SHA-256 that was recorded when it was
     /// quarantined; a file that does not pass is not restored.
+    ///
+    /// What started the file and was removed with it is put back as it
+    /// was. An entry whose place something else has taken is not
+    /// replaced. What could not be put back is kept, and running the
+    /// command again with the same identifier tries once more.
     Restore {
         /// The entry's identifier, or enough of its start to tell it apart
         #[arg(value_name = "ID")]
@@ -102,7 +115,8 @@ pub enum QuarantineCommand {
 
     /// Remove entries for good
     ///
-    /// The files they hold cannot be brought back afterwards.
+    /// The files they hold cannot be brought back afterwards, and neither
+    /// can what started them and was removed with them.
     Delete {
         /// Identifiers of the entries, or enough of their start
         #[arg(required = true, value_name = "ID")]
@@ -115,7 +129,7 @@ pub enum QuarantineCommand {
 
 /// Opens the quarantine, and says what it found left over from a run that
 /// did not finish.
-fn open(place: &Place) -> anyhow::Result<Quarantine> {
+pub fn open(place: &Place) -> anyhow::Result<Quarantine> {
     let dir = match &place.dir {
         Some(dir) => dir.clone(),
         None => default_dir().ok_or_else(|| {
@@ -243,6 +257,10 @@ fn add(
     let options = AddOptions {
         overrule_guard: even_if_signed_by_windows,
     };
+    // What starts programs on this machine, looked at once for all files.
+    let system = this_system();
+    let survey = system.survey();
+    let remedy = Remedy::new(system.as_ref(), &quarantine);
 
     let mut failed = false;
     let mut guarded = false;
@@ -254,6 +272,11 @@ fn add(
                 Verdict::Take { .. } => None,
             }
         });
+        // While the file is still there: the system is asked for the
+        // other ways its path is written.
+        let starting = std::path::absolute(file)
+            .map(|path| find_in(system.as_ref(), &survey, &path).starting)
+            .unwrap_or_default();
         match quarantine.add_with(file, reason, &options) {
             Ok(entry) => {
                 outln!("Quarantined  {}", shown(&entry.info.original_path))?;
@@ -265,6 +288,25 @@ fn add(
                 )?;
                 if let Some(why) = although {
                     outln!("  although   {}", shown(&why))?;
+                    // A file of Windows can have services of Windows that
+                    // start it. They stay.
+                    for seen in &starting {
+                        outln!(
+                            "  kept       {}, which starts it",
+                            shown(&seen.entry.to_string())
+                        )?;
+                    }
+                } else {
+                    match remedy.remove(&entry.info.id, &entry.info.original_path, starting) {
+                        Ok(removal) => print_removal(&removal, &entry.info.id)?,
+                        Err(error) => {
+                            failed = true;
+                            errln!(
+                                "error: the file is in the quarantine, and what starts it could not be removed: {}",
+                                shown(&error.to_string())
+                            );
+                        }
+                    }
                 }
             }
             Err(error) => {
@@ -273,6 +315,12 @@ fn add(
                 errln!("error: {}", shown(&error.to_string()));
             }
         }
+    }
+    for problem in &survey.problems {
+        errln!(
+            "note: not everything that starts programs could be looked at: {}",
+            shown(problem)
+        );
     }
     if guarded {
         errln!(
@@ -299,6 +347,8 @@ struct Listed<'a> {
     dir: String,
     entries: Vec<&'a EntryInfo>,
     damaged: Vec<ListedDamaged>,
+    /// What was removed together with files because it started them.
+    autostart: Vec<&'a Record>,
 }
 
 fn damaged_line(damaged: &Damaged) -> String {
@@ -308,6 +358,8 @@ fn damaged_line(damaged: &Damaged) -> String {
 fn list(json: bool, place: &Place) -> anyhow::Result<ExitCode> {
     let quarantine = open(place)?;
     let listing = quarantine.list()?;
+    let system = this_system();
+    let records = Remedy::new(system.as_ref(), &quarantine).records()?;
     if json {
         let listed = Listed {
             dir: quarantine.dir().to_string_lossy().into_owned(),
@@ -320,6 +372,7 @@ fn list(json: bool, place: &Place) -> anyhow::Result<ExitCode> {
                     problem: damaged.problem.clone(),
                 })
                 .collect(),
+            autostart: records.iter().map(|(record, _)| record).collect(),
         };
         outln!(
             "{}",
@@ -352,6 +405,44 @@ fn list(json: bool, place: &Place) -> anyhow::Result<ExitCode> {
         if let Some(note) = &info.reason.note {
             outln!("    reason: {}", shown(note))?;
         }
+        if let Some((record, _)) = records.iter().find(|(record, _)| record.entry == info.id) {
+            let removed = record
+                .items
+                .iter()
+                .filter(|item| item.state != warden_autostart::State::Left)
+                .count();
+            if removed > 0 {
+                outln!(
+                    "    removed with it: {removed} of what started it; a restore puts {} back",
+                    if removed == 1 { "it" } else { "them" }
+                )?;
+            }
+        }
+    }
+    let owed: Vec<&Record> = records
+        .iter()
+        .filter(|(_, in_quarantine)| !in_quarantine)
+        .map(|(record, _)| record)
+        .collect();
+    if !owed.is_empty() {
+        outln!()?;
+        outln!("Still owed to files that are back:")?;
+        for record in owed {
+            outln!("  {}  {}", record.entry, shown(&record.file))?;
+            for item in &record.items {
+                outln!(
+                    "    {}{}",
+                    shown(&item.what.to_string()),
+                    item.note
+                        .as_ref()
+                        .map(|note| format!(": {}", shown(note)))
+                        .unwrap_or_default()
+                )?;
+            }
+        }
+        outln!(
+            "  `warden quarantine restore <entry>` tries to put them back again, and `warden quarantine delete <entry>` gives them up."
+        )?;
     }
     if !listing.damaged.is_empty() {
         outln!()?;
@@ -422,6 +513,11 @@ fn info(id: &str, json: bool, place: &Place) -> anyhow::Result<ExitCode> {
     }
     outln!("Made by      Warden {}", shown(&info.warden_version))?;
     outln!("Kept in      {}", shown_path(&file))?;
+    let system = this_system();
+    if let Some(record) = Remedy::new(system.as_ref(), &quarantine).record(&info.id)? {
+        outln!("What started it, and a restore puts back:")?;
+        print_record(&record)?;
+    }
     Ok(ExitCode::SUCCESS)
 }
 
@@ -432,13 +528,32 @@ fn restore(
     place: &Place,
 ) -> anyhow::Result<ExitCode> {
     let quarantine = open(place)?;
-    let restored = quarantine.restore(
+    let system = this_system();
+    let remedy = Remedy::new(system.as_ref(), &quarantine);
+    let restored = match quarantine.restore(
         id,
         &RestoreOptions {
             to: to.map(Path::to_path_buf),
             overwrite,
         },
-    )?;
+    ) {
+        Ok(restored) => restored,
+        Err(QuarantineError::NotFound(missing)) => {
+            // The file may be back already, with something still owed.
+            let Some(record) = owed_record(&remedy, id)? else {
+                return Err(QuarantineError::NotFound(missing).into());
+            };
+            outln!(
+                "{} is back already. Trying again to put back what started it.",
+                shown(&record.file)
+            )?;
+            if let Some(back) = remedy.put_back(&record.entry)? {
+                print_put_back(&back, &record.entry)?;
+            }
+            return Ok(ExitCode::SUCCESS);
+        }
+        Err(other) => return Err(other.into()),
+    };
     outln!("Restored  {}", shown_path(&restored.path))?;
     outln!(
         "  sha256  {} ({} bytes), as recorded",
@@ -459,13 +574,71 @@ fn restore(
             outln!("  - {}", shown(note))?;
         }
     }
+    let at_its_place = restored
+        .info
+        .original()
+        .is_some_and(|original| original == restored.path);
+    if at_its_place {
+        if let Some(back) = remedy.put_back(&restored.info.id)? {
+            print_put_back(&back, &restored.info.id)?;
+        }
+    } else if remedy.record(&restored.info.id)?.is_some() {
+        // An entry that started the file names the place it was at.
+        let id = &restored.info.id;
+        outln!(
+            "  What started it was not put back, because the file is in another place now. `warden quarantine restore {id}` puts it back all the same, and `warden quarantine delete {id}` gives it up."
+        )?;
+    }
     Ok(ExitCode::SUCCESS)
+}
+
+/// The record of a file that is back, if something is still owed to it
+/// and its identifier starts with these characters.
+fn owed_record(remedy: &Remedy<'_>, id: &str) -> anyhow::Result<Option<Record>> {
+    if id.is_empty() {
+        return Ok(None);
+    }
+    Ok(remedy
+        .records()?
+        .into_iter()
+        .find(|(record, in_quarantine)| !in_quarantine && record.entry.starts_with(id))
+        .map(|(record, _)| record))
 }
 
 fn delete(ids: &[String], place: &Place) -> anyhow::Result<ExitCode> {
     let quarantine = open(place)?;
+    let system = this_system();
+    let remedy = Remedy::new(system.as_ref(), &quarantine);
     let mut failed = false;
     for id in ids {
+        // What was removed together with the file goes first: the
+        // shortcuts that are in the quarantine on its account, and the
+        // record of the rest.
+        match quarantine.find(id) {
+            Ok(entry) => {
+                if let Err(error) = remedy.forget(&entry.info.id) {
+                    failed = true;
+                    errln!("error: {}", shown(&error.to_string()));
+                    continue;
+                }
+            }
+            Err(QuarantineError::NotFound(_)) => {
+                // Not a file in the quarantine. Something owed to a file
+                // that is back, perhaps.
+                if let Some(record) = owed_record(&remedy, id)? {
+                    remedy.forget(&record.entry)?;
+                    outln!(
+                        "Gave up  {}  what could not be put back with {}",
+                        record.entry,
+                        shown(&record.file)
+                    )?;
+                    continue;
+                }
+            }
+            // A damaged entry, or an identifier that fits several: for
+            // the quarantine to say.
+            Err(_) => {}
+        }
         match quarantine.delete(id) {
             Ok(Some(info)) => outln!("Deleted  {}  {}", info.id, shown(&info.original_path))?,
             Ok(None) => outln!("Deleted  {}  (its record could not be read)", shown(id))?,

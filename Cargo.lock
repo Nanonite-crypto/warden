@@ -2795,6 +2795,7 @@ dependencies = [
  "tempfile",
  "time",
  "walkdir",
+ "warden-autostart",
  "warden-engine",
  "warden-pe",
  "warden-quarantine",
