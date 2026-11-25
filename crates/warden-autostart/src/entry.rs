@@ -210,6 +210,16 @@ impl Service {
         const FILE_SYSTEM_DRIVER: u32 = 0x2;
         self.service_type & (KERNEL_DRIVER | FILE_SYSTEM_DRIVER) != 0
     }
+
+    /// Whether this is the copy of a service that Windows makes for one
+    /// user who is logged on, from a pattern that is a service of its
+    /// own. Windows makes such a copy at every logon and removes it at
+    /// logoff; nobody else can make one.
+    #[must_use]
+    pub fn is_user_instance(&self) -> bool {
+        const USER_SERVICE_INSTANCE: u32 = 0x80;
+        self.service_type & USER_SERVICE_INSTANCE != 0
+    }
 }
 
 /// A registry key with everything below it.
@@ -373,6 +383,34 @@ mod tests {
             key: RegKey::default(),
         });
         assert_eq!(driver.to_string(), "the driver filter");
+    }
+
+    #[test]
+    fn a_service_says_what_kind_it_is() {
+        let of_type = |service_type| Service {
+            name: "svc".to_owned(),
+            display_name: String::new(),
+            service_type,
+            start_type: 2,
+            error_control: 1,
+            image_path: r"C:\x\svc.exe".to_owned(),
+            load_order_group: String::new(),
+            dependencies: Vec::new(),
+            account: String::new(),
+            security: None,
+            key: RegKey::default(),
+        };
+        // Its own process, a shared one, a kernel driver, a driver for a
+        // file system.
+        for (service_type, driver) in [(0x10, false), (0x20, false), (0x1, true), (0x2, true)] {
+            assert_eq!(of_type(service_type).is_driver(), driver);
+            assert!(!of_type(service_type).is_user_instance());
+        }
+        // The pattern of a service for each user is a service like any
+        // other. The copy that Windows makes from it for one logon is not.
+        assert!(!of_type(0x50).is_user_instance());
+        assert!(of_type(0xd0).is_user_instance());
+        assert!(of_type(0xe0).is_user_instance());
     }
 
     #[test]

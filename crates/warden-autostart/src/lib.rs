@@ -65,6 +65,9 @@ mod starts;
 mod system;
 pub mod task;
 
+#[cfg(windows)]
+mod windows;
+
 #[doc(hidden)]
 pub mod stand_in;
 
@@ -73,6 +76,29 @@ pub use command::{
 };
 pub use entry::{Entry, Hive, RegKey, RegValue, RunValue, Service, Shortcut, SubKey, Task, View};
 pub use record::{Item, KIND, Record, SCHEMA, State};
-pub use remedy::{AutostartError, Found, Left, Outcome, PutBack, Remedy, Removal, Step, find};
+pub use remedy::{
+    AutostartError, Found, Left, Outcome, PutBack, Remedy, Removal, Step, find, find_in,
+};
 pub use starts::{Spellings, stands_in, starts};
-pub use system::{Failure, Seen, Survey, System};
+pub use system::{Failure, Nowhere, Seen, Survey, System};
+
+/// Whether this is a system with the autostart entries Warden looks at.
+/// Windows is; nothing else.
+pub const ON_THIS_SYSTEM: bool = cfg!(windows);
+
+/// The system this program runs on. On Windows that is Windows; anywhere
+/// else it is [`Nowhere`], on which there is nothing to find.
+///
+/// What comes back talks to the Task Scheduler and the shell from the
+/// thread that asked, and stays on it.
+#[must_use]
+pub fn this_system() -> Box<dyn System> {
+    #[cfg(windows)]
+    {
+        Box::new(windows::Windows::new())
+    }
+    #[cfg(not(windows))]
+    {
+        Box::new(Nowhere)
+    }
+}

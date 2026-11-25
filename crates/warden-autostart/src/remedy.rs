@@ -25,7 +25,7 @@ use warden_quarantine::{AddOptions, Quarantine, QuarantineError, Reason, Restore
 use crate::entry::{Entry, Service, Shortcut, Task};
 use crate::record::{Item, KIND, Record, SCHEMA, State};
 use crate::starts::{Spellings, starts};
-use crate::system::{Seen, System};
+use crate::system::{Seen, Survey, System};
 use crate::task;
 
 /// What starts a file.
@@ -40,20 +40,47 @@ pub struct Found {
 
 /// Finds the entries that start a file. The file has to be there still:
 /// the system is asked for the other ways its path is written.
+///
+/// A survey may hold an entry in less than full, as it does for services,
+/// whose keys in the registry can be large. An entry that starts the file
+/// is therefore read once more, whole, and that is what is returned. One
+/// that cannot be read whole is named among the problems and left out:
+/// what cannot be written down in full must not be removed.
 #[must_use]
 pub fn find(system: &dyn System, file: &Path) -> Found {
+    find_in(system, &system.survey(), file)
+}
+
+/// Finds the entries that start a file among those of a survey that was
+/// made before, as [`find`] does with one of its own. For when several
+/// files are looked up one after the other: a survey takes a moment.
+#[must_use]
+pub fn find_in(system: &dyn System, survey: &Survey, file: &Path) -> Found {
     let mut paths = vec![file.to_string_lossy().into_owned()];
     paths.extend(system.spellings(file));
     let spellings = Spellings::new(paths);
-    let survey = system.survey();
-    Found {
-        starting: survey
-            .seen
-            .into_iter()
-            .filter(|seen| starts(&seen.lines, &spellings))
-            .collect(),
-        problems: survey.problems,
+    let mut found = Found {
+        starting: Vec::new(),
+        problems: survey.problems.clone(),
+    };
+    for seen in &survey.seen {
+        if !starts(&seen.lines, &spellings) {
+            continue;
+        }
+        match system.current(&seen.entry) {
+            Ok(Some(entry)) => found.starting.push(Seen {
+                entry,
+                lines: seen.lines.clone(),
+            }),
+            // Gone since the survey.
+            Ok(None) => {}
+            Err(failure) => found.problems.push(format!(
+                "{} starts the file and could not be read in full, because {failure}",
+                seen.entry
+            )),
+        }
     }
+    found
 }
 
 /// The points at which an operation can be cut off, for tests. See
@@ -349,11 +376,27 @@ impl<'a> Remedy<'a> {
                     Err(other) => Err(left(other.to_string(), false)),
                 }
             }
-            other => self
-                .system
-                .remove(other)
-                .map(|()| None)
-                .map_err(|failure| left(failure.reason, failure.needs_rights)),
+            // Looked at once more, right before it goes: what is removed
+            // has to be what the record holds, or the record could not
+            // give it back. Between the two lies a moment when the file
+            // is quarantined at once, and days when an entry waited for
+            // more rights.
+            other => match self.system.current(other) {
+                Ok(Some(now)) if now == *other => self
+                    .system
+                    .remove(other)
+                    .map(|()| None)
+                    .map_err(|failure| left(failure.reason, failure.needs_rights)),
+                Ok(Some(_)) => Err(left(
+                    "it is not what it was when it was written down, so it stays as it is now"
+                        .to_owned(),
+                    false,
+                )),
+                // Gone already: by this removal, cut off before the
+                // record said so, or by somebody else's hand.
+                Ok(None) => Ok(None),
+                Err(failure) => Err(left(failure.reason, failure.needs_rights)),
+            },
         }
     }
 
@@ -582,6 +625,11 @@ fn cannot_be_put_back(entry: &Entry) -> Option<String> {
             Ok(_) => None,
             Err(problem) => Some(problem),
         },
+        Entry::Service(service) if service.is_user_instance() => Some(
+            "it is the copy of a service that Windows makes for a user who is logged on, and \
+             makes again at the next logon; nobody else could put it back"
+                .to_owned(),
+        ),
         Entry::Service(service) if needs_password(service) => Some(format!(
             "it runs as {} with a stored password, which nobody could give back to it",
             service.account

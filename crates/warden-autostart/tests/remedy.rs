@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use warden_autostart::stand_in::Machine;
 use warden_autostart::{
     AutostartError, Entry, Hive, KIND, Outcome, REG_EXPAND_SZ, REG_SZ, RegKey, Remedy, RunValue,
-    Service, Shortcut, State, Step, Task, Variables, View, find, reg_string_bytes,
+    Service, Shortcut, State, Step, System, Task, Variables, View, find, reg_string_bytes,
 };
 use warden_quarantine::{Quarantine, Reason, RestoreOptions};
 
@@ -524,6 +524,98 @@ fn an_entry_that_could_not_be_put_back_is_not_removed() {
     let again = scene.remedy().finish_removing(&id).unwrap();
     assert_eq!(again.left.len(), 1);
     assert!(scene.on_the_machine(&with_password));
+}
+
+#[test]
+fn a_users_own_copy_of_a_service_is_not_removed() {
+    let scene = Scene::new();
+    // Windows makes such a copy for each user who logs on, and takes it
+    // away at logoff. The name ends in a number of that logon.
+    let Entry::Service(pattern) = service("threatsvc_1a2b3", &format!(r#""{THREAT}" --service"#))
+    else {
+        panic!("a service was asked for");
+    };
+    let copy = Entry::Service(Service {
+        service_type: 0xd0,
+        ..pattern
+    });
+    scene.machine.add(copy.clone());
+
+    let (id, found) = scene.quarantine_the_file();
+    assert_eq!(found.len(), 6);
+    let removal = scene
+        .remedy()
+        .remove(&id, &scene.threat().display().to_string(), found)
+        .unwrap();
+    assert_eq!(removal.removed.len(), 5);
+    assert_eq!(removal.left.len(), 1);
+    assert_eq!(removal.left[0].entry, copy);
+    assert!(removal.left[0].why.contains("logged on"));
+    assert!(!removal.left[0].needs_rights);
+    assert!(scene.on_the_machine(&copy));
+}
+
+#[test]
+fn an_entry_that_changed_since_it_was_written_down_stays_as_it_is_now() {
+    let scene = Scene::new();
+    let starting = scene.starting();
+    let for_all = &starting[1];
+    scene.machine.protect(for_all);
+    let (id, found) = scene.quarantine_the_file();
+    let removal = scene
+        .remedy()
+        .remove(&id, &scene.threat().display().to_string(), found)
+        .unwrap();
+    assert_eq!(removal.left.len(), 1);
+
+    // Days later the rights are there. By then the value of that name
+    // holds something else: another program took the name.
+    scene.machine.grant_rights();
+    System::remove(&scene.machine, for_all).unwrap();
+    let taken_over = run_value(
+        Hive::Machine,
+        "ThreatForAll",
+        REG_SZ,
+        r"C:\elsewhere\tool.exe",
+    );
+    scene.machine.add(taken_over.clone());
+
+    let finished = scene.remedy().finish_removing(&id).unwrap();
+    assert_eq!(finished.removed.len(), 4);
+    assert_eq!(finished.left.len(), 1);
+    assert!(finished.left[0].why.contains("not what it was"));
+    assert!(!finished.left[0].needs_rights);
+    assert!(scene.on_the_machine(&taken_over));
+
+    // A restore does not write the old one over it, and owes nothing.
+    scene.restore_the_file(&id);
+    let back = scene.remedy().put_back(&id).unwrap().unwrap();
+    assert!(!back.is_owing());
+    assert!(matches!(&back.entries[1].1, Outcome::NeverRemoved(_)));
+    assert!(scene.on_the_machine(&taken_over));
+    assert!(!scene.on_the_machine(for_all));
+}
+
+#[test]
+fn an_entry_that_went_between_the_look_and_the_removal_comes_back_with_the_file() {
+    let scene = Scene::new();
+    let (id, found) = scene.quarantine_the_file();
+    // Somebody else deletes the task in that moment.
+    let the_task = scene.starting().swap_remove(2);
+    System::remove(&scene.machine, &the_task).unwrap();
+
+    let removal = scene
+        .remedy()
+        .remove(&id, &scene.threat().display().to_string(), found)
+        .unwrap();
+    assert_eq!(removal.removed.len(), 5);
+    assert!(removal.left.is_empty());
+
+    // The record holds what started the file when it was quarantined,
+    // and that is what a restore brings back.
+    scene.restore_the_file(&id);
+    assert!(!scene.remedy().put_back(&id).unwrap().unwrap().is_owing());
+    scene.assert_everything_is_as_it_was();
 }
 
 #[test]

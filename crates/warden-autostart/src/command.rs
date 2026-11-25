@@ -36,6 +36,13 @@ impl Variables {
             .map(|(_, value)| value.as_str())
     }
 
+    /// These variables, and behind them those of `others`. A name that
+    /// both know has the value it has here.
+    #[must_use]
+    pub fn and_then(&self, others: &Self) -> Self {
+        Self(self.0.iter().chain(&others.0).cloned().collect())
+    }
+
     /// The variables among these that are the same for everybody on the
     /// machine. An entry that does not belong to the user who is asking
     /// is read with these alone: that user's own folders are not the ones
@@ -273,6 +280,25 @@ mod tests {
         assert_eq!(machine.get("systemroot"), Some(r"C:\Windows"));
         assert_eq!(machine.get("ProgramFiles"), Some(r"C:\Program Files"));
         assert_eq!(machine.get("APPDATA"), None);
+    }
+
+    #[test]
+    fn one_set_of_variables_stands_before_another() {
+        let user = Variables::new([
+            ("APPDATA".to_owned(), r"D:\Profiles\v\Roaming".to_owned()),
+            ("TEMP".to_owned(), r"D:\Profiles\v\Temp".to_owned()),
+        ]);
+        let both = user.and_then(&variables());
+        // What both know has the value of the first.
+        assert_eq!(both.get("appdata"), Some(r"D:\Profiles\v\Roaming"));
+        assert_eq!(both.get("TEMP"), Some(r"D:\Profiles\v\Temp"));
+        // What only the second knows comes from there.
+        assert_eq!(both.get("SystemRoot"), Some(r"C:\Windows"));
+        assert_eq!(both.get("Nobody"), None);
+        assert_eq!(
+            expand(r"%APPDATA%\x.exe in %SystemRoot%", &both),
+            r"D:\Profiles\v\Roaming\x.exe in C:\Windows"
+        );
     }
 
     #[test]

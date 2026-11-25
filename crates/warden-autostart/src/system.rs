@@ -107,3 +107,33 @@ pub trait System: fmt::Debug {
     /// entry at that place is a failure.
     fn create(&self, entry: &Entry) -> Result<Vec<String>, Failure>;
 }
+
+/// A system without the autostart entries Warden looks at: every system
+/// that is not Windows. There is nothing to find on it, and nothing can
+/// be put on it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Nowhere;
+
+impl System for Nowhere {
+    fn survey(&self) -> Survey {
+        Survey::default()
+    }
+
+    fn spellings(&self, _: &Path) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn current(&self, _: &Entry) -> Result<Option<Entry>, Failure> {
+        Ok(None)
+    }
+
+    fn remove(&self, _: &Entry) -> Result<(), Failure> {
+        Ok(())
+    }
+
+    fn create(&self, _: &Entry) -> Result<Vec<String>, Failure> {
+        Err(Failure::new(
+            "entries like it exist on Windows only, and this is another system",
+        ))
+    }
+}

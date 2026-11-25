@@ -14,6 +14,9 @@ pub struct Definition {
     pub actions: Vec<Action>,
     /// How the task gets the rights it runs with.
     pub logon: Logon,
+    /// The account it runs as, the way the definition names it: usually
+    /// by its security identifier.
+    pub user: Option<String>,
 }
 
 /// A program a task runs.
@@ -124,13 +127,17 @@ pub fn read(xml: &str) -> Result<Definition, String> {
     let principal = children(root, "Principals")
         .flat_map(|list| children(list, "Principal"))
         .next();
-    let logon = principal.map_or(Logon::None, |principal| {
-        let text_of = |name| {
+    let text_of_principal = |name| {
+        principal.and_then(|principal| {
             children(principal, name)
                 .next()
                 .and_then(|node| node.text())
                 .map(str::trim)
-        };
+        })
+    };
+    let user = text_of_principal("UserId").map(str::to_owned);
+    let logon = principal.map_or(Logon::None, |_| {
+        let text_of = text_of_principal;
         match text_of("LogonType") {
             Some("Password") => Logon::Password,
             Some("S4U") => Logon::S4u,
@@ -153,7 +160,11 @@ pub fn read(xml: &str) -> Result<Definition, String> {
         }
     });
 
-    Ok(Definition { actions, logon })
+    Ok(Definition {
+        actions,
+        logon,
+        user,
+    })
 }
 
 fn children<'a, 'input>(
@@ -223,6 +234,8 @@ mod tests {
             ]
         );
         assert_eq!(definition.logon, Logon::InteractiveToken);
+        assert_eq!(definition.user.as_deref(), Some("S-1-5-21-1-2-3-1001"));
+        assert_eq!(read(&task("", "")).unwrap().user, None);
     }
 
     #[test]
