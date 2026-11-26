@@ -132,6 +132,17 @@ jobs:
           & $warden trust check --json @files
           Write-Host '::endgroup::'
           exit 0
+      # The scripts in scripts/win are started by hand, on machines CI
+      # never sees. That each of them parses is checked here, in the
+      # PowerShell every Windows has and in the newer one.
+      - name: Parse the PowerShell scripts
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\win\parse-check.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File scripts\win\parse-check.ps1
+          exit $LASTEXITCODE
       # What Warden finds in the four places it looks at for autostart
       # entries, and how long the look takes with this unoptimised build.
       # Shown in full, which is fine on a machine that is the same for
@@ -216,11 +227,71 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Write-Host '::endgroup::'
           }
+      # How long the look at the four places for autostart entries takes
+      # with the release build, and how many entries it reads. Numbers only.
+      - name: Time the look at what starts programs
+        shell: pwsh
+        run: |
+          $warden = 'target\release\warden.exe'
+          $runs = @()
+          foreach ($run in 1..5) {
+            $watch = [System.Diagnostics.Stopwatch]::StartNew()
+            $json = & $warden autostart list --json
+            $watch.Stop()
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $runs += $watch.ElapsedMilliseconds
+          }
+          $listed = ($json -join "`n") | ConvertFrom-Json
+          $count = { param($kind) @($listed.entries | Where-Object { $_.entry.kind -eq $kind }).Count }
+          $result = [ordered]@{
+            label = 'GitHub-hosted Windows runner, release build, the whole program each time'
+            milliseconds = $runs
+            run_values = & $count 'run_value'
+            tasks = & $count 'task'
+            services_and_drivers = & $count 'service'
+            shortcuts = & $count 'shortcut'
+            problems = @($listed.problems).Count
+          }
+          $result | ConvertTo-Json | Set-Content -LiteralPath 'target\check\autostart.json' -Encoding utf8
+          $result | ConvertTo-Json
+      # The run in the virtual machine is done by hand: three runs of a
+      # script, with a restart of Windows after the first and the second.
+      # A slip in that script costs a person an afternoon, so the script is
+      # rehearsed here first, on a machine that may be changed: the same
+      # three runs with the same two programs, without the restarts.
+      # Everything has to hold except what only a restart can show, which is
+      # that Windows starts the dummy through each of the seven entries.
+      - name: Rehearse the autostart kit
+        shell: pwsh
+        run: |
+          cargo build --release --locked -p warden-dummy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $kit = Join-Path $env:RUNNER_TEMP 'autostart-kit'
+          $out = Join-Path $env:RUNNER_TEMP 'autostart-out'
+          New-Item -ItemType Directory -Force -Path $kit | Out-Null
+          Copy-Item -Path 'target\release\warden.exe', 'target\release\warden-dummy.exe', 'scripts\win\autostart-remedy.ps1' -Destination $kit
+          foreach ($run in 1..3) {
+            Write-Host "::group::Run $run"
+            powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $kit 'autostart-remedy.ps1') -OutDir $out -SerialPort none
+            Write-Host "Run $run ended with exit code $LASTEXITCODE."
+            Write-Host '::endgroup::'
+          }
+          $result = Get-Content -LiteralPath (Join-Path $out 'autostart-remedy.json') -Raw | ConvertFrom-Json
+          $wrong = @($result.checks | Where-Object { -not $_.held } | ForEach-Object { $_.check })
+          $needRestart = @($wrong | Where-Object { $_ -like 'Windows started the dummy through *' })
+          $other = @($wrong | Where-Object { $_ -notlike 'Windows started the dummy through *' })
+          Write-Host "$(@($result.checks).Count) checks, of which $($wrong.Count) did not hold."
+          Copy-Item -LiteralPath (Join-Path $out 'autostart-remedy.json') -Destination 'target\check\autostart-kit-rehearsal.json'
+          if (-not $result.finished) { Write-Host '::error::The third run did not finish.'; exit 1 }
+          if ($other.Count -gt 0) { $other | ForEach-Object { Write-Host "::error::Did not hold: $_" }; exit 1 }
+          if ($needRestart.Count -ne 7) { Write-Host "::error::$($needRestart.Count) of the 7 checks that need a restart did not hold. Without a restart all 7 should fail."; exit 1 }
+          Write-Host 'The rehearsal went as it should: everything held but the seven checks that need a restart.'
+          exit 0
       - name: Show the results
         if: always()
         shell: bash
         run: |
-          for file in summary.json system.json bench.json fp.json trust-drivers.json trust-powershell.json trust-windowsapps.json; do
+          for file in summary.json system.json bench.json fp.json trust-drivers.json trust-powershell.json trust-windowsapps.json autostart.json autostart-kit-rehearsal.json; do
             echo "::group::$file"
             cat "target/check/$file" 2>/dev/null || echo "(not written)"
             echo

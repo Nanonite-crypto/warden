@@ -16,6 +16,17 @@ and the two scripts from `scripts/win/`.
 script on the kit only asks whether it can be read, so that one run shows
 whether the machine's antivirus tells it from the bundle under the cipher.
 
+`--dummy` adds what the second run on such a machine needs, the one that
+shows Warden removing autostart entries and putting them back: the harmless
+stand-in `warden-dummy.exe` and the script `autostart-remedy`. `--tests`
+adds the automated tests of the Windows side as a program, for that script
+to run at its end:
+
+    cargo build --release -p warden-cli -p warden-dummy
+    python3 scripts/make-scan-kit.py --warden target/release/warden.exe \\
+        --rules rules/vendor/rules.wrb --dummy target/release/warden-dummy.exe \\
+        --out rules/vendor/warden-kit.iso
+
 Keep the image where the bundle is. It holds the bundle, and an antivirus
 that takes a bundle for malware may take the image for it too: see
 docs/RULES.md, "Rule files and your antivirus".
@@ -63,8 +74,20 @@ def main() -> None:
         type=Path,
         help="a bundle built with --plain, to see whether the machine's antivirus blocks it",
     )
+    parser.add_argument(
+        "--dummy",
+        type=Path,
+        help="warden-dummy.exe, built for Windows: adds it and the autostart-remedy script",
+    )
+    parser.add_argument(
+        "--tests",
+        type=Path,
+        help="the tests of warden-autostart built as a program, for autostart-remedy to run",
+    )
     parser.add_argument("--out", required=True, type=Path, help="the CD image to write")
     args = parser.parse_args()
+    if args.tests is not None and args.dummy is None:
+        sys.exit("--tests: only the autostart-remedy script runs them, and --dummy adds that")
 
     files = {
         "warden.exe": args.warden,
@@ -74,6 +97,12 @@ def main() -> None:
     }
     if args.control is not None:
         files["rules-plain.wrb"] = args.control
+    if args.dummy is not None:
+        files["warden-dummy.exe"] = args.dummy
+        files["autostart-remedy.cmd"] = SCRIPTS / "autostart-remedy.cmd"
+        files["autostart-remedy.ps1"] = SCRIPTS / "autostart-remedy.ps1"
+    if args.tests is not None:
+        files["autostart-tests.exe"] = args.tests
     for name, path in files.items():
         if not path.is_file():
             sys.exit(f"{name}: {path} is not a file")
