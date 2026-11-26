@@ -17,6 +17,7 @@
 use std::ffi::c_void;
 use std::marker::PhantomData;
 use std::path::Path;
+use std::ptr;
 
 use windows::Win32::Foundation::{
     E_ACCESSDENIED, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND, ERROR_INSUFFICIENT_BUFFER,
@@ -43,13 +44,20 @@ use windows::Win32::System::Registry::{
     RegDeleteValueW, RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
 };
 use windows::Win32::System::Services::{
-    CloseServiceHandle, CreateServiceW, DeleteService, ENUM_SERVICE_TYPE, OpenSCManagerW,
-    OpenServiceW, QueryServiceObjectSecurity, SC_HANDLE, SC_MANAGER_CONNECT,
-    SC_MANAGER_CREATE_SERVICE, SERVICE_ERROR, SERVICE_START_TYPE, SetServiceObjectSecurity,
+    ChangeServiceConfig2W, CloseServiceHandle, CreateServiceW, DeleteService, ENUM_SERVICE_TYPE,
+    OpenSCManagerW, OpenServiceW, QueryServiceObjectSecurity, SC_HANDLE, SC_MANAGER_CONNECT,
+    SC_MANAGER_CREATE_SERVICE, SERVICE_CHANGE_CONFIG, SERVICE_CONFIG,
+    SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONFIG_FAILURE_ACTIONS_FLAG,
+    SERVICE_CONFIG_PRESHUTDOWN_INFO, SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO,
+    SERVICE_CONFIG_SERVICE_SID_INFO, SERVICE_CONFIG_TRIGGER_INFO, SERVICE_DELAYED_AUTO_START_INFO,
+    SERVICE_ERROR, SERVICE_FAILURE_ACTIONS_FLAG, SERVICE_PRESHUTDOWN_INFO,
+    SERVICE_REQUIRED_PRIVILEGES_INFOW, SERVICE_SID_INFO, SERVICE_START_TYPE, SERVICE_TRIGGER,
+    SERVICE_TRIGGER_ACTION, SERVICE_TRIGGER_INFO, SERVICE_TRIGGER_SPECIFIC_DATA_ITEM,
+    SERVICE_TRIGGER_SPECIFIC_DATA_ITEM_DATA_TYPE, SERVICE_TRIGGER_TYPE, SetServiceObjectSecurity,
 };
 use windows::Win32::System::TaskScheduler::{
-    IRegisteredTask, ITaskFolder, ITaskService, TASK_CREATE, TASK_ENUM_HIDDEN, TASK_LOGON_TYPE,
-    TaskScheduler,
+    IRegisteredTask, ITaskFolder, ITaskService, TASK_CREATE, TASK_DONT_ADD_PRINCIPAL_ACE,
+    TASK_ENUM_HIDDEN, TASK_LOGON_TYPE, TaskScheduler,
 };
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Shell::{
@@ -996,43 +1004,63 @@ impl Windows {
             }
             .map_err(|error| com_failure("the task's folder cannot be made", &error))?,
         };
-        let register = |sddl: &VARIANT| {
-            // SAFETY: as above. No account and no password are given:
-            // the definition names the account, and a task that needs a
-            // password was never removed.
-            unsafe {
-                folder.RegisterTask(
-                    &BSTR::from(name),
-                    &BSTR::from(task.xml.as_str()),
-                    TASK_CREATE.0,
-                    &nothing,
-                    &nothing,
-                    TASK_LOGON_TYPE(definition.logon.number()),
-                    sddl,
-                )
-            }
-        };
+        // The definition and nothing else is handed over. A task takes
+        // its access rights from its folder, with a right to read for the
+        // account it runs as, unless its definition names rights of its
+        // own; registered again in the same folder it gets the same
+        // rights. Rights handed over next to the definition would be
+        // written into the definition, and it would no longer be the one
+        // that was recorded.
+        //
+        // SAFETY: as above. No account and no password are given: the
+        // definition names the account, and a task that needs a password
+        // was never removed.
+        let registered = unsafe {
+            folder.RegisterTask(
+                &BSTR::from(name),
+                &BSTR::from(task.xml.as_str()),
+                TASK_CREATE.0,
+                &nothing,
+                &nothing,
+                TASK_LOGON_TYPE(definition.logon.number()),
+                &nothing,
+            )
+        }
+        .map_err(|error| com_failure("the Task Scheduler does not take it", &error))?;
+
         let mut notes = Vec::new();
-        let registered = match &task.security {
-            Some(sddl) => register(&VARIANT::from(sddl.as_str())).or_else(|first| {
-                // Setting the owner takes rights that the caller may not
-                // have. The task itself matters more than who owns it.
-                let second = register(&nothing);
-                if second.is_ok() {
-                    notes.push(format!(
-                        "its access rights could not be put back as they were (Windows error {:#010x})",
-                        first.code().0
-                    ));
+        if let Some(recorded) = &task.security {
+            // SAFETY: a call through an interface pointer that is alive;
+            // the result is an owned string.
+            let now = unsafe { registered.GetSecurityDescriptor(TASK_RIGHTS) }
+                .ok()
+                .map(|sddl| sddl.to_string());
+            // Other rights than these: somebody had given the task rights
+            // after it was registered. They are set as they were, without
+            // a second right to read for the account it runs as.
+            //
+            // SAFETY: as above, with a string that lives through the call.
+            if now.as_deref() != Some(recorded.as_str())
+                && unsafe {
+                    registered.SetSecurityDescriptor(
+                        &BSTR::from(recorded.as_str()),
+                        TASK_DONT_ADD_PRINCIPAL_ACE.0,
+                    )
                 }
-                second
-            }),
-            None => register(&nothing),
-        };
-        registered
-            .map(|_| notes)
-            .map_err(|error| com_failure("the Task Scheduler does not take it", &error))
+                .is_err()
+            {
+                notes.push("its access rights could not be put back as they were".to_owned());
+            }
+        }
+        Ok(notes)
     }
 }
+
+/// The parts of a task's access rights that are read and set: who owns
+/// it, its group, and who may do what with it.
+const TASK_RIGHTS: i32 = (OWNER_SECURITY_INFORMATION.0
+    | GROUP_SECURITY_INFORMATION.0
+    | DACL_SECURITY_INFORMATION.0) as i32;
 
 fn split_task_path(path: &str) -> (&str, &str) {
     match path.rfind('\\') {
@@ -1079,9 +1107,6 @@ fn walk_tasks(folder: &ITaskFolder, depth: usize, found: &mut Vec<Task>, unreada
 
 fn read_task(task: &IRegisteredTask) -> Result<Task, Failure> {
     let cannot = |error: windows::core::Error| com_failure("the task cannot be read", &error);
-    let everything = (OWNER_SECURITY_INFORMATION.0
-        | GROUP_SECURITY_INFORMATION.0
-        | DACL_SECURITY_INFORMATION.0) as i32;
     // SAFETY: calls through an interface pointer that is alive; each
     // result is an owned string.
     unsafe {
@@ -1089,7 +1114,7 @@ fn read_task(task: &IRegisteredTask) -> Result<Task, Failure> {
             path: task.Path().map_err(cannot)?.to_string(),
             xml: task.Xml().map_err(cannot)?.to_string(),
             security: task
-                .GetSecurityDescriptor(everything)
+                .GetSecurityDescriptor(TASK_RIGHTS)
                 .ok()
                 .map(|sddl| sddl.to_string()),
         })
@@ -1382,7 +1407,7 @@ fn create_service(service: &Service) -> Result<Vec<String>, Failure> {
             manager.0,
             &name,
             or_nothing(&display_name, !service.display_name.is_empty()),
-            READ_CONTROL | WRITE_DAC | WRITE_OWNER,
+            READ_CONTROL | WRITE_DAC | WRITE_OWNER | SERVICE_CHANGE_CONFIG,
             ENUM_SERVICE_TYPE(service.service_type),
             SERVICE_START_TYPE(service.start_type),
             SERVICE_ERROR(service.error_control),
@@ -1405,13 +1430,22 @@ fn create_service(service: &Service) -> Result<Vec<String>, Failure> {
     .map_err(|error| service_failure("the service manager does not take it", &error))?;
 
     let mut notes = Vec::new();
-    // What the service manager has no parameter for when it creates a
-    // service is in the service's key, and goes back there as recorded.
+    // First what the service manager keeps in its own memory. Then the
+    // rest: what it has no parameter for is in the service's key, and
+    // goes back there as recorded. The second step also writes whatever
+    // the first could not hand over, so the registry is whole either way.
+    let told = tell_the_service_manager(&created, &service.key);
     let written = Key::create(HKEY_LOCAL_MACHINE, &path, KEY_WOW64_64KEY)
         .is_ok_and(|key| write_back(&key, &service.key, true));
     if !written {
         notes
             .push("part of its key in the registry could not be written back as it was".to_owned());
+    } else if !told {
+        notes.push(
+            "some of its settings are back in the registry only, and hold from the next start of \
+             Windows"
+                .to_owned(),
+        );
     }
 
     // A new service gets the access rights Windows gives every service.
@@ -1423,6 +1457,184 @@ fn create_service(service: &Service) -> Result<Vec<String>, Failure> {
         notes.push("its access rights could not be put back as they were".to_owned());
     }
     Ok(notes)
+}
+
+/// A number that a recorded key holds under a name.
+fn recorded_number(key: &RegKey, name: &str) -> Option<u32> {
+    const REG_DWORD: u32 = 4;
+    let value = key.value(name)?;
+    let bytes: [u8; 4] = value.data.as_slice().try_into().ok()?;
+    (value.value_type == REG_DWORD).then(|| u32::from_le_bytes(bytes))
+}
+
+/// Hands one setting to the service manager.
+///
+/// # Safety
+///
+/// `info` has to be the structure that the service manager expects for
+/// `level`, and every pointer in it has to be good for the length of the
+/// call.
+unsafe fn tell<T>(service: &ServiceHandle, level: SERVICE_CONFIG, info: &T) -> bool {
+    // SAFETY: the caller's promise; the pointer is to a value that lives
+    // through the call.
+    unsafe { ChangeServiceConfig2W(service.0, level, Some(ptr::from_ref(info).cast())) }.is_ok()
+}
+
+/// Tells the service manager the settings that it keeps in its own
+/// memory besides the registry: a delayed start, the service's own
+/// identity for access checks, the privileges it asks for, whether a
+/// failure without a crash counts as one, how long it gets before a
+/// shutdown, and what starts it by itself.
+///
+/// Written into the registry alone, they hold from the next start of
+/// Windows. That was tried: asked right afterwards, the service manager
+/// knew of no delayed start and of no identity. Told through its own
+/// calls it knows them at once, and writes them into the registry
+/// itself.
+///
+/// The settings are read from the recorded key, where Windows had put
+/// them. Returns whether everything that was there could be handed over.
+fn tell_the_service_manager(service: &ServiceHandle, key: &RegKey) -> bool {
+    let mut told = true;
+    // SAFETY, for each call of `tell` below: the structure is the one the
+    // documentation gives for the level it is passed with.
+    if recorded_number(key, "DelayedAutostart").is_some_and(|delayed| delayed != 0) {
+        let info = SERVICE_DELAYED_AUTO_START_INFO {
+            fDelayedAutostart: true.into(),
+        };
+        told &= unsafe { tell(service, SERVICE_CONFIG_DELAYED_AUTO_START_INFO, &info) };
+    }
+    if let Some(kind) = recorded_number(key, "ServiceSidType").filter(|&kind| kind != 0) {
+        let info = SERVICE_SID_INFO {
+            dwServiceSidType: kind,
+        };
+        told &= unsafe { tell(service, SERVICE_CONFIG_SERVICE_SID_INFO, &info) };
+    }
+    if recorded_number(key, "FailureActionsOnNonCrashFailures").is_some_and(|flag| flag != 0) {
+        let info = SERVICE_FAILURE_ACTIONS_FLAG {
+            fFailureActionsOnNonCrashFailures: true.into(),
+        };
+        told &= unsafe { tell(service, SERVICE_CONFIG_FAILURE_ACTIONS_FLAG, &info) };
+    }
+    if let Some(timeout) = recorded_number(key, "PreshutdownTimeout") {
+        let info = SERVICE_PRESHUTDOWN_INFO {
+            dwPreshutdownTimeout: timeout,
+        };
+        told &= unsafe { tell(service, SERVICE_CONFIG_PRESHUTDOWN_INFO, &info) };
+    }
+    if let Some(privileges) = key.value("RequiredPrivileges") {
+        // Names one after the other, each with a zero at its end, and a
+        // zero more at the end of all. The two zeros are made sure of.
+        let mut names: Vec<u16> = privileges
+            .data
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        while names.last() == Some(&0) {
+            names.pop();
+        }
+        if !names.is_empty() {
+            names.extend([0, 0]);
+            let info = SERVICE_REQUIRED_PRIVILEGES_INFOW {
+                pmszRequiredPrivileges: PWSTR(names.as_mut_ptr()),
+            };
+            // SAFETY: as above; the names live until after the call.
+            told &= unsafe { tell(service, SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO, &info) };
+        }
+    }
+    if let Some(recorded) = key.subkey("TriggerInfo") {
+        told &= match triggers_of(recorded) {
+            Some(triggers) => tell_triggers(service, triggers),
+            None => false,
+        };
+    }
+    told
+}
+
+/// One of the events that start or stop a service by itself.
+struct Trigger {
+    kind: u32,
+    action: u32,
+    subtype: GUID,
+    /// What narrows the event down: each a kind and its bytes.
+    data: Vec<(u32, Vec<u8>)>,
+}
+
+/// Reads a service's triggers from the key Windows keeps them in: a key
+/// for each, named by its number, with the kind of event, what to do,
+/// the event's identifier in the layout of memory, and numbered pairs of
+/// data and the data's kind. `None` if a key does not read that way.
+fn triggers_of(recorded: &RegKey) -> Option<Vec<Trigger>> {
+    let mut numbered: Vec<(u32, &RegKey)> = recorded
+        .subkeys
+        .iter()
+        .map(|subkey| Some((subkey.name.parse().ok()?, &subkey.key)))
+        .collect::<Option<_>>()?;
+    numbered.sort_by_key(|(number, _)| *number);
+    let mut triggers = Vec::new();
+    for (_, key) in numbered {
+        let id: [u8; 16] = key.value("GUID")?.data.as_slice().try_into().ok()?;
+        let mut data = Vec::new();
+        while let Some(bytes) = key.value(&format!("Data{}", data.len())) {
+            let kind = recorded_number(key, &format!("DataType{}", data.len()))?;
+            data.push((kind, bytes.data.clone()));
+        }
+        triggers.push(Trigger {
+            kind: recorded_number(key, "Type")?,
+            action: recorded_number(key, "Action")?,
+            subtype: GUID::from_values(
+                u32::from_le_bytes([id[0], id[1], id[2], id[3]]),
+                u16::from_le_bytes([id[4], id[5]]),
+                u16::from_le_bytes([id[6], id[7]]),
+                [id[8], id[9], id[10], id[11], id[12], id[13], id[14], id[15]],
+            ),
+            data,
+        });
+    }
+    Some(triggers)
+}
+
+fn tell_triggers(service: &ServiceHandle, mut triggers: Vec<Trigger>) -> bool {
+    // The structures point into `triggers` and into `items`. Both stay
+    // where they are, and unchanged, until after the call.
+    let mut items: Vec<Vec<SERVICE_TRIGGER_SPECIFIC_DATA_ITEM>> = triggers
+        .iter_mut()
+        .map(|trigger| {
+            trigger
+                .data
+                .iter_mut()
+                .map(|(kind, bytes)| SERVICE_TRIGGER_SPECIFIC_DATA_ITEM {
+                    dwDataType: SERVICE_TRIGGER_SPECIFIC_DATA_ITEM_DATA_TYPE(*kind),
+                    cbData: u32::try_from(bytes.len()).unwrap_or(u32::MAX),
+                    pData: bytes.as_mut_ptr(),
+                })
+                .collect()
+        })
+        .collect();
+    let mut raw: Vec<SERVICE_TRIGGER> = triggers
+        .iter_mut()
+        .zip(&mut items)
+        .map(|(trigger, items)| SERVICE_TRIGGER {
+            dwTriggerType: SERVICE_TRIGGER_TYPE(trigger.kind),
+            dwAction: SERVICE_TRIGGER_ACTION(trigger.action),
+            pTriggerSubtype: &raw mut trigger.subtype,
+            cDataItems: u32::try_from(items.len()).unwrap_or(u32::MAX),
+            pDataItems: if items.is_empty() {
+                ptr::null_mut()
+            } else {
+                items.as_mut_ptr()
+            },
+        })
+        .collect();
+    let info = SERVICE_TRIGGER_INFO {
+        cTriggers: u32::try_from(raw.len()).unwrap_or(u32::MAX),
+        pTriggers: raw.as_mut_ptr(),
+        pReserved: ptr::null_mut(),
+    };
+    // SAFETY: the structure for this level, with as many triggers and
+    // data items as it says, each pointer into a vector that is alive
+    // and is not touched until the call has returned.
+    unsafe { tell(service, SERVICE_CONFIG_TRIGGER_INFO, &info) }
 }
 
 fn set_service_security(service: &ServiceHandle, sddl: &str) -> bool {

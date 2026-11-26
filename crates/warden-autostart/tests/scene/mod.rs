@@ -291,7 +291,19 @@ impl Scene {
                 "SeChangeNotifyPrivilege/SeImpersonatePrivilege",
             ],
         );
-        must("sc", &["triggerinfo", SERVICE, "start/networkon"]);
+        // Three events that start it by itself: one that needs no more
+        // words, one narrowed down by a text and one by bytes. The last
+        // two wait for a provider of events that does not exist.
+        must(
+            "sc",
+            &[
+                "triggerinfo",
+                SERVICE,
+                "start/networkon",
+                "start/strcustom/6f1c5b2e-9d1a-4c1e-8a57-1c0d7f3a2b11/warden-test",
+                "start/custom/6f1c5b2e-9d1a-4c1e-8a57-1c0d7f3a2b12/ABCD0102",
+            ],
+        );
         let parameters = format!(r"HKLM\SYSTEM\CurrentControlSet\Services\{SERVICE}\Parameters");
         for (key, name, kind, data) in [
             (
