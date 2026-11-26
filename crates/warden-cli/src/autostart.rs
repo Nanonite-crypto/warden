@@ -114,9 +114,15 @@ fn print_problems(problems: &[String]) -> anyhow::Result<()> {
 
 fn print_seen(seen: &Seen) -> anyhow::Result<()> {
     outln!("  {}", shown(&seen.entry.to_string()))?;
-    // The last line is the one with the variables filled in.
-    if let Some(line) = seen.lines.last() {
-        outln!("      {}", shown(line))?;
+    let line = match &seen.entry {
+        // A shortcut keeps its target and what it passes to it apart.
+        Entry::Shortcut(shortcut) if shortcut.arguments.is_empty() => Some(shortcut.target.clone()),
+        Entry::Shortcut(shortcut) => Some(format!("{} {}", shortcut.target, shortcut.arguments)),
+        // The last line is the one with the variables filled in.
+        _ => seen.lines.last().cloned(),
+    };
+    if let Some(line) = line {
+        outln!("      {}", shown(&line))?;
     }
     Ok(())
 }

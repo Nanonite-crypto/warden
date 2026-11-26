@@ -147,6 +147,20 @@ fn what_starts_a_file_goes_with_it_and_comes_back_as_windows_showed_it() {
         found.contains(&format!("is started by {ENTRIES} entries")),
         || format!("autostart find does not count {ENTRIES} entries"),
     );
+    // Each with its command line: the shortcut's as a person would write
+    // it, the value with a variable in it as Windows fills it in.
+    for line in [
+        "threat.exe --from-shortcut",
+        "threat.exe\",Start",
+        "--from-boot-task",
+    ] {
+        report.check(found.contains(line), || {
+            format!("autostart find does not show the command line with {line}")
+        });
+    }
+    report.check(!found.contains("%SystemDrive%"), || {
+        "autostart find shows a variable that it could have filled in".to_owned()
+    });
     let (ok, json) = run(warden()
         .args(["autostart", "find", "--json"])
         .arg(scene.threat()));
