@@ -2806,6 +2806,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "warden-dummy"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
+
+[[package]]
 name = "warden-engine"
 version = "0.1.0"
 dependencies = [
