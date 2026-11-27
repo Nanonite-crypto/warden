@@ -199,11 +199,16 @@ function Send-File([string]$Path) {
     $bytes = [System.IO.File]::ReadAllBytes($Path)
     $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
     $text = [Convert]::ToBase64String($bytes)
-    $script:port.Write("-----BEGIN WARDEN FILE $name sha256=$hash bytes=$($bytes.Length)-----`r`n")
-    for ($i = 0; $i -lt $text.Length; $i += 76) {
-        $script:port.Write($text.Substring($i, [Math]::Min(76, $text.Length - $i)) + "`r`n")
+    try {
+        $script:port.Write("-----BEGIN WARDEN FILE $name sha256=$hash bytes=$($bytes.Length)-----`r`n")
+        for ($i = 0; $i -lt $text.Length; $i += 76) {
+            $script:port.Write($text.Substring($i, [Math]::Min(76, $text.Length - $i)) + "`r`n")
+        }
+        $script:port.Write("-----END WARDEN FILE $name-----`r`n")
+    } catch {
+        Write-Host "Writing to $SerialPort failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        $script:port = $null
     }
-    $script:port.Write("-----END WARDEN FILE $name-----`r`n")
 }
 
 function Close-Serial {
