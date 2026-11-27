@@ -31,10 +31,50 @@ fn sha256_hex(bytes: &[u8]) -> String {
     warden_sigdb::hex::encode(&warden_engine::sha256(bytes))
 }
 
-/// SHA-256 of a file, as printed by `warden hash`.
+/// SHA-256 of a file, as printed by `warden hash`. If the program prints
+/// none, what it said instead is the message of the failure.
 fn hash_of(path: &Path) -> String {
-    let output = stdout_of(warden().arg("hash").arg(path));
-    output.split_whitespace().next().unwrap().to_owned()
+    let output = warden().arg("hash").arg(path).assert().get_output().clone();
+    let printed = String::from_utf8_lossy(&output.stdout);
+    match printed.split_whitespace().next() {
+        Some(digest) => digest.to_owned(),
+        None => panic!(
+            "`warden hash {}` printed no digest, but: {}",
+            path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    }
+}
+
+/// Reads a file that was written a moment ago, and waits a little if it is
+/// not handed out at once. On a machine with a resident antivirus that can
+/// happen: the antivirus looks at what was written, and for that moment
+/// Windows may refuse the file to others. Returns the bytes, if they could
+/// be read within ten seconds, and what Windows said each time it
+/// refused, with its error number: a caller that passes still has it to
+/// show, and one that fails has its reason.
+fn read_patiently(path: &Path) -> (Option<Vec<u8>>, Vec<String>) {
+    let mut refusals: Vec<String> = Vec::new();
+    let mut last = String::new();
+    for attempt in 1..=100 {
+        match fs::read(path) {
+            Ok(bytes) => return (Some(bytes), refusals),
+            Err(error) => {
+                let said = error.to_string();
+                // The same answer again is not written down again.
+                if said != last {
+                    refusals.push(format!("attempt {attempt}: {said}"));
+                    last = said;
+                }
+                if error.kind() == std::io::ErrorKind::NotFound {
+                    // Nothing to wait for: the file is not there.
+                    break;
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    (None, refusals)
 }
 
 /// A folder with two clean files and one fixture, plus a database that
@@ -2545,10 +2585,16 @@ fn the_test_file_is_harmless_in_quarantine_and_itself_again_afterwards() {
             .get_output()
             .clone()
     });
+    // Read here and not by a second `warden`: if Windows does not hand
+    // the file out, its reason is wanted. Then the scan, of a file that
+    // can be read.
+    let (read_back, refusals) = read_patiently(&file);
     let after = scan(&dir);
-    let digest = file.exists().then(|| hash_of(&file));
     let _ = fs::remove_file(&file);
     let _ = fs::remove_dir(&dir);
+    if !refusals.is_empty() {
+        eprintln!("note: the restored test file was not handed out at once: {refusals:?}");
+    }
 
     assert!(added.status.success(), "{added:?}");
     // Where the file was, there is nothing left to find.
@@ -2558,12 +2604,14 @@ fn the_test_file_is_harmless_in_quarantine_and_itself_again_afterwards() {
     assert_eq!(in_store.0, Some(0), "{}", in_store.1);
     assert!(in_store.1.contains("No threats found."), "{}", in_store.1);
 
-    assert!(restored.is_some_and(|output| output.status.success()));
-    assert_eq!(after.0, Some(1), "it is detected again: {}", after.1);
+    let restored = restored.expect("the quarantine named no entry");
+    assert!(restored.status.success(), "{restored:?}");
     assert_eq!(
-        digest.as_deref(),
-        Some("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f")
+        read_back.as_deref().map(sha256_hex).as_deref(),
+        Some("275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"),
+        "the restored file could not be read, or is not the test file: {refusals:?}"
     );
+    assert_eq!(after.0, Some(1), "it is detected again: {}", after.1);
 }
 
 #[test]
