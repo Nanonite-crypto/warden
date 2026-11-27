@@ -297,6 +297,8 @@ Since this piece Warden knows which entries name a file, and on
 Windows loads as a driver while it starts stays where it is, whoever made
 it, unless a flag of its own is given
 ([QUARANTINE.md](QUARANTINE.md#drivers-that-windows-loads-while-it-starts)).
+In CI on Windows it does so with a harmless file in the drivers folder,
+registered as a driver with the start "boot"; 559 tests pass there.
 
 **What it cannot show.** That the persistence of real malware is found:
 the dummy uses the four places from the textbook, and nothing here is

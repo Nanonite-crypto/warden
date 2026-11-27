@@ -357,12 +357,13 @@ own, which is not the name of Windows, so the first guard lets them pass.
 A second one does not. It is not about who made the file. It is about what
 Windows does with it.
 
-A test on the hosted Windows runner registers a harmless file as such a
-driver, with `sc`, and asks for the file. The path is shortened here:
+A test on the hosted Windows runner puts a harmless file into the drivers
+folder of Windows, registers it as such a driver with `sc`, and asks for
+the file:
 
 ```text
-> warden quarantine add wardentest.sys
-error: C:\...\wardentest.sys was left where it is: Windows loads it as the driver WardenTestBootDriver while it starts
+> warden quarantine add C:\Windows\System32\drivers\wardentest.sys
+error: C:\Windows\System32\drivers\wardentest.sys was left where it is: Windows loads it as the driver WardenTestBootDriver while it starts
 Without a driver that it loads while it starts, Windows may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add --even-if-loaded-at-boot.
 ```
 
@@ -370,11 +371,23 @@ Without a driver that it loads while it starts, Windows may not start, and then 
   loader reads them in together with the kernel, before anything else
   runs: a driver with the start "boot". Windows has four more starts for a
   driver, and none of them counts here: when the system comes up, by the
-  service manager, on demand, never.
+  service manager, on demand, never. On the hosted runner the look found
+  110 drivers with the start "boot" on 2026-11-27, besides the test's own.
 - **Which file.** The one that the driver's entry names by its full path,
   in any of the ways Windows writes that path. It is the same look at what
   starts programs that finds the entries of a file, see
-  [What starts the file](#what-starts-the-file).
+  [What starts the file](#what-starts-the-file). For the test's driver the
+  registry holds `System32\drivers\wardentest.sys`, and `sc` shows
+  `\SystemRoot\System32\drivers\wardentest.sys`. Warden reads the entry
+  as `C:\Windows\System32\drivers\wardentest.sys`, and a file of the same
+  name in another folder is not taken for the driver's.
+- **Where the file of such a driver is.** The test's file is in the
+  drivers folder because the service manager would not have it in a
+  temporary folder: asked to register it there with the start "boot", it
+  answered with error 87, "The parameter is incorrect", and the same file
+  with the start "demand" it took. Which other folders it would accept was
+  not tried. What the test printed on the runner is
+  [on record](benchmarks/2026-11-27-github-windows-runner-phase5-boot-driver-test.txt).
 - **Whoever made it.** A driver of Windows is covered twice. A driver
   that came with a program is covered by this alone, and so would be a
   driver that malware has registered. That is what the flag is for.

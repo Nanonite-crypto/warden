@@ -1,0 +1,140 @@
+What a test of the crate warden-autostart printed on a GitHub-hosted
+Windows runner on 2026-11-27 about a driver that Windows loads while it
+starts: a driver with the start "boot". The quarantine leaves the file of
+such a driver where it is, and these are the facts about Windows which
+that rests on.
+
+The test is a_driver_that_windows_loads_while_it_starts_is_known_and_goes_
+and_comes_back in crates/warden-autostart/tests/on_windows.rs. It passed.
+In order, it prints:
+
+  1. What `sc create` says to a driver whose file is in a temporary
+     folder, with the start "boot" and with the start "demand".
+  2. What `sc qc`, `sc sdshow` and `reg query` show of the test's driver,
+     whose file is in the drivers folder of Windows.
+  3. The file's path, and the ways Windows writes it.
+  4. How many drivers with the start "boot" the look found, the test's
+     own among them, and which of them the file belongs to.
+  5. What starts the file, with the command lines Warden read, and the
+     entry as Warden writes it down.
+  6. What Windows' tools show after Warden has removed the entry and put
+     it back.
+
+The lines are as the job log has them, without the time stamps and
+without the name of the test that the first line began with. Run
+45939170613 of the `Windows check` workflow, commit 28777cf, started
+2026-11-27T04:18:29Z, image windows-2025-vs2026 20261123.321.1. The test
+was run with --nocapture.
+
+==== a driver with its file outside the Windows folder, start "boot" ====
+[SC] CreateService FAILED 87:
+
+The parameter is incorrect.
+==== a driver with its file outside the Windows folder, start "demand" ====
+[SC] CreateService SUCCESS
+[SC] QueryServiceConfig SUCCESS
+
+SERVICE_NAME: WardenTestDriverElsewhere
+        TYPE               : 1  KERNEL_DRIVER
+        START_TYPE         : 3   DEMAND_START
+        ERROR_CONTROL      : 0   IGNORE
+        BINARY_PATH_NAME   : \??\C:\Users\RUNNER~1\AppData\Local\Temp\Warden driver elsewhere BUKBls\wardentest.sys
+        LOAD_ORDER_GROUP   :
+        TAG                : 0
+        DISPLAY_NAME       : WardenTestDriverElsewhere
+        DEPENDENCIES       :
+        SERVICE_START_NAME :
+
+==== what Windows' tools show of the driver ====
+---- the driver's settings ----
+[SC] QueryServiceConfig SUCCESS
+
+SERVICE_NAME: WardenTestBootDriver
+        TYPE               : 1  KERNEL_DRIVER
+        START_TYPE         : 0   BOOT_START
+        ERROR_CONTROL      : 0   IGNORE
+        BINARY_PATH_NAME   : \SystemRoot\System32\drivers\wardentest.sys
+        LOAD_ORDER_GROUP   :
+        TAG                : 0
+        DISPLAY_NAME       : Warden test boot driver
+        DEPENDENCIES       :
+        SERVICE_START_NAME :
+---- who may do what with the driver ----
+
+D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)
+---- the driver's key in the registry, its lines in order ----
+    DisplayName    REG_SZ    Warden test boot driver
+    ErrorControl    REG_DWORD    0x0
+    ImagePath    REG_EXPAND_SZ    System32\drivers\wardentest.sys
+    Start    REG_DWORD    0x0
+    Type    REG_DWORD    0x1
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WardenTestBootDriver
+
+the file: C:\Windows\System32\drivers\wardentest.sys
+as Windows writes it: ["C:\\Windows\\System32\\drivers\\wardentest.sys", "C:\\Windows\\System32\\drivers\\wardentest.sys", "C:\\Windows\\System32\\drivers\\WARDEN~1.SYS"]
+111 drivers are loaded while this Windows starts; the file is that of ["WardenTestBootDriver"]
+  the driver WardenTestBootDriver
+      ["%SystemRoot%\\System32\\drivers\\wardentest.sys", "C:\\Windows\\System32\\drivers\\wardentest.sys"]
+{
+  "kind": "service",
+  "name": "WardenTestBootDriver",
+  "display_name": "Warden test boot driver",
+  "service_type": 1,
+  "start_type": 0,
+  "error_control": 0,
+  "image_path": "System32\\drivers\\wardentest.sys",
+  "security": "O:SYG:SYD:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)",
+  "key": {
+    "values": [
+      {
+        "name": "DisplayName",
+        "value_type": 1,
+        "data": "570061007200640065006e0020007400650073007400200062006f006f00740020006400720069007600650072000000"
+      },
+      {
+        "name": "ErrorControl",
+        "value_type": 4,
+        "data": "00000000"
+      },
+      {
+        "name": "ImagePath",
+        "value_type": 2,
+        "data": "530079007300740065006d00330032005c0064007200690076006500720073005c00770061007200640065006e0074006500730074002e007300790073000000"
+      },
+      {
+        "name": "Start",
+        "value_type": 4,
+        "data": "00000000"
+      },
+      {
+        "name": "Type",
+        "value_type": 4,
+        "data": "01000000"
+      }
+    ]
+  }
+}
+==== what Windows' tools show after the driver was put back ====
+---- the driver's settings ----
+[SC] QueryServiceConfig SUCCESS
+
+SERVICE_NAME: WardenTestBootDriver
+        TYPE               : 1  KERNEL_DRIVER
+        START_TYPE         : 0   BOOT_START
+        ERROR_CONTROL      : 0   IGNORE
+        BINARY_PATH_NAME   : \SystemRoot\System32\drivers\wardentest.sys
+        LOAD_ORDER_GROUP   :
+        TAG                : 0
+        DISPLAY_NAME       : Warden test boot driver
+        DEPENDENCIES       :
+        SERVICE_START_NAME :
+---- who may do what with the driver ----
+
+D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;IU)(A;;CCLCSWLOCRRC;;;SU)S:(AU;FA;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;WD)
+---- the driver's key in the registry, its lines in order ----
+    DisplayName    REG_SZ    Warden test boot driver
+    ErrorControl    REG_DWORD    0x0
+    ImagePath    REG_EXPAND_SZ    System32\drivers\wardentest.sys
+    Start    REG_DWORD    0x0
+    Type    REG_DWORD    0x1
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\WardenTestBootDriver

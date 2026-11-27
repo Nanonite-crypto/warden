@@ -75,8 +75,12 @@ jobs:
       # rights say. The tests that close a folder have nothing to test then.
       # --no-fail-fast: a failure in one crate does not keep the tests of
       # the others from running, so one run shows everything that is wrong.
+      # --show-output: what a test printed is in the log although it
+      # passed. The Windows tests print what Windows' own tools showed of
+      # an entry before and after, and what `warden` said; the documents
+      # quote from that.
       - name: Run the test suite
-        run: cargo test --workspace --locked --no-fail-fast
+        run: cargo test --workspace --locked --no-fail-fast -- --show-output
         env:
           # The tests that write the EICAR test file to disk are required to
           # run for real on both systems, in a folder of their own. Hosted
