@@ -63,7 +63,7 @@ pub fn may_change_the_machine() -> bool {
         return true;
     }
     eprintln!(
-        "skipped: this test registers a service, tasks, Run values and a shortcut. It runs where {ALLOW} is set to {ALLOWED}."
+        "skipped: this test registers what Windows starts (a service, tasks, Run values, a shortcut, or a driver). It runs where {ALLOW} is set to {ALLOWED}."
     );
     false
 }

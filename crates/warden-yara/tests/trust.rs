@@ -6,11 +6,17 @@
 //! Windows executable, and what Windows would say about a signature is
 //! said by a stand-in. What Windows really says is tested on Windows, see
 //! `docs/TESTING.md`.
+//!
+//! One test needs a file that a built-in rule matches, and the only
+//! built-in rule is the one for the EICAR antivirus test file. That test
+//! writes the test file to disk, and only where it may be written: in the
+//! folder that `WARDEN_EICAR_DIR` names, or, on systems other than
+//! Windows, in a temporary folder.
 
 #![allow(clippy::unwrap_used)]
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -219,17 +225,64 @@ fn a_hash_match_is_reported_whoever_signed_the_file() {
     assert_eq!(detection.findings[1].confidence, Confidence::Low);
 }
 
+/// The match of a built-in rule does not yield to a signature, so nobody
+/// is asked about one.
+///
+/// Only a file on disk can be asked about, and only the EICAR test file
+/// matches a built-in rule. A resident antivirus removes that file or
+/// blocks it, and raises an alert, so the test is as careful as the
+/// engine's `eicar_is_detected_on_disk` about where it writes it:
+///
+/// - `WARDEN_EICAR_DIR` names a folder that is excluded from the resident
+///   antivirus. The test then works inside it.
+/// - Without that variable the test uses the system temporary folder, except
+///   on Windows, where it does not run at all.
+/// - `WARDEN_REQUIRE_EICAR=1` turns "did not run" or "was blocked" into a
+///   failure. CI sets it, together with a folder of its own.
 #[test]
 fn the_match_of_a_built_in_rule_is_reported_and_nobody_is_asked() {
-    let dir = tempfile::tempdir().unwrap();
+    let strict = std::env::var_os("WARDEN_REQUIRE_EICAR").is_some_and(|value| value == "1");
+    let not_exercised = |why: &str| {
+        let note =
+            format!("a built-in rule's match on disk not exercised: {why}. See docs/TESTING.md.");
+        assert!(!strict, "{note}");
+        eprintln!("note: {note}");
+    };
+
+    let configured = std::env::var_os("WARDEN_EICAR_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    if cfg!(windows) && configured.is_none() {
+        not_exercised("WARDEN_EICAR_DIR is not set to an antivirus-excluded folder");
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let dir = match &configured {
+        Some(base) => base.join(format!("rule-and-signature-{}", std::process::id())),
+        None => temp.path().to_path_buf(),
+    };
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(eicar::FILE_NAME);
+
     // The test file with something after it, so that it is the rule and
     // not the hash that finds it.
     let mut variant = eicar::test_file();
     variant.extend_from_slice(b"\r\n");
-    fs::write(dir.path().join("eicar.com"), variant).unwrap();
-
+    if let Err(error) = fs::write(&path, variant) {
+        not_exercised(&format!("the test file could not be written ({error})"));
+        return;
+    }
     let (scanner, answers) = scanner(in_a_catalogue_of_microsofts());
-    let report = scan(&scanner, dir.path());
+    let report = scan(&scanner, &dir);
+    let _ = fs::remove_file(&path);
+    if configured.is_some() {
+        let _ = fs::remove_dir(&dir);
+    }
+
+    if report.stats.files_scanned == 0 {
+        not_exercised("the test file was removed or locked before it could be scanned");
+        return;
+    }
     assert_eq!(report.stats.detections, 1);
     assert_eq!(report.stats.trust_checks, 0);
     assert!(!report.detections[0].findings[0].yields_to_trust);
