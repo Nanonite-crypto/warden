@@ -66,13 +66,24 @@ fn hash_of(path: &Path) -> String {
 /// Windows may refuse the file to others. Returns the bytes, if they could
 /// be read within ten seconds, and what Windows said each time it
 /// refused, with its error number: a caller that passes still has it to
-/// show, and one that fails has its reason.
+/// show, and one that fails has its reason. If the file was refused
+/// first and handed out later, the last line says at which attempt and
+/// after how long.
 fn read_patiently(path: &Path) -> (Option<Vec<u8>>, Vec<String>) {
     let mut refusals: Vec<String> = Vec::new();
     let mut last = String::new();
+    let started = std::time::Instant::now();
     for attempt in 1..=100 {
         match fs::read(path) {
-            Ok(bytes) => return (Some(bytes), refusals),
+            Ok(bytes) => {
+                if attempt > 1 {
+                    refusals.push(format!(
+                        "handed out at attempt {attempt}, after {} ms",
+                        started.elapsed().as_millis()
+                    ));
+                }
+                return (Some(bytes), refusals);
+            }
             Err(error) => {
                 let said = error.to_string();
                 // The same answer again is not written down again.

@@ -862,22 +862,28 @@ Hardware: an AMD EPYC 9V74 with 2 logical processors, 8 GB RAM, Windows
 Server 2025 (10.0.26100), Microsoft Defender's real-time protection off.
 
 On the desktop, the same day, with the same script and administrator
-rights:
+rights, twice, five hours apart:
 
 | Look | 1 | 2 | 3 | 4 | 5 |
 |---|---|---|---|---|---|
-| Time | 451 ms | 376 ms | 349 ms | 366 ms | 419 ms |
+| 02:56 UTC, commit 71248e5 | 451 ms | 376 ms | 349 ms | 366 ms | 419 ms |
+| 08:00 UTC, commit 4e126ae | 384 ms | 237 ms | 246 ms | 238 ms | 249 ms |
 
-That Windows had 1,099 entries: 30 Run values, 263 scheduled tasks, 794
-services and drivers, and 12 shortcuts. Warden could read every one. As
-for every result from a private machine, the numbers are all that is
-kept.
+That Windows had 1,099 entries both times: 30 Run values, 263 scheduled
+tasks, 794 services and drivers, and 12 shortcuts. Warden could read every
+one. As for every result from a private machine, the numbers are all that
+is kept.
 
-- **A look takes about four tenths of a second there**, more than twice
-  as long as on the runner, for a fifth more entries. The desktop runs
-  Microsoft Defender's real-time protection, which the runner has
-  switched off, and it has more entries of every kind. Which of the two
-  makes the difference was not measured.
+- **A look takes between a quarter and four tenths of a second there**,
+  for a fifth more entries than the runner has: 1.7 times the runner's
+  time in the later run, 2.6 times in the earlier one, by the middle of
+  the five. The desktop runs Microsoft Defender's real-time protection,
+  which the runner has switched off, and it has more entries of every
+  kind. Which of the two makes the difference was not measured.
+- **The two runs differ by a third, and the look did not change between
+  them.** The commits between them changed what the quarantine does with
+  what the look finds, not the look. What else the machine was doing was
+  not recorded either time, so the difference stands unexplained.
 - **It is still a cost per command**, and one that a person does not
   wait for: `warden quarantine add` looks once.
 
@@ -958,7 +964,9 @@ Raw results:
 [the rehearsal](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-kit-rehearsal.json),
 [the times from the tests](benchmarks/2026-11-26-github-windows-runner-phase5-autostart-test-times.txt);
 [the five looks on the desktop](benchmarks/2026-11-27-windows-desktop-phase5-autostart.json),
-[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-machine.json).
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-machine.json),
+[the five looks of the later run](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run.json),
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run-machine.json).
 
 ## False positives
 

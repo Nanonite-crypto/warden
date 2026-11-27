@@ -92,7 +92,7 @@ other scanners. A test checks the rule file for it.
 
 ## EICAR and your antivirus
 
-Three tests, and the demo, write the EICAR test file to disk and scan it.
+Four tests, and the demo, write the EICAR test file to disk and scan it.
 On a machine with a resident antivirus (on Windows, Microsoft Defender)
 that file is removed or locked within moments. That is correct behaviour,
 and it means Warden never gets to see the file.
@@ -124,6 +124,27 @@ The third EICAR test is the one for the quarantine. It writes the test
 file into the excluded folder and keeps the quarantine itself in an
 ordinary temporary folder, which is not excluded. That is on purpose: what
 lies in a quarantine must not set off a resident antivirus.
+
+On the desktop, where Microsoft Defender's real-time protection is on,
+that test showed something about Defender on 2026-11-27. Right after
+`warden quarantine restore` had put the file back, the first read of it
+was refused with Windows' error 225, "the file contains a virus or
+potentially unwanted software", although the folder is excluded. A later
+attempt got the file, and it was the test file; how many attempts that
+took, the test did not write down then, and does now. A run a few hours
+before had failed at that point without saying why; since then the test
+reads the file itself, tries every tenth of a second for up to ten
+seconds, and prints what Windows said. Why Defender refuses a file in an
+excluded folder for a moment is not known. The tests that write the file
+there themselves have not been refused on that machine.
+
+The fourth is a test of the rule layer together with the signature check.
+It needs a file on disk that a built-in rule matches, to see that nobody
+is asked who signed it, and the only built-in rule is the one for the test
+file. Until 2026-11-27 it wrote the file into the system's temporary
+folder on every system, against the rule above, and on the desktop it
+failed that day: nothing was detected, because the file was gone or
+blocked before the scan. It now uses the excluded folder like the others.
 
 ### Excluding one folder from Microsoft Defender
 
