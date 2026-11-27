@@ -17,10 +17,12 @@ name = "warden"
 path = "src/main.rs"
 
 [dependencies]
+warden-autostart.workspace = true
 warden-engine.workspace = true
 warden-pe.workspace = true
 warden-quarantine.workspace = true
 warden-sigdb.workspace = true
+warden-trust.workspace = true
 warden-yara.workspace = true
 
 anyhow.workspace = true
@@ -29,6 +31,7 @@ ctrlc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
+walkdir.workspace = true
 zip.workspace = true
 
 [dev-dependencies]

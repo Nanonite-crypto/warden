@@ -26,6 +26,7 @@ libfuzzer-sys = "0.4"
 warden-engine = { path = "../crates/warden-engine" }
 warden-pe = { path = "../crates/warden-pe" }
 warden-sigdb = { path = "../crates/warden-sigdb" }
+warden-trust = { path = "../crates/warden-trust" }
 
 [[bin]]
 name = "pe_read"
@@ -44,6 +45,27 @@ bench = false
 [[bin]]
 name = "sigdb"
 path = "fuzz_targets/sigdb.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "trust_block_map"
+path = "fuzz_targets/trust_block_map.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "trust_signature_area"
+path = "fuzz_targets/trust_signature_area.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "trust_signature_file"
+path = "fuzz_targets/trust_signature_file.rs"
 test = false
 doc = false
 bench = false

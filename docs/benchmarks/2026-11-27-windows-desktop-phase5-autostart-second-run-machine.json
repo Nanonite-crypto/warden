@@ -1,0 +1,16 @@
+{
+  "cpu": "AMD Ryzen 7 5800X 8-Core Processor",
+  "cores": 8,
+  "logical_processors": 16,
+  "os": "Microsoft Windows 11 Home",
+  "os_version": "10.0.26300",
+  "memory_gb": 31.9,
+  "benchmark_disk": "KINGSTON SNVS1000G (SSD, NVMe)",
+  "administrator_rights": true,
+  "defender_realtime_protection": true,
+  "antivirus_products": [
+    "Windows Defender"
+  ],
+  "warden_commit": "4e126ae2aee1d79d243d405547a3ee3c4aa51103",
+  "looked_at": "2026-11-27T08:00Z"
+}

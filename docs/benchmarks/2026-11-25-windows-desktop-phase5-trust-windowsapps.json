@@ -1,0 +1,162 @@
+{
+  "schema": 1,
+  "label": "Windows 11 desktop, C:\\Program Files\\WindowsApps, with administrator rights",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 16,
+    "cpu": "AMD64 Family 25 Model 33 Stepping 2, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Program Files\\WindowsApps"
+  ],
+  "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+  "publishers_listed": 2,
+  "network": true,
+  "threads": 16,
+  "duration_ms": 89207,
+  "files": 52641,
+  "executables": 20205,
+  "could_not_list": 0,
+  "files_trusted": 38760,
+  "executables_trusted": 20115,
+  "trusted": [
+    {
+      "publisher": "Microsoft Corporation",
+      "route": "embedded",
+      "files": 15301,
+      "executables": 15301
+    },
+    {
+      "publisher": "Microsoft Corporation",
+      "route": "package",
+      "files": 18169,
+      "executables": 4488
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "embedded",
+      "files": 111,
+      "executables": 111
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "windows_catalog",
+      "files": 22,
+      "executables": 22
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "package",
+      "files": 5157,
+      "executables": 193
+    }
+  ],
+  "not_trusted": [
+    {
+      "reason": "no_signature",
+      "files": 35,
+      "executables": 0
+    },
+    {
+      "reason": "invalid",
+      "files": 316,
+      "executables": 0
+    },
+    {
+      "reason": "not_listed",
+      "files": 13530,
+      "executables": 90
+    }
+  ],
+  "details": [
+    {
+      "reason": "invalid",
+      "detail": "this is the signature file of a package, and a signature does not cover itself",
+      "files": 245
+    },
+    {
+      "reason": "invalid",
+      "detail": "the block map of the file's package does not list the file",
+      "files": 71
+    }
+  ],
+  "details_truncated": false,
+  "signers": [
+    {
+      "common_name": "Microsoft Corporation",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Corporation",
+      "files": 33470,
+      "embedded": 15301,
+      "windows_catalog": 0,
+      "package": 18169,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft Windows",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Windows",
+      "files": 5290,
+      "embedded": 111,
+      "windows_catalog": 22,
+      "package": 5157,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    }
+  ],
+  "signers_not_listed": {
+    "signers": 29,
+    "files": 15527,
+    "signers_under_a_microsoft_root": 12,
+    "files_under_a_microsoft_root": 15288
+  },
+  "timing": [
+    {
+      "outcome": "all",
+      "files": 52641,
+      "mean_ms": 24.842171691267264,
+      "median_ms": 13.261,
+      "p95_ms": 79.676,
+      "max_ms": 9625.22
+    },
+    {
+      "outcome": "embedded",
+      "files": 15412,
+      "mean_ms": 25.357871463794446,
+      "median_ms": 16.221,
+      "p95_ms": 70.246,
+      "max_ms": 1789.775
+    },
+    {
+      "outcome": "windows_catalog",
+      "files": 22,
+      "mean_ms": 25.27677272727273,
+      "median_ms": 25.761,
+      "p95_ms": 52.115,
+      "max_ms": 52.367
+    },
+    {
+      "outcome": "package",
+      "files": 23326,
+      "mean_ms": 22.71508801337563,
+      "median_ms": 11.751,
+      "p95_ms": 77.293,
+      "max_ms": 4778.346
+    },
+    {
+      "outcome": "not_trusted",
+      "files": 13881,
+      "mean_ms": 27.843311937180317,
+      "median_ms": 10.997,
+      "p95_ms": 91.97,
+      "max_ms": 9625.22
+    }
+  ]
+}

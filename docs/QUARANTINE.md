@@ -58,10 +58,10 @@ file was made.
 
 | Command | What it does |
 |---|---|
-| `warden quarantine add <file>...` | Moves files into the quarantine. `--reason` keeps a note with the entry |
+| `warden quarantine add <file>...` | Moves files into the quarantine. `--reason` keeps a note with the entry. On Windows, what starts a file goes with it |
 | `warden quarantine list` | Lists the entries, oldest first, and entry files that cannot be read. `--json` prints the records |
 | `warden quarantine info <id>` | Shows everything that is recorded about one entry |
-| `warden quarantine restore <id>` | Puts the file back and removes the entry. `--to <path>` puts it somewhere else; `--overwrite` replaces a file that is in the way |
+| `warden quarantine restore <id>` | Puts the file back and removes the entry. `--to <path>` puts it somewhere else; `--overwrite` replaces a file that is in the way. On Windows, what started the file comes back with it |
 | `warden quarantine delete <id>...` | Removes entries for good |
 
 An entry is named by its identifier, sixteen hexadecimal digits, or by
@@ -263,6 +263,25 @@ the crate. A descriptor is a block of bytes with offsets in it, and Windows
 follows them, so a descriptor that comes out of a record is checked first,
 offset by offset, in ordinary code that runs and is tested on every system.
 
+## What starts the file
+
+A file that Windows starts by itself has entries that say so: a value
+under a Run key, a scheduled task, a service, a shortcut in the Startup
+folder. `warden quarantine add` removes the entries that start the file
+it takes, and `restore` puts them back. [REMEDIATION.md](REMEDIATION.md)
+describes that part.
+
+To the quarantine such entries are a record that it keeps with an entry.
+Any part of Warden can attach a record to an entry, under a kind of its
+own. A record is a file next to the entry's, written the way the entry is:
+whole or not at all. It lives as long as the entry does. `delete` removes
+it with the entry, and `restore` leaves it to whoever attached it, because
+only they know what has to happen before it may go. The quarantine does
+not read it.
+
+A Startup shortcut is a file, so it goes into the quarantine as an entry
+of its own, with a note that names the entry of the file it started.
+
 ## What it refuses
 
 - **Anything but a regular file.** A folder is not quarantined, and a link
@@ -279,15 +298,146 @@ offset by offset, in ordinary code that runs and is tested on every system.
 - **A record it does not understand in every part.** A field the format
   does not know is an error, not something to skip.
 
+## The guard
+
+A quarantined file can be put back, unless Windows needed it in order to
+start: then there may be nothing left to put it back with. So two kinds of
+file stay where they are: a file that Windows itself signed, and a driver
+that Windows loads while it starts, whoever made it.
+
+### Files of Windows
+
+```text
+> warden quarantine add C:\Windows\System32\ntdll.dll
+error: C:\Windows\System32\ntdll.dll was left where it is: it is part of the operating system (signed for Microsoft Windows, found in the file itself)
+Without a file of its own the system may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add --even-if-signed-by-windows.
+```
+
+- **What makes a file one of Windows** is its signature, by any of the
+  three routes that [TRUST.md](TRUST.md#three-routes-to-a-signature)
+  describes: in the file, in a catalogue of Windows, or in the signature of
+  its package. Its place and its name say nothing. A copy of `ntdll.dll` in
+  a download folder stays, and a file that somebody put into System32 does
+  not.
+- **Which signature** is for the trust list to say, not for the program:
+  the entry for "Microsoft Windows" carries `operating_system = true`
+  ([TRUST.md](TRUST.md#what-an-entry-holds)). Microsoft's applications,
+  which are signed as "Microsoft Corporation", are not Windows and go into
+  the quarantine like any other file.
+- **Whether a certificate was revoked makes no difference here.** A scan
+  lets a finding go only for a signature whose certificates were looked up.
+  The guard is after the opposite mistake, so it does not ask for that: a
+  file of Windows whose certificates cannot be looked up right now is still
+  a file of Windows. It asks nothing over the network.
+- **Not knowing is not a no.** If Windows could not be asked, or the file
+  could not be read in a way that keeps it from changing meanwhile, the
+  file stays too, and the message says that it could not be checked.
+  Otherwise every file of Windows would pass whenever the check is out of
+  order.
+- **A changed file is nobody's.** With one byte more, no catalogue lists
+  the content and no signature holds. Such a file is quarantined like any
+  other.
+- **The way past the guard** is a flag that has to be typed out,
+  `--even-if-signed-by-windows`. The file is then taken, and the output has
+  one line more, which says what was taken all the same:
+
+  ```text
+    although   it is part of the operating system (signed for Microsoft Windows, found in the file itself)
+  ```
+
+- **The content the guard looked at is the content that goes.** The guard
+  says which SHA-256 it saw. If the file has another by the time it is
+  copied, it stays, as any file does that changes on the way.
+
+### Drivers that Windows loads while it starts
+
+Windows can need a driver of another maker in order to start: one for the
+disk it is on, say. Microsoft signs such drivers under a name of their
+own, which is not the name of Windows, so the first guard lets them pass.
+A second one does not. It is not about who made the file. It is about what
+Windows does with it.
+
+A test on the hosted Windows runner puts a harmless file into the drivers
+folder of Windows, registers it as such a driver with `sc`, and asks for
+the file:
+
+```text
+> warden quarantine add C:\Windows\System32\drivers\wardentest.sys
+error: C:\Windows\System32\drivers\wardentest.sys was left where it is: Windows loads it as the driver WardenTestBootDriver while it starts
+Without a driver that it loads while it starts, Windows may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add --even-if-loaded-at-boot.
+```
+
+- **Which drivers.** Those whose entry in the registry says that the
+  loader reads them in together with the kernel, before anything else
+  runs: a driver with the start "boot". Windows has four more starts for a
+  driver, and none of them counts here: when the system comes up, by the
+  service manager, on demand, never. On the hosted runner the look found
+  110 drivers with the start "boot" on 2026-11-27, besides the test's own.
+- **Which file.** The one that the driver's entry names by its full path,
+  in any of the ways Windows writes that path. It is the same look at what
+  starts programs that finds the entries of a file, see
+  [What starts the file](#what-starts-the-file). For the test's driver the
+  registry holds `System32\drivers\wardentest.sys`, and `sc` shows
+  `\SystemRoot\System32\drivers\wardentest.sys`. Warden reads the entry
+  as `C:\Windows\System32\drivers\wardentest.sys`, and a file of the same
+  name in another folder is not taken for the driver's.
+- **Where the file of such a driver is.** The test's file is in the
+  drivers folder because the service manager would not have it in a
+  temporary folder: asked to register it there with the start "boot", it
+  answered with error 87, "The parameter is incorrect", and the same file
+  with the start "demand" it took. Which other folders it would accept was
+  not tried. What the test printed on the runner is
+  [on record](benchmarks/2026-11-27-github-windows-runner-phase5-boot-driver-test.txt).
+- **Whoever made it.** A driver of Windows is covered twice. A driver
+  that came with a program is covered by this alone, and so would be a
+  driver that malware has registered. That is what the flag is for.
+- **The way past it** is a flag of its own, `--even-if-loaded-at-boot`.
+  The flag for files of Windows does not open this guard, and a file that
+  both would leave needs both. The file is then taken, and its entry with
+  it, as for any file: Windows then no longer looks for the driver when it
+  starts, and a restore puts the entry back.
+
+  ```text
+    although   Windows loads it as the driver WardenTestBootDriver while it starts
+    removed    the driver WardenTestBootDriver
+  ```
+
+### Where the guards sit
+
+Both sit in the quarantine itself, at the one place that every file
+passes on its way in. The quarantine does not know what a signature or a
+driver is. It asks a `Guard` that whoever opens it has given it, the way
+the scan engine asks a trust check. `warden` gives it one that is made of
+two: the first asks `warden-trust`, the second the look at what starts
+programs. Whatever quarantines files later, the service or a scan, gets
+the guard without having to think of it. Going past it is a call of its
+own, `add_with` with `overrule_guard`; the command-line program instead
+leaves out the guard that a flag was given for, and still asks it, so
+that it can say what was taken all the same.
+
+What the two guards do not cover:
+
+- **Files of Windows that are no executables.** A catalogue is asked about
+  executables only, so a data file of Windows is not recognised, unless it
+  is part of a package that Windows signed.
+- **A driver whose entry names no file.** Windows then loads the file of
+  the driver's name from its drivers folder, and the look at what starts
+  programs does not see such an entry. Drivers that come with Windows can
+  be like that, and those the first guard knows by their signature.
+- **Drivers with another start, and services.** Windows can also be set
+  to stop when one of those fails to start. The second guard does not
+  look at that setting.
+- **Systems that are not Windows.** Nothing can be checked there, and there
+  is nothing to guard.
+
 ## What is not there yet
 
 | | Comes with |
 |---|---|
 | A quarantine for the whole machine, in a folder that ordinary users cannot read. Today it is a folder of the user who runs Warden, used with that user's rights | The Windows service (phase 6) |
 | Refusing to restore, on behalf of a user, to a place that user could not write to. A program with more rights than its user that restores through a link into a system folder is how antivirus products have been turned into a way of planting files. With the user's own rights there is nothing to gain | The Windows service (phase 6) |
-| A guard that refuses to quarantine signed Windows system files, because a false positive there can stop Windows from starting | Signature checking |
-| Removing a file that is in use, when Windows next starts | Remediation (phase 5) |
-| Quarantine as the consequence of a scan. Today a person names the file | Later phases. Nothing is quarantined automatically before the guard exists |
+| Quarantining a file that is in use. Windows does not let the file of a running program be removed, so today `add` fails for it: the copy is taken out of the quarantine again, and the error says that the file could not be removed. Stopping the program first takes the rights of a service | The Windows service (phase 6) |
+| Quarantine as the consequence of a scan. Today a person names the file | Later phases. The [guards](#the-guard) that had to come first are there |
 
 ## Tests
 

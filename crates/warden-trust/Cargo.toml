@@ -1,0 +1,40 @@
+[package]
+name = "warden-trust"
+description = "Warden's signature check: who signed a file, found three ways, and whether that publisher is on the trust list."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+warden-engine.workspace = true
+
+base64.workspace = true
+roxmltree.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+
+# The functions of Windows that check a signature: WinVerifyTrust and its
+# helpers, the catalogue database, and the certificate chain. The Rust
+# standard library has nothing for them. Microsoft's own bindings, and
+# already part of the build. All calls are in `src/windows.rs`.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_Security_Cryptography_Catalog",
+    "Win32_Security_Cryptography_Sip",
+    "Win32_Security_WinTrust",
+] }
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile.workspace = true

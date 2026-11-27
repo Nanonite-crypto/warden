@@ -17,6 +17,7 @@ use crate::file;
 use crate::finding::{Finding, Member, Verdict};
 use crate::report::{Partial, PartialReason, SkipReason};
 use crate::scanner::Scanner;
+use crate::trust::TrustAnswer;
 
 /// Read size for files that are hashed without being buffered.
 pub(crate) const STREAM_CHUNK_BYTES: usize = 256 * 1024;
@@ -47,6 +48,10 @@ pub struct FileResult {
     /// What was not examined, and why. Empty when the file was checked in
     /// full.
     pub partial: Vec<Partial>,
+    /// What the check of the file's signature said, if it was asked. It is
+    /// asked only when a finding that yields to a trusted signature would
+    /// otherwise be reported.
+    pub trust: Option<TrustAnswer>,
     /// Whether the file was unpacked as an archive.
     pub unpacked: bool,
     /// Archive members that were unpacked and checked, at every nesting
@@ -62,6 +67,7 @@ struct Collected {
     findings: Vec<Finding>,
     findings_omitted: u64,
     notes: BTreeMap<PartialReason, Notes>,
+    trust: Option<TrustAnswer>,
     unpacked: bool,
     members_scanned: u64,
     member_bytes: u64,
@@ -244,6 +250,7 @@ impl<'s> ScanSession<'s> {
             findings: collected.findings,
             findings_omitted: collected.findings_omitted,
             partial: Collected::partial(collected.notes),
+            trust: collected.trust,
             unpacked: collected.unpacked,
             members_scanned: collected.members_scanned,
             member_bytes: collected.member_bytes,
@@ -282,11 +289,33 @@ impl<'s> ScanSession<'s> {
                 }
             }
         }
-        self.scanner.policy.settle(&mut found);
+        let trust = self.ask_about_trust(view, &found);
+        self.scanner
+            .policy
+            .settle_with_trust(&mut found, trust.as_ref());
+        if trust.is_some() {
+            collected.trust = trust;
+        }
         for mut finding in found {
             finding.member = member.cloned();
             collected.find(finding);
         }
+    }
+
+    /// Asks who signed the file, if there is somebody to ask, a file to ask
+    /// about, and a reason to ask.
+    ///
+    /// A member of an archive is never asked about. Its bytes are not a
+    /// file, and a signature on the archive around it does not cover it for
+    /// certain: the structure that holds a signature has room for data the
+    /// signature does not cover, and an archive can sit there.
+    fn ask_about_trust(&self, view: &FileView<'_>, found: &[Finding]) -> Option<TrustAnswer> {
+        let check = self.scanner.trust.as_ref()?;
+        let a_file_on_disk = view.member().is_empty() && !view.path().as_os_str().is_empty();
+        if !a_file_on_disk || !self.scanner.policy.asks_about_trust(found) {
+            return None;
+        }
+        Some(check.check(view.path(), view.sha256()))
     }
 
     /// Unpacks a zip archive in memory and checks every member, going into

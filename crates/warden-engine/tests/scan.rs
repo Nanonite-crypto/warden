@@ -912,7 +912,7 @@ fn the_report_serialises_to_the_documented_json_shape() {
     let report = scan(&scanner, dir.path());
     let json = serde_json::to_value(&report).unwrap();
 
-    assert_eq!(json["schema"], 4);
+    assert_eq!(json["schema"], 5);
     assert_eq!(json["engine_version"], env!("CARGO_PKG_VERSION"));
     assert!(json["started_at"].as_str().unwrap().contains('T'));
     assert!(json["finished_at"].is_string());
@@ -949,6 +949,13 @@ fn the_report_serialises_to_the_documented_json_shape() {
     assert_eq!(detection["findings"][0]["category"], "malware");
     assert_eq!(detection["findings"][0]["confidence"], "definitive");
     assert!(detection["findings"][0]["reasons"][0].is_string());
+
+    // This scanner has nothing to ask who signed a file.
+    assert!(json["trust_check"].is_null());
+    assert_eq!(json["stats"]["trust_checks"], 0);
+    assert_eq!(json["stats"]["files_trusted"], 0);
+    assert!(detection.get("trust").is_none());
+    assert!(detection["findings"][0].get("yields_to_trust").is_none());
 
     assert_eq!(json["stats"]["files_recorded"], 0);
     assert_eq!(json["recorded"], serde_json::json!([]));

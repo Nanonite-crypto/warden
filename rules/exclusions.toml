@@ -31,6 +31,13 @@
 # the bundle: the match of a generated rule now counts only together with a
 # sign from another layer. docs/RULES.md lists the four rules, the files, and
 # what a scan says about those files now, under "Generated rules".
+#
+# A seventh rule, RUSSIANPANDA_Purecrypter, was on this list from 2026-11-20
+# to 2026-11-21, for flagging a file of the Microsoft Defender app. Microsoft
+# signed that file, and since phase 5 the match of a bundle's rule in a file
+# that a trusted publisher signed is recorded and not reported. The rule is
+# back in the bundle. docs/RULES.md has the story under "A rule that came off
+# the list again", and docs/TRUST.md the check.
 
 [[rule]]
 name = "COD3NYM_DOTNET_Singlefilehost_Bundled_App"
@@ -158,27 +165,4 @@ read in the rule: one sequence of .NET instructions."""
 file = "a library of a small .NET utility protected with Obfuscar"
 withheld = "The name and the hash would show which programs are installed on a private machine."
 seen = 2026-11-18
-machine = "Windows 11 desktop"
-
-# The entry below comes from a later run over the same two folders, on
-# 2026-11-20: 310,910 files.
-
-[[rule]]
-name = "RUSSIANPANDA_Purecrypter"
-reason = """\
-Asks for four of five short sequences of .NET instructions in a program of \
-under 6 MB that has exactly one embedded resource of more than 300 KB. Three \
-of the five are ordinary: creating an object, creating one and calling it, \
-and the name ResourceManager. The fourth is one of two runs of calls with a \
-generic method among them. An ordinary .NET program with one large resource of \
-its own can have all of that."""
-source = "RussianPanda95/Yara-Rules, through the YARA Forge core package 20261018"
-note = """\
-The file is part of the Microsoft Defender app from the Microsoft Store. The \
-rule flagged nothing in the run of the same folders two days before."""
-
-[[rule.evidence]]
-file = 'C:\Program Files\WindowsApps\Microsoft.6365217CE6EB4_102.2611.9002.0_x64__8wekyb3d8bbwe\MicrosoftSecurityApp\xpdAgent.exe'
-sha256 = "86f95974cb32af876d64a85b647b042e5aa3d215d8daff481d1f876b1373a8ec"
-seen = 2026-11-20
 machine = "Windows 11 desktop"

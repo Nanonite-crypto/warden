@@ -15,6 +15,10 @@ Every number on this page comes from a run that is recorded in
 | How many clean files a generated rule matches, with and without counting such a match alone | Phase 4 |
 | False positives on a Windows that was installed for the test, without the public rules and with them | Phase 4 |
 | What Microsoft Defender does with a rule bundle, with its contents under a cipher and without | Phase 4 |
+| What the signature check says about signatures that were made to be turned down | Phase 5 |
+| Who signed the files of a Windows installation, by which of three routes that is found out, and what one check costs | Phase 5 |
+| What the signature check changes about the false positives | Phase 5 |
+| What a look at everything that a machine starts costs, and what putting one such entry back costs | Phase 5 |
 | Real-time time-to-detect | From phase 9 |
 
 **Not measured, by design:** detection rates on live malware samples. Warden
@@ -62,6 +66,25 @@ See [TESTING.md](TESTING.md).
 - On Windows, Microsoft Defender scans the same files as they are opened.
   That overhead is part of the measured time, because it is what a user
   would experience.
+- **What else the machine was doing.** `scripts\win\machine-events.cmd`
+  lists from Windows' own logs when Microsoft Defender updated itself or
+  ran a scan of its own, when Windows Update worked, and when the machine
+  was started, put to sleep or woken. It prints times and the numbers of
+  the events, and nothing that names a file or a program. It was written
+  after one scan of the desktop took four times as long as the scans
+  before it, with nothing on record that could say why. The list showed
+  that Defender was running a full scan of its own at the time: see
+  [that scan](#the-desktops-programs-with-the-rule-back-in-the-bundle).
+  A number from a machine with a resident antivirus is worth laying next
+  to this list before it is believed. The list is worth a second look as
+  well. One run of it on the desktop showed nothing of Defender for
+  fourteen days, because the script then asked about 25 event numbers in
+  one query. On the CI runner a query for 22 numbers finds its events, and
+  the same query with a 23rd number comes back from PowerShell's
+  `Get-WinEvent` as "no matching events found", which reads like an
+  answer. The script asks about each number by itself since, and CI
+  counts the runner's starts and shutdowns a second way to see that the
+  list has them all.
 
 ## Results: phase 1
 
@@ -523,6 +546,504 @@ without (8.7 MB each):
 Raw figures, with what can and cannot be read in the two files:
 [2026-11-20-dev-container-sealed-bundle.txt](benchmarks/2026-11-20-dev-container-sealed-bundle.txt).
 
+## Results: phase 5
+
+The first piece of phase 5 is the check of who signed a file
+([TRUST.md](TRUST.md)). Its numbers answer three questions. Does the check
+say the right thing about signatures that were made to be turned down? How
+many files of a Windows installation does each of its three routes reach,
+and who signed them? What does one check cost? What the check changes
+about a scan is a question of false positives, and is under
+[With the signature check](#with-the-signature-check).
+
+The second piece removes what starts a quarantined file, and puts it back
+with the file. Its numbers are at the end of this section, under
+[The look at autostart entries](#the-look-at-autostart-entries).
+
+Most of this section was measured on GitHub-hosted Windows runners on
+2026-11-21: Windows Server 2025 (10.0.26100, runner image
+`windows-2025-vs2026` 20261116.315), 2 logical processors, 8 GB RAM. The
+last part, [On the desktop](#on-the-desktop), is from the Windows 11
+desktop of the earlier phases, on 2026-11-25. The trust list had its two
+publishers both times, and the machines had a network, over which Windows
+asks whether a certificate was revoked. Every result carries the SHA-256
+of the list it was made with, which begins `6f21a3f5`. The list has the
+same two publishers now, and another digest: one piece of its evidence
+gained a note after the run on the desktop, and the entry for Microsoft
+Windows the mark that the quarantine's guard goes by.
+
+### Who signed what
+
+#### Signatures made to be turned down
+
+A step of the Windows CI job makes test files with signatures of its own
+([TESTING.md](TESTING.md#signatures)). The middle column is the `Status`
+that PowerShell's `Get-AuthenticodeSignature` printed for each file on the
+runner; the right one is what `warden trust check` said.
+
+| File | Windows says | Warden says |
+|---|---|---|
+| `plain.exe`, a small program, not signed | NotSigned | No signature, by any of the three routes |
+| `signed.exe`, the same, signed for "Warden Test Publisher" | Valid | The signature holds. Not trusted: "that publisher is not on the trust list" |
+| `tampered.exe`, that file with one byte changed | HashMismatch | Not trusted: "the file was changed after it was signed" |
+| `padded.exe`, that file with 40 bytes added inside the table that holds the signature | **Valid** | Not trusted: "bytes follow the signature inside its entry, so what the file carries as a signature does not count" |
+| `lookalike.exe`, signed for "Microsoft Corporation" under a root that was made on the spot | **Valid** | The signature holds. Not trusted: "the trust list has a publisher with these names, but only with a chain that ends in one of Microsoft's own root certificates, which this signature does not have" |
+| A text file and a program in the folder of a signed app package | Valid, for the package | Both covered by the package's signature. Not trusted: its publisher is not on the list |
+| The same folder with the text file changed | | Not trusted: "the file is not the one that the block map of its package describes" |
+| The same folder with a file added | | Not trusted: "the block map of the file's package does not list the file" |
+
+- **Windows calls two of these valid that Warden turns down for a reason
+  of its own.** `padded.exe` is the gap of
+  [CVE-2013-3900](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2013-3900):
+  the bytes were added where no signature reaches, and Windows accepts
+  that unless an administrator has switched a stricter check on. The
+  runner's Windows had not. `lookalike.exe` is validly signed, by a
+  certificate that says Microsoft Corporation twice. The machine trusts
+  the root above it, because the test put that root there, as any program
+  with administrator rights could. What the certificate cannot have is a
+  root with Microsoft's key.
+- **A valid signature alone changes nothing.** `signed.exe` and the files
+  of the package are signed and the signature holds, and they are not
+  trusted: nobody put "Warden Test Publisher" on the list.
+- For `lookalike.exe` Windows could not find out whether the certificate
+  was revoked: it names no place to ask. That alone would have kept it
+  from being trusted, had its names and its root been right.
+
+The same step asked about files that came with the machine:
+
+| File | Route | Signed for | Trusted |
+|---|---|---|---|
+| `C:\Windows\System32\ntdll.dll` | In the file | Microsoft Windows | Yes |
+| `C:\Windows\explorer.exe` | In the file | Microsoft Windows | Yes |
+| `C:\Windows\System32\whoami.exe` | Catalogue `Microsoft-Windows-Utilities-Package~...~10.0.26100.4202.cat`; the file carries nothing | Microsoft Windows | Yes |
+| `C:\Windows\System32\notepad.exe` | Catalogue `Microsoft-Windows-Notepad-FoD-Package~...~10.0.26100.33828.cat`; the file carries nothing | Microsoft Windows | Yes |
+| `C:\Program Files\PowerShell\7\pwsh.exe` | In the file | Microsoft Corporation | Yes |
+| `C:\Program Files\dotnet\dotnet.exe` | In the file | .NET, an identity of Microsoft's that is not on the list | No |
+
+Every one of these chains ends in a root of Microsoft's, and revocation
+was checked for each. `dotnet.exe` shows that this is not what decides:
+the list names signing identities, and ".NET" is not one of the two.
+
+Raw output, with the chains:
+[2026-11-21-github-windows-runner-phase5-signature-test-files.txt](benchmarks/2026-11-21-github-windows-runner-phase5-signature-test-files.txt).
+
+#### By which route
+
+`warden trust survey` checks every file of a folder and counts. A scan
+asks about very few files; a survey asks about all of them, to show what
+the check would say. Three folders of one runner:
+
+| | `C:\Windows\System32` | Software installed on the runner | `C:\Program Files\WindowsApps` |
+|---|---|---|---|
+| Files | 21,567 | 91,144 | 2,178 |
+| Windows executables among them | 8,760 | 48,235 | 1,054 |
+| **Trusted executables** | **8,544 (97.5 %)** | **13,636 (28.3 %)** | **1,054 (100 %)** |
+| by the signature in the file | 1,673 (19.1 %) | 13,636 | 640 |
+| through a catalogue of Windows | 6,871 (78.4 %) | 0 | 0 |
+| through the signature of their app package | 0 | 0 | 414 |
+| Signed, by a publisher that is not on the list | 127 | 33,954 (70.4 %) | 0 |
+| No signature by any route | 85 | 643 | 0 |
+| A signature that does not hold | 4 | 2 | 0 |
+| Other files that are trusted | 0 of 12,807 | 0 of 42,909 | 1,091 of 1,124 |
+
+The software is what the false-positive runs scan: 7-Zip, Git, Chrome,
+Firefox, PowerShell, .NET and Node.js.
+
+- **Each route is needed.** In System32, 78 % of the executables carry no
+  signature of their own and are vouched for in a catalogue. A check that
+  only looks inside the file would trust 19 % of that folder's executables
+  and call most of the rest unsigned. In the folder of the app packages,
+  414 executables are trusted through the signature of their package.
+  399 of them also carry a signature of their own, from a signer that is
+  not on the list, most often .NET.
+- **Other files are trusted only as part of a package**, and there nearly
+  all of them are. The 33 that are not are 20 signature files, which
+  nothing can cover, and 13 files that sit in a package's folder without
+  being in its block map. The one that the survey names as an example is
+  in `microsoft.system.package.metadata`, a folder that Windows adds to
+  an installed package.
+- **In the software, the list is what decides.** 47,590 of its 48,235
+  executables carry a valid signature. Two in seven are trusted, because
+  Microsoft Corporation signed them. The rest are signed by somebody the
+  list does not name, and a rule match in one of them is reported as it
+  always was.
+- **Signatures that do not hold are rare and real.** Four files in
+  System32 are signed under a root that the machine does not trust. In
+  Git for Windows, the header of `git-bash.exe` points to a signature
+  beyond the end of the file, and for `wintoast.exe` Windows says that a
+  certificate of the chain was not valid at the time that counts.
+- In System32, 236 files could not be checked. The check has to keep
+  others from writing to a file while it looks, and 232 files were in use
+  by Windows, registry files and logs among them. The other 4 are aliases
+  of Store apps, which cannot be opened like a file. A scan asks for less
+  and could not read 36 files of the folder.
+
+#### Who is not on the list
+
+The surveys on the runner name every signer, because the machine is the
+same for everybody. These are the signers of executables that the list
+does not name, with the number of files each signed:
+
+| Signer | System32 | Software | WindowsApps |
+|---|---|---|---|
+| .NET | | 33,430 | 375 |
+| Microsoft 3rd Party Application Component | 4 | 248 | 4 |
+| Microsoft Windows Software Compatibility Publisher | 46 | 16 | |
+| Microsoft Windows Hardware Compatibility Publisher | 30 | | |
+| .NET DAC | | 30 | 3 |
+| Microsoft Windows Hardware Abstraction Layer Publisher | 18 | | |
+| Microsoft Windows Publisher | 15 | | 4 |
+| Windows Phone | | | 11 |
+| Five more names of Microsoft's | 11 | | |
+| **Under a root of Microsoft's, together** | **124** | **33,724** | **397** |
+| Publishers under other roots: the .NET Foundation's projects, Mozilla, Google, the maintainer of Git for Windows, the Python Software Foundation, GitHub, the OpenJS Foundation, Intel and others | 3 | 230 | 2 |
+
+- **"Microsoft signed it" is not one thing.** All the names in the upper
+  part are in certificates that chain to a root of Microsoft's, with
+  Microsoft Corporation as the organisation. Some stand for Microsoft's
+  own code, such as .NET. Others exist to say the opposite: the hardware
+  compatibility publisher signs other companies' drivers, and the
+  third-party component names sign other people's code that Microsoft
+  ships. A list that trusted the root would trust all of it.
+- **A root with Microsoft's name is not a root of Microsoft's.** The files
+  signed for the maintainer of Git for Windows, the Python Software
+  Foundation, the OpenJS Foundation and GitHub have chains that end in
+  "Microsoft Identity Verification Root Certificate Authority 2020".
+  Windows' own check does not count that root among Microsoft's own, and
+  the anchor of the two entries on the list rests on that check.
+- **The largest gap is .NET.** One identity signs 69 % of the executables
+  in the software folders. Whether it goes on the list is a decision, and
+  the list's own rule says what it takes: a clean file of that publisher
+  that a rule flagged. Today no rule flags a file on this runner.
+- In the folder of the app packages every one of these files is trusted
+  anyway, through the package it belongs to.
+
+#### What a check costs
+
+For every file, a survey measures the time from opening it to the answer.
+The file is read twice in that time: once for its SHA-256, and once by
+whatever checks the signature.
+
+| Survey | Answer | Files | Half under | 95 % under | Longest |
+|---|---|---|---|---|---|
+| System32 | Trusted, signature in the file | 1,673 | 6.0 ms | 36 ms | 3.5 s |
+| | Trusted, through a catalogue | 6,871 | 5.5 ms | 28 ms | 0.3 s |
+| | Not trusted | 13,023 | 0.5 ms | 3.2 ms | 0.9 s |
+| Software | Trusted, signature in the file | 13,636 | 4.0 ms | 7.2 ms | 0.6 s |
+| | Not trusted | 77,508 | 1.1 ms | 8.8 ms | 2.1 s |
+| WindowsApps | Trusted, signature in the file | 640 | 8.1 ms | 71 ms | 0.6 s |
+| | Trusted, through the package | 1,505 | 4.4 ms | 20 ms | 1.2 s |
+| The drivers folder, on another runner, as the first thing that asked there | Trusted, signature in the file | 291 | 6.1 ms | 19 ms | 0.3 s |
+| | Trusted, through a catalogue | 296 | 154 ms | 505 ms | 0.8 s |
+
+The whole surveys took 55 s for System32, 3 min 12 s for the software and
+13 s for the app packages, on two threads.
+
+- **A check costs milliseconds.** A file without a signature costs about
+  one, which is reading it. A file with a signature costs 4 to 8 ms at the
+  median, by whichever route.
+- **Except the first time a machine is asked about its catalogues.** The
+  same route took 5.5 ms in one survey and 154 ms in the other. The likely
+  reason is what had been read before. Windows keeps its catalogues in
+  System32, and before the survey of that folder two scans had read all
+  of it. On the other runner nothing had read them, and a runner reads
+  a file for the first time slowly: the first scan of System32 ran at
+  14.7 MB/s. This was not measured apart, so it stays a likely reason.
+- **A scan pays for very few checks.** The check is asked only about a
+  file with a rule match that would otherwise be reported. In the scans
+  of these folders that was no file of 112,675, see
+  [With the signature check](#with-the-signature-check).
+
+Hardware: the three large surveys ran on an AMD EPYC 9V74 with 2 logical
+processors, the drivers folder on an Intel Xeon Platinum 8370C with 2.
+Shared machines, so the times are for comparing the routes with each
+other.
+
+Raw results:
+[System32](benchmarks/2026-11-21-github-windows-runner-phase5-trust-system32.json),
+[software](benchmarks/2026-11-21-github-windows-runner-phase5-trust-software.json),
+[app packages](benchmarks/2026-11-21-github-windows-runner-phase5-trust-windowsapps.json),
+[machine](benchmarks/2026-11-21-github-windows-runner-phase5-machine.json);
+[drivers](benchmarks/2026-11-21-github-windows-runner-phase5-trust-drivers.json),
+[its machine](benchmarks/2026-11-21-github-windows-runner-phase5-trust-drivers-machine.json).
+
+#### On the desktop
+
+A runner is a tidy machine: Windows, and software that Microsoft or a
+handful of projects made. On 2026-11-25 the same survey ran over two
+folders of the desktop, with administrator rights. A survey of a private
+machine writes down numbers only: no file, and no signer that is not on
+the list, because both would show which programs are installed.
+
+| | `C:\Windows\System32` | `C:\Program Files\WindowsApps` |
+|---|---|---|
+| Files | 27,676 | 52,641 |
+| Windows executables among them | 12,132 | 20,205 |
+| **Trusted executables** | **11,491 (94.7 %)** | **20,115 (99.6 %)** |
+| by the signature in the file | 2,026 (16.7 %) | 15,412 (76.3 %) |
+| through a catalogue of Windows | 9,465 (78.0 %) | 22 |
+| through the signature of their app package | 0 | 4,681 (23.2 %) |
+| Signed, by a publisher that is not on the list | 550 | 90 |
+| No signature by any route | 89 | 0 |
+| A signature that does not hold | 2 | 0 |
+| Other files that are trusted | 0 of 15,544 | 18,645 of 32,436 (57.5 %) |
+| Signers that are not on the list | 51, on 550 files | 29, on 15,527 files |
+| of those, with a chain that ends in a root of Microsoft's | 11, on 180 files | 12, on 15,288 files |
+| One check at the median: in the file, catalogue, package | 18 ms, 22 ms, none | 16 ms, 26 ms, 12 ms |
+| The whole survey, on 16 threads | 57 s | 1 min 29 s |
+
+- **The routes share System32 as they do on the runner.** A catalogue
+  vouches for 78.0 % of the executables here and for 78.4 % there. What a
+  desktop adds is other people's software: 550 executables of 51 signers
+  that the list does not name, where the runner had 127.
+- **A root of Microsoft's is not the question.** In the folder of the app
+  packages, 13,440 files that are no executables sit in packages whose
+  signer the list does not name: the apps of other publishers. The
+  Microsoft Store signs the packages it hands out with a certificate that
+  names the publisher and chains to Microsoft; the answer about
+  `Clipchamp.Widgets.exe` under
+  [With the signature check](#with-the-signature-check) shows such a
+  chain. The numbers agree: all but 239 of the files with a signature of
+  an unlisted signer have a chain that ends in a root of Microsoft's. A
+  list that trusted the root would trust every app from the Store. This
+  one does not: those 13,440 files and 90 executables are not trusted,
+  and a rule match in one of them is reported.
+- **Nearly every executable in that folder is trusted**: 99.6 %, three
+  quarters of them by their own signature and the rest through their
+  package. The other files that are not trusted are the 13,440 above,
+  245 signature files, 71 files that no block map lists, and 35 without
+  any signature.
+- **A check took longer here**: 16 to 26 ms at the median, where the
+  runner took 4 to 8. The desktop checked on 16 threads at once, with
+  Microsoft Defender's real-time protection on; the runner has 2 threads
+  and that protection off. Which of the two makes the difference was not
+  measured.
+- In System32, 242 files could not be checked: 236 were in use, and 6
+  are aliases of Store apps. A scan of the folder could not read 34.
+
+Raw results:
+[System32](benchmarks/2026-11-25-windows-desktop-phase5-trust-system32.json),
+[app packages](benchmarks/2026-11-25-windows-desktop-phase5-trust-windowsapps.json),
+[machine](benchmarks/2026-11-25-windows-desktop-phase5-machine.json).
+
+### The look at autostart entries
+
+The second piece of phase 5 removes what starts a quarantined file, and
+puts it back when the file is restored ([REMEDIATION.md](REMEDIATION.md)).
+Whether it does that right is a question for tests, which compare what
+Windows' own tools show before and after. Two things can be measured: what
+one look at everything that a machine starts costs, and what putting one
+entry back costs.
+
+Most of it is from GitHub-hosted Windows runners, on 2026-11-26 and
+2026-11-27. The look was also timed on the desktop. Nothing here is from
+the virtual machine yet; the kit for it times the look as well, so that
+number comes with its run.
+
+#### One look at the four places
+
+`warden autostart list` reads every Run value, scheduled task, service,
+driver and Startup shortcut of the machine. `scripts\win\check.cmd` runs
+it five times, as a release build, and times the whole program each time:
+started through `cmd.exe`, with its output thrown away. On a person's
+machine that output says what is installed there. The script keeps the
+times and the number of entries of each kind, and nothing else.
+
+In the acceptance job of the CI, on 2026-11-27:
+
+| Look | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Time | 197 ms | 144 ms | 145 ms | 141 ms | 212 ms |
+
+The runner's Windows had 900 entries: 2 Run values, 210 scheduled tasks,
+687 services and drivers, and 1 shortcut. Warden could read every one.
+
+- **A look costs about a sixth of a second on this machine**, for nine
+  hundred entries. Whose entries they are was not counted.
+- **A command pays for one look, however many files it is given.**
+  `warden quarantine add` looks once, and then asks for each file which of
+  the entries start it. A scan does not look at all.
+- **The times scatter by half**, from 141 to 212 ms, on a machine that is
+  shared. What they show is the size of the cost, not a third digit.
+
+Hardware: an AMD EPYC 9V74 with 2 logical processors, 8 GB RAM, Windows
+Server 2025 (10.0.26100), Microsoft Defender's real-time protection off.
+
+On the desktop, the same day, with the same script and administrator
+rights, three times:
+
+| Look | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| 02:56 UTC, commit 71248e5 | 451 ms | 376 ms | 349 ms | 366 ms | 419 ms |
+| 08:00 UTC, commit 4e126ae | 384 ms | 237 ms | 246 ms | 238 ms | 249 ms |
+| 21:09 UTC, commit f9217ba | 479 ms | 254 ms | 244 ms | 255 ms | 252 ms |
+
+That Windows had 1,099 entries each time: 30 Run values, 263 scheduled
+tasks, 794 services and drivers, and 12 shortcuts. Warden could read every
+one. As for every result from a private machine, the numbers are all that
+is kept.
+
+- **A look takes between a quarter and four tenths of a second there**,
+  for a fifth more entries than the runner has: 2.6, 1.7 and 1.8 times the
+  runner's time, by the middle of the five. The desktop runs Microsoft
+  Defender's real-time protection, which the runner has switched off, and
+  it has more entries of every kind. Which of the two makes the difference
+  was not measured.
+- **The first run is a third slower than the two after it, and the look
+  did not change between them.** The commits between them changed what the
+  quarantine does with what the look finds, and documents, not the look.
+  What else the machine was doing was not recorded any of the times, so
+  the difference stands unexplained.
+- **It is still a cost per command**, and one that a person does not
+  wait for: `warden quarantine add` looks once.
+
+Hardware: an AMD Ryzen 7 5800X with 16 logical processors, 32 GB RAM,
+Windows 11 Home (10.0.26300), Microsoft Defender's real-time protection
+on.
+
+#### In the tests
+
+The tests of the Windows side print what three calls took. These are debug
+builds, as `cargo test` makes them, from three runs of the `Windows check`
+workflow on 2026-11-26, each on a runner of its own:
+
+| | First run | Second | Third |
+|---|---|---|---|
+| One look at the four places | 278 ms | 300 ms | 297 ms |
+| A look, and what starts one file found in it | 276 ms | 340 ms | 346 ms |
+| A Run value put back, three of them | 91 to 174 µs | 106 to 178 µs | 120 to 178 µs |
+| A scheduled task put back, two of them | 8.9 and 11.0 ms | 8.6 and 13.6 ms | 11.1 and 12.5 ms |
+| The service put back | 2.4 ms | 2.4 ms | 3.1 ms |
+
+- **A debug build is slower.** Its look alone, without starting a program
+  or printing anything, takes 278 to 300 ms.
+- **Finding what starts a file is the look, and little more.** The second
+  row is a look of its own, made at another moment than the first row's.
+  Then Windows is asked for the other ways the file's path is written, and
+  the seven entries that start the file are read once more, whole.
+- **A scheduled task is the slowest to put back**, at about a hundredth of
+  a second: the Task Scheduler registers it from its definition. The
+  service takes a quarter of that. It is created by the service manager,
+  which is then told four things about it: its delayed start, its own
+  identity, its two privileges and its three triggers. Then its key is
+  written back. A Run value is one write to the registry.
+- **These are the calls alone.** A restore also reads each entry back and
+  compares it with the record, and it restores the file. How long
+  `warden quarantine add` and `restore` take as a whole was not measured,
+  nor was the removal of an entry.
+- **What a look spends its time on was not measured**: the four places are
+  not timed apart.
+
+The logs of these three runs name the runner image, and not the processor.
+
+#### The run by hand, rehearsed
+
+That Windows stops starting a program, and starts it again after a
+restore, can only be seen on a machine that is restarted in between. That
+run is done by hand in the virtual machine, with a script
+([TESTING.md](TESTING.md#the-run-in-a-virtual-machine)), and
+[its result is below](#the-run-by-hand-in-the-virtual-machine).
+CI rehearses the script on the runner first: its three runs one after the
+other, with the release builds, without the two restarts. On 2026-11-27,
+on the machine of the five looks above:
+
+| Run of the script | Checks | Held in the rehearsal |
+|---|---|---|
+| 1: a look at what the machine starts is timed. Seven entries are made for a harmless program, a scan reports it, and Warden quarantines it with what starts it | 9 | 9 |
+| 2: nothing was started and nothing came back; the program is restored, and what started it with it | 5 | 5 |
+| 3: Windows started the program through each of the seven entries | 7 | 0 |
+| 3: nothing of the test is left on the machine | 1 | 1 |
+
+- **The seven that failed have to fail here**: nothing restarts a runner,
+  so Windows never got to start the program. The step of the CI expects
+  exactly these seven to fail, and everything else to hold.
+- **Two of the checks that held say little without a restart**: that the
+  program was not started while it was in the quarantine, and that no
+  entry came back by itself.
+- **What the rehearsal does show** is the rest. Windows' tools showed
+  something in all 14 views of the seven entries. Warden found seven
+  entries, removed seven and left none, and Windows' tools showed none
+  afterwards. The restore put all seven back without a reservation, and
+  Windows' tools showed each as they had shown it before.
+- **The script's own five looks** took 361, 158, 162, 156 and 170 ms, a
+  few minutes after the five above and with a copy of the program that
+  had just been made. Only the first start of that copy was slow.
+
+#### The run by hand, in the virtual machine
+
+On 2026-11-27 the script ran in the virtual machine of the
+[runs on a freshly installed Windows 11](#on-a-freshly-installed-windows-11),
+from a kit with the release builds of commit 4e126ae. It went through
+twice, one pass after the other:
+
+| Run of the script | Checks | Held, first pass | Held, second pass |
+|---|---|---|---|
+| 1: a look at what the machine starts is timed. Seven entries are made for a harmless program, a scan reports it, and Warden quarantines it with what starts it | 9 | 9 | 9 |
+| 2: after a restart nothing was started and nothing came back; the program is restored, and what started it with it | 5 | 5 | 5 |
+| 3: after another restart Windows had started the program through each of the seven entries | 7 | 7 | 7 |
+| 3: nothing of the test is left on the machine | 1 | 1 | 1 |
+
+- **Windows did what the entries say, and stopped when Warden had removed
+  them.** After the restore and a restart the program had left seven
+  lines, one for each entry with that entry's word, all within seven
+  seconds: two as the machine's own account, for the service and the task
+  at start, and five as the user who logged on. After the quarantine and a
+  restart it had left none, and no entry had come back.
+- **The first pass is not a clean one.** Its first restart never
+  finished: Windows shut down, and the machine did not start again. Eleven
+  and a half hours later it was reset by hand in VirtualBox, and the pass
+  went on from there. So in that pass the second run's checks came after a
+  reset, not after a restart that Windows completed. The second pass was
+  done for that reason, and all its restarts were Windows' own.
+- **Why that restart hung is not known.** By Windows' own record its
+  shutdown took 7.8 seconds; the four others that were looked up took 8.2
+  to 10.7. In the second pass the restart at the same place did finish,
+  and took about a hundred seconds longer than the others, again after
+  Windows had shut down. Seven more restarts, five of them with nothing of
+  the test on the machine, went as usual. Two of nine can fall on the same
+  step by chance, and this machine has left a black screen twice before:
+  at a restart during Windows Setup, before anything of Warden's was on
+  it, and once in the middle of a scan
+  ([the runs there](#on-a-freshly-installed-windows-11),
+  [TESTING.md](TESTING.md#a-machine-the-list-was-not-written-from)). What
+  was seen and measured of each restart is
+  [on record](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-restarts.txt),
+  with what was not tried.
+- **A look takes about a fifth of a second there.** The machine has 930
+  entries: 5 Run values, 248 scheduled tasks, 677 services and drivers,
+  and no shortcut, and Warden could read every one. The five looks took
+  2,218, 204, 206, 207 and 204 ms in the first pass and 2,142, 197, 193,
+  200 and 197 ms in the second. The first look of a pass is the first time
+  the program is started from the CD image since Windows started; what
+  takes the two seconds was not measured.
+
+The machine: Windows 11 Enterprise Evaluation 26H2 (10.0.26300), 4
+processors and 8 GB of memory under VirtualBox, administrator rights,
+Microsoft Defender's real-time protection on.
+
+What the machine sent has all six runs of the two passes. A run sends
+every result file that is in the kit's folder, and that folder was not
+emptied between the passes: the first two runs of the second pass carry
+the first pass's copy of the program's list of starts again. No check
+reads that copy. The checks read the list that the program itself keeps,
+and that one is gone with the test's folder when a pass has cleaned up.
+
+Raw results:
+[the five looks](benchmarks/2026-11-27-github-windows-runner-phase5-autostart.json),
+[their machine](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-machine.json),
+[the rehearsal](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-kit-rehearsal.json),
+[the times from the tests](benchmarks/2026-11-26-github-windows-runner-phase5-autostart-test-times.txt);
+[the five looks on the desktop](benchmarks/2026-11-27-windows-desktop-phase5-autostart.json),
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-machine.json),
+[the five looks of the second run](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run.json),
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run-machine.json),
+[the five looks of the third run](benchmarks/2026-11-27-windows-desktop-phase5-autostart-third-run.json),
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-third-run-machine.json);
+[the run in the virtual machine](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-kit.json),
+[its first pass](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-kit-first-pass.json),
+[what the machine sent](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-serial-capture.txt),
+[its restarts](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-restarts.txt).
+
 ## False positives
 
 Five rounds of runs. The first used every rule of the rule package and
@@ -538,6 +1059,8 @@ comes [a repeat of one run](#the-desktops-programs-again-with-administrator-righ
 which put a seventh rule on the list and was run once more with it, and
 then two runs of another kind, on
 [a Windows that was installed for them](#on-a-freshly-installed-windows-11).
+In phase 5 that seventh rule came off the list again, and the runs are
+repeated [with the signature check](#with-the-signature-check).
 
 ### With every rule of the package
 
@@ -909,9 +1432,10 @@ loader that is itself a .NET program. It asks for four of five short
 sequences of .NET instructions, three of them ordinary, in a program under
 6 MB with exactly one embedded resource of more than 300 KB. The rule was
 in the bundle when these folders were first scanned, on 2026-11-18, and
-flagged nothing then. It is the seventh rule on the exclusion list now
-([RULES.md](RULES.md#rules-that-are-left-out)), and a bundle built with
-that list has 5,131 rules.
+flagged nothing then. It went on the exclusion list that day as the
+seventh rule ([RULES.md](RULES.md#rules-that-are-left-out)), and a bundle
+built with that list has 5,131 rules. Phase 5 took it off again, for
+[a reason that has to do with who signed the file](RULES.md#a-rule-that-came-off-the-list-again).
 
 **Four more files are on record**, all of them in the folder that the run
 without those rights could not list, and all through the Triback rule:
@@ -1098,3 +1622,157 @@ Of the second:
 [the capture](benchmarks/2026-11-21-windows11-fresh-vm-serial-capture.txt).
 Each capture holds a checksum for every result that was read from it:
 `python3 scripts/read-scan-kit-output.py <capture> --out <folder>`.
+
+### With the signature check
+
+Since phase 5 the match of a rule from a bundle yields to the signature of
+a trusted publisher ([TRUST.md](TRUST.md)), and
+`RUSSIANPANDA_Purecrypter` is back in the bundle
+([RULES.md](RULES.md#a-rule-that-came-off-the-list-again)). That makes
+5,132 rules with six left out, as in the fifth round. On 2026-11-21 the
+runner's folders were scanned with that bundle twice, with the check and
+with `--no-trust`:
+
+| Files expected to be clean | Files | Data | Files inside archives | Flagged | On record, verdict clean | Files the check was asked about |
+|---|---|---|---|---|---|---|
+| `C:\Windows\System32` on a GitHub-hosted Windows runner | 21,531 | 4.69 GB | 193 | 0 | 1 | 0 |
+| The same without the check | 21,531 | 4.69 GB | 193 | 0 | 1 | |
+| Software installed on that runner | 91,144 | 15.32 GB | 91,927 | 0 | 2 | 0 |
+| The same without the check | 91,144 | 15.32 GB | 91,927 | 0 | 2 | |
+
+- **On the runner the check changes nothing, and that is what was to be
+  expected.** No file is flagged there without it, so it has nothing to
+  take away. It was asked about no file: it is asked only when a rule
+  match would otherwise be reported, and none got that far.
+- **So it cost nothing either.** The scans with the check ran first and
+  read the files from the disk, in 5 min 20 s and 11 min 33 s. The scans
+  without it came second and took 1 min 37 s and 8 min 53 s. With nobody
+  asked, that difference is the file cache and nothing else.
+- **Three files are on record**, all through the generated rule
+  `MALPEDIA_Win_Triback_Loader_Auto` without a second sign: `vulkan-1.dll`
+  as in every run, and two new ones, `node_js2c.exe` and `nop.exe` in a
+  tool pack of .NET. The runner's image has grown since the fifth round,
+  from 87,707 files in the software folders to 91,144. With these two,
+  generated rules match 23 clean files on the three machines, 17 of them
+  through this one rule, and none is reported.
+- **Where the check does change a result is tested, not measured here.**
+  In CI a test rule that matches every Windows program runs over copies
+  of files that Microsoft signed and over the test files of
+  [Who signed what](#signatures-made-to-be-turned-down): the first are on
+  record, the rest are reported, each with its reason
+  ([TESTING.md](TESTING.md#signatures)).
+
+In System32, 36 files and 2 folders could not be read and 2 files were
+checked in part; in the software folders 7 files were checked in part.
+This runner: AMD EPYC 9V74, 2 logical processors, 8 GB RAM, Windows
+Server 2025, Microsoft Defender real-time protection off.
+
+Raw results:
+System32 [with the check](benchmarks/2026-11-21-github-windows-runner-phase5-system32-false-positives.json)
+and [without](benchmarks/2026-11-21-github-windows-runner-phase5-system32-false-positives-without-trust.json),
+software [with](benchmarks/2026-11-21-github-windows-runner-phase5-software-false-positives.json)
+and [without](benchmarks/2026-11-21-github-windows-runner-phase5-software-false-positives-without-trust.json),
+[machine](benchmarks/2026-11-21-github-windows-runner-phase5-machine.json).
+
+#### The desktop's programs, with the rule back in the bundle
+
+The file that `RUSSIANPANDA_Purecrypter` flagged is on no runner. It is on
+the desktop, in a folder that opens only with administrator rights, so
+the proof of this change had to come from there. On 2026-11-25 the scan
+of [2026-11-20](#the-desktops-programs-again-with-administrator-rights)
+was repeated with a build of commit `7d068c8`, made on the desktop, and a
+bundle built there from the pinned package and the list of six.
+
+| | |
+|---|---|
+| Rules | 5,132, with 6 left out. `RUSSIANPANDA_Purecrypter` is one of the 5,132 |
+| Scanned in `C:\Program Files` and `C:\Program Files (x86)` | 312,347 files, 77.54 GB, 345,740 files inside archives |
+| Could not be read | 2 files and no folder: as before, a configuration file of one program and a lock file of another |
+| Checked in part | 1,075 files |
+| Flagged | **0** |
+| On record, verdict clean | 15 |
+| Files the check was asked about | 1, and a trusted publisher had signed it |
+| Time | 21 min 17 s, at 61 MB/s |
+
+- **The rule matches the same file, and the file is not reported.**
+  `xpdAgent.exe` is at the same path with the same SHA-256 as on
+  2026-11-20. The match is on record with its reason, "signed for
+  Microsoft Corporation, found in the file itself", and the verdict is
+  clean.
+- **What Warden reads in that file.** The signature in the file holds;
+  its chain is Microsoft Corporation, Microsoft Windows Code Signing PCA
+  2024, Microsoft Root Certificate Authority 2010, and nothing in it is
+  revoked. The signature of the package the file belongs to holds as
+  well, for Microsoft Corporation again, through the certificates of the
+  Microsoft Store. Either route alone would have been enough.
+- **The check was asked once in 312,347 files.** The other 14 files on
+  record are the ones of the earlier runs, matched by generated rules
+  that wait for a second sign. Nobody was asked about them, because their
+  matches would not have been reported anyway. Thirteen have the SHA-256
+  they had then; Phone Link was updated in between, and the new version
+  of its `NativeHostNE.dll` matches as the old one did.
+- **The scan took four times as long as the two before it**, which ran in
+  4 min 54 s and 4 min 53 s. The check is not the reason: one file was
+  asked about. **Microsoft Defender was running a full scan of the machine
+  at the time.** Defender's own log has that scan from 23:37:18 to 01:31:49
+  UTC, for 1 h 54 min. Warden's scan ran from 00:51:46 to 01:13:05, all of
+  it inside. During the two scans before, on 2026-11-20 and 2026-11-21,
+  Defender ran no scan of its own. That is the one difference between the
+  three scans that the machine's logs show, and it fits: two scanners
+  read the same disk, and Defender also looks at every file that Warden
+  opens. It is what one night shows, and no experiment: the scan was not
+  repeated during another full scan of Defender.
+- **System32 was not slower in the same hour.** Twenty minutes before
+  that scan, and during the same full scan of Defender, the same build
+  scanned System32 with the same rules in 23.5 s, as on other days. The
+  likely reason is memory: the passes just before had read those 10 GB,
+  and the machine has 32 GB. The programs are 77.5 GB, and most of them
+  had to come from the disk that Defender was reading. That was not
+  measured apart.
+- **What the logs were asked.** The list is from
+  `scripts\win\machine-events.cmd`, run on the desktop on 2026-11-27. It
+  has the times of Defender's own scans and updates, of the work of
+  Windows Update and of the starts of Windows, with event numbers and
+  version numbers, and no path and no name. Windows had been running
+  since 2026-11-14, so none of the three scans came after a fresh start.
+  Defender updated its definitions at 01:19:17, six minutes after
+  Warden's scan had ended.
+
+The acceptance script ran on the desktop before that scan, with the same
+build. Its new step asked who signed two files of Windows, and both came
+back trusted as Microsoft Windows: `ntdll.dll` by its own signature and
+`whoami.exe` through a catalogue. System32 with the 5,132 rules: none of
+27,643 files flagged, `liblouis.dll` on record as before, the check asked
+about no file, 34 files and 3 folders that could not be read. The passes
+without the public rules took 28.2 s, 9.7 s and 8.3 s, and the pass with
+them 23.5 s.
+
+**Who signed the files that the exclusion list names.** Four of the seven
+files that [the list](RULES.md#rules-that-are-left-out) names by path are
+on the desktop, and the same run asked about them:
+
+| File | What Warden found | Trusted |
+|---|---|---|
+| `uninstall.exe` of FL Studio 2025 and of FL Studio 21 | A signature in the file that holds, for Image Line, under a root of DigiCert's | No: not on the list |
+| `node_modules.asar` of Visual Studio Code | Nothing to look for: no executable, and in no package | No |
+| `Clipchamp.Widgets.exe` | No signature of its own. Its package is signed for `33F0F141-36F3-4EC2-A77D-51B53D0BA0E4`, a publisher's identity in the Microsoft Store, with a chain that ends in Microsoft Root Certificate Authority 2011 | No: not on the list |
+
+None of the six entries could give way to the trust list as it is. The
+last row is why the list asks for names and not for a root: the chain is
+Microsoft's, and the signer is whoever published the app.
+
+As in the earlier results of the desktop, the paths of four files that
+could not be read are replaced in the raw results, two among the programs
+and two in System32, and each result says so at its top.
+
+The part of the machine's list that bears on the three scans:
+[2026-11-27-windows-desktop-phase5-machine-events.txt](benchmarks/2026-11-27-windows-desktop-phase5-machine-events.txt).
+
+Raw results:
+[programs](benchmarks/2026-11-25-windows-desktop-phase5-programs-administrator-false-positives.json),
+[what the script wrote down](benchmarks/2026-11-25-windows-desktop-phase5-programs-administrator-rights.txt),
+[the answer about `xpdAgent.exe`](benchmarks/2026-11-25-windows-desktop-phase5-trust-check-xpdagent.txt),
+[the answers about the files of the exclusion list](benchmarks/2026-11-25-windows-desktop-phase5-trust-check-exclusion-evidence.txt);
+System32 [benchmark](benchmarks/2026-11-25-windows-desktop-phase5-system32.json),
+[with rules](benchmarks/2026-11-25-windows-desktop-phase5-system32-false-positives.json),
+[machine](benchmarks/2026-11-25-windows-desktop-phase5-machine.json).

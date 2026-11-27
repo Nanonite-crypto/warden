@@ -1,0 +1,51 @@
+[package]
+name = "warden-autostart"
+description = "What makes Windows start a file again: finding it, taking it away with a quarantined file, and putting it back."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+warden-quarantine.workspace = true
+warden-sigdb.workspace = true
+
+# Reads the definition of a scheduled task, which is XML. Already used
+# for the block map of an app package, with the same limits.
+roxmltree.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+
+# The calls into Windows: the registry, the service manager, the Task
+# Scheduler and the shell. The Task Scheduler and shortcuts are COM
+# interfaces, which `windows-sys`, the bindings the other crates use,
+# leaves out by design. This is the other set of bindings from Microsoft,
+# with COM. It is built on Windows only and brings nine small crates of
+# the same project with it. "Ole" and "Variant" are there for the values
+# that the Task Scheduler's functions take. All calls are in
+# `src/windows.rs`.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_System_Services",
+    "Win32_System_TaskScheduler",
+    "Win32_System_Variant",
+    "Win32_UI_Shell",
+] }

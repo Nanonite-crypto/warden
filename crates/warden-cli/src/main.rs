@@ -13,6 +13,7 @@
 #[macro_use]
 mod out;
 
+mod autostart;
 mod bench;
 mod fp;
 mod inspect;
@@ -23,6 +24,7 @@ mod rules;
 mod scan;
 mod sigdb;
 mod system;
+mod trust;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -85,6 +87,25 @@ enum Command {
     #[command(subcommand)]
     Quarantine(quarantine::QuarantineCommand),
 
+    /// Show what makes Windows start a program
+    ///
+    /// Values under the Run keys, scheduled tasks, services and drivers,
+    /// and shortcuts in the Startup folders. When a file is quarantined,
+    /// the entries that start it are removed with it, and a restore puts
+    /// them back; these commands show them and change nothing, except
+    /// `remove`, which finishes such a removal. Windows only.
+    #[command(subcommand)]
+    Autostart(autostart::AutostartCommand),
+
+    /// Check who signed a file, and whether Warden trusts the publisher
+    ///
+    /// A match of a rule that came with a rule bundle is recorded and not
+    /// reported when the file has a valid signature of a publisher on
+    /// Warden's trust list. These commands show what that check finds.
+    /// Signatures can only be checked on Windows.
+    #[command(subcommand)]
+    Trust(trust::TrustCommand),
+
     /// Print the SHA-256 of files
     Hash {
         /// Files to hash
@@ -107,6 +128,8 @@ fn main() -> ExitCode {
         Command::FalsePositives(args) => fp::run(&args),
         Command::Inspect(args) => inspect::run(&args),
         Command::Quarantine(command) => quarantine::run(&command),
+        Command::Autostart(command) => autostart::run(&command),
+        Command::Trust(command) => trust::run(&command),
         Command::Hash { files } => misc::hash(&files),
         Command::Eicar(command) => misc::eicar(&command),
     };

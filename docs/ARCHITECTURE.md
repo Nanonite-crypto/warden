@@ -3,10 +3,11 @@
 This document describes the design Warden is being built towards and marks
 what exists today. The phases are in [ROADMAP.md](ROADMAP.md).
 
-**Implemented so far (phases 1 to 4):** the engine library, the signature
-database, hash matching, YARA rules, zip scanning, the heuristic layer, a
-verdict policy in which a finding can depend on a second sign, the
-quarantine, and the command-line tool.
+**Implemented so far (phases 1 to 4, and the first piece of phase 5):** the
+engine library, the signature database, hash matching, YARA rules, zip
+scanning, the heuristic layer, a verdict policy in which a finding can
+depend on a second sign and can yield to a trusted signature, the
+quarantine, the check of who signed a file, and the command-line tool.
 
 ## Scope
 
@@ -46,19 +47,22 @@ flowchart TB
         realtime["Real-time monitor"]
         store["Data store<br/>signatures, history"]
         remediation["Remediation"]
+        isolation["Remote access isolation"]
         realtime --> jobs --> engine --> vault --> remediation
         store --> engine
+        isolation --> vault
     end
-    events["Windows event sources<br/>file changes, process starts"]
+    events["Windows event sources<br/>file changes, process starts, connections"]
     app <--> pipe
     cli <--> pipe
     pipe <--> service
     events --> realtime
+    events --> isolation
 ```
 
 - **Core service** (phase 6). A Windows service running as SYSTEM. It owns
   the engine, the signature store, the quarantine vault, remediation, the
-  real-time monitor and all state. Anything that needs privilege, or must
+  real-time monitor, remote access isolation and all state. Anything that needs privilege, or must
   keep running with nobody logged in, lives here.
 - **Desktop app** (phase 7). Tauri with a React front end, running with the
   user's normal rights. A thin client with no engine code; it cannot delete
@@ -77,7 +81,9 @@ elevated caller.
 
 1. **The engine is a plain library.** No user interface, no service code and
    no Windows-only APIs beyond a few file-opening hints. It can be tested,
-   benchmarked and fuzzed in isolation, on any platform.
+   benchmarked and fuzzed in isolation, on any platform. Where it needs
+   something only Windows can answer, such as who signed a file, it says
+   what it needs as a trait and a client hands it the answer.
 2. **Detectors report, a policy decides.** A detector returns findings, each
    with a confidence and human-readable reasons. A separate verdict policy
    turns the findings for a file into clean, suspicious or malicious. Every
@@ -87,10 +93,13 @@ elevated caller.
    something backs it up is again for the policy to see, not for the
    detector.
 3. **Nothing is destroyed.** Quarantine is journaled and reversible. A
-   guard that refuses to quarantine signed Windows system files belongs to
-   this rule, because a false positive there can stop Windows from
-   starting. It is not built yet: it needs signature checking. Until it
-   exists, nothing is quarantined unless a person names the file.
+   guard belongs to this rule: a file that Windows itself signed stays
+   where it is, because a false positive there can stop Windows from
+   starting, and then nothing is left to undo it with. The quarantine
+   states what it asks before it takes a file as a trait, `Guard`, and
+   `warden` answers it with `warden-trust`; taking such a file all the
+   same needs a flag that has to be given on purpose. Nothing is
+   quarantined yet unless a person names the file.
 4. **Files are hostile input.** Parsers get limits, and fuzz targets from
    phase 3 on. A file that cannot be read is reported as skipped with a
    reason, and a file that could only be checked in part is reported as
@@ -112,16 +121,26 @@ crates/
                     and inert executables for tests
   warden-quarantine/
                     the quarantine: the entry format, the journal that
-                    settles interrupted operations, and what a file has
-                    besides its content on Unix and on Windows
+                    settles interrupted operations, what a file has
+                    besides its content on Unix and on Windows, and the
+                    guard it asks before it takes a file
+  warden-trust/     who signed a file: the three routes to a signature,
+                    the trust list, and the one module that asks Windows
+  warden-autostart/ what makes Windows start a file: the four places, the
+                    record of an entry, the rules for removing and putting
+                    back, and the one module that asks Windows
   warden-cli/       the `warden` command-line tool
   warden-calibrate/ development tool: measures the indicators on a public
                     dataset and fits their weights; not part of the scanner
+  warden-dummy/     test program: a harmless stand-in for a program that
+                    starts with Windows; not part of the scanner
 calibration/        the counts the weights are fitted to, and the report
 docs/               this document, the roadmap, format specs, testing, benchmarks
 fuzz/               fuzz targets for the parsers
 rules/              which public rule release the rule bundle is built from,
                     and which of its rules are left out, with the evidence
+trust/              the publishers whose signature Warden trusts, with the
+                    evidence
 scripts/            fetch and check scripts, for Linux and Windows
 ```
 
@@ -135,8 +154,19 @@ The quarantine depends on neither the engine nor the detection layers: it
 moves files, whoever asks. Of the other crates it uses one function, the
 signature database's helper that writes bytes as hexadecimal.
 
-Crates planned for later phases: `remediation`, `realtime`, `ipc`,
-`service`, and the Tauri app.
+The signature check is a crate of its own because it is the one part of a
+scan that talks to Windows at length, through functions that need `unsafe`
+code. It implements a trait of the engine, as the detection layers do, and
+the engine never learns what a certificate is.
+
+The autostart entries are a crate of their own for the same reason, and
+for a second one: they need Microsoft's `windows` crate for the Task
+Scheduler and for shortcuts, which are COM interfaces. Every other crate
+uses the smaller `windows-sys`, which leaves COM out by design. The larger
+one is built for this crate alone, on Windows alone.
+
+Crates planned for later phases: `realtime`, `ipc`, `service`, `netwatch`
+and `isolate` for remote access isolation, and the Tauri app.
 
 ## The scan pipeline
 
@@ -169,7 +199,9 @@ flowchart LR
    through the same detectors, see [Archives](#archives).
 6. The **verdict policy** first settles which findings count, then
    decides clean, suspicious or malicious from those, the file's members
-   included. See [the verdict policy](#the-verdict-policy).
+   included. See [the verdict policy](#the-verdict-policy). If a finding
+   that yields to a trusted signature would be reported, the worker first
+   asks [who signed the file](#who-signed-a-file).
 7. The **calling thread** collects outcomes, so an observer (a progress
    line today, the service's event stream later) needs no locking.
 
@@ -192,8 +224,12 @@ a file suspicious and never malicious.
 
 Whether a file carries a signature is not part of the heuristic score,
 because the presence of a signature proves nothing: one can be appended to
-any file. Checking signatures properly is later work. A valid one may then
-lower a heuristic score; it will never cancel a hash or YARA hit.
+any file. A signature that Windows has checked is another matter, and since
+phase 5 Warden has such a check. What it changes is narrow: the valid
+signature of a publisher on a short list sets aside the match of a rule
+that came with a bundle. It does not lower a heuristic score, and it does
+not touch a hash match or the match of a built-in rule. See
+[Who signed a file](#who-signed-a-file).
 
 How a rule match becomes a verdict, where rules come from, which rules are
 left out because they flag clean files, and what a rule bundle looks like on
@@ -214,6 +250,15 @@ Two rules keep this honest. A detector does not back itself: two generated
 rules that match one file are one layer saying the same thing twice. And
 it is settled per file, and inside an archive per member: a rule match in
 one member and an odd structure in another do not add up.
+
+A finding can also say that it **yields to a trusted signature**. That is
+for evidence that is known to be wrong about clean software now and then:
+the match of a rule from a bundle says it, and nothing else does. If such a
+finding would be reported, the worker asks who signed the file. With the
+signature of a trusted publisher, the yielding findings are set aside
+before anything else is settled: they stay on record with low confidence,
+say why, and are nobody's second sign. Every other finding counts as it
+would without the signature.
 
 After that the strongest finding that counts decides, as before: high
 confidence is malicious, medium is suspicious, low changes nothing.
@@ -300,6 +345,36 @@ Known gaps, by decision:
   entries. That overlap is not detected as such either: each entry is
   unpacked as a member of its own, and the limits above end it.
 
+## Who signed a file
+
+Implemented in `warden-trust`, behind the engine's `TrustCheck` trait.
+[TRUST.md](TRUST.md) has the details; in short:
+
+- **Three routes to a signature**, tried in order: inside the executable,
+  in a catalogue of Windows, and in the signature of the app package the
+  file belongs to. Most of Windows is signed only the second way, and the
+  files of apps from the Microsoft Store only the third.
+- **Windows answers what only Windows can**: whether a signature holds,
+  whether a certificate was revoked, whether a chain ends in a root of
+  Microsoft's, which catalogue lists a file. Warden asks through
+  `WinVerifyTrust` and the catalogue functions, in one module, the only
+  one in the crate with `unsafe` code.
+- **Warden does what Windows does not**: it holds the file open against
+  writing and compares its SHA-256 with the scan's, so that the answer is
+  about the bytes that were scanned. It looks through the part of an
+  executable that no signature covers. It follows a package's signature
+  down to the bytes of the file.
+- **A valid signature is not trust.** A list that is compiled into the
+  program names the publishers that count, each by the two names in its
+  certificate and by what its chain has to pass through, each with a real
+  file as evidence. Today those are Microsoft Corporation and Microsoft
+  Windows.
+- **It is asked rarely.** Only about a file with a rule match that would
+  otherwise be reported, never about a file inside an archive.
+
+Everything but the module that calls Windows runs and is tested on any
+system, with a stand-in that answers for Windows.
+
 ## Signature database
 
 Implemented in `warden-sigdb`. A sorted table of SHA-256 digests with a
@@ -328,6 +403,12 @@ Implemented in `warden-quarantine` and driven by `warden quarantine`.
 - **What a file has besides its content comes back too**: timestamps, on
   Unix the owner and permission bits, on Windows the attribute bits, the
   security descriptor and the mark of a downloaded file.
+- **A guard has the last look.** Before a file is taken, the quarantine
+  asks a `Guard`, if it was given one. `warden` gives it one that asks
+  `warden-trust` whether Windows itself signed the file, and such a file
+  stays. The quarantine learns nothing about signatures, and
+  `warden-trust` nothing about quarantines; the command-line program is
+  where the two meet.
 
 It runs with the rights of whoever calls it and keeps its folder in that
 user's own data folder. What a quarantine for a whole machine needs comes
@@ -337,13 +418,50 @@ could not write to. A privileged restore through a junction into a system
 folder is the classic way an antivirus product gets turned against the
 machine it protects.
 
-## Remediation (phase 5)
+## Remediation
 
-One enumerator each for registry Run keys, scheduled tasks, services and
-startup folders, each resolving an entry to the file it launches.
-Quarantining a file removes the entries that point at it and stores them
-in the quarantine record, so that restore puts them back. A file that is
-in use is removed when Windows next starts.
+Implemented in `warden-autostart` and driven by `warden quarantine` and
+`warden autostart`. [REMEDIATION.md](REMEDIATION.md) has the details; in
+short:
+
+- **Four places are read**: Run and RunOnce values, scheduled tasks,
+  services and drivers, and shortcuts in the Startup folders. Each entry
+  is kept in the form Windows has it in, so that it can be given back.
+- **An entry starts a file if the file's full path stands in its command
+  line**, as the program or as something passed to one, with the variables
+  filled in for the user the entry belongs to.
+- **Record first, then remove.** Everything an entry is goes into a record
+  that the quarantine keeps with the file's entry. Entries are removed one
+  at a time and the record is written after each, so a run that is cut off
+  leaves every entry in its place, in the record, or in both.
+- **Both directions look before they act.** An entry is removed only if it
+  is still what the record holds. It is put back only if its place is
+  empty, and what is there afterwards is read and compared with the
+  record.
+- **What could not be put back is not removed**: a task or a service that
+  runs with a stored password, and the copy of a service that Windows
+  makes for each user.
+
+The rules are ordinary code behind a trait, `System`, with five functions:
+survey, the spellings of a path, read one entry, remove one, create one.
+The tests run them against a stand-in that keeps entries in memory. One
+module implements the trait for Windows and holds all of the crate's
+`unsafe` code. It asks Windows wherever Windows owns the format: the Task
+Scheduler for tasks, the service manager for services, the shell for
+shortcuts.
+
+The crate knows the quarantine, because that is where its records and the
+shortcuts go. The quarantine does not know the crate: it keeps a record
+with an entry for whoever asks, and does not read it.
+
+Quarantining the file of a program that runs is not built: Windows does
+not let such a file be removed. It makes sense only together with stopping
+the program, which takes the rights of a service, and comes with the
+service of phase 6.
+
+The same look at what starts programs feeds the quarantine's second guard:
+a file that Windows loads as a driver while it starts stays where it is
+([QUARANTINE.md](QUARANTINE.md#drivers-that-windows-loads-while-it-starts)).
 
 ## Real-time protection (phase 9)
 
@@ -357,9 +475,30 @@ User mode hears about events after they happen, so a file can start running
 before the verdict arrives. This is detect-and-respond, not prevention, and
 the measured delay will be published. Blocking before execution needs a
 filter in the kernel's I/O path that holds the operation until a scanner
-answers; that is the optional, VM-only phase 12.
+answers; that is the optional, VM-only phase 13.
 
-## Self-protection (phase 10)
+## Remote access isolation (phase 10)
+
+Planned, and nothing of it is built. The service will notice a program
+that opens a channel for remote control, cut that program off from the
+network, and leave what happens next to the user.
+
+- It reads what Windows already publishes about process starts,
+  connections and name lookups. No driver is involved.
+- It cuts with filters of the Windows Filtering Platform. A program that
+  hosts other code, such as a Java runtime, loses one destination. A
+  program of its own that is unsigned and downloaded, or that a scan
+  flags, loses its network access as a whole.
+- Nothing is deleted or stopped by it. An alert offers to keep the
+  program isolated, to quarantine it or to allow it.
+- It has a mode that only watches and records, which is how its false
+  positives are measured before it may cut anything.
+
+A filter added from user mode comes after the connection it reacts to, so
+the first packets get out. The design is written up under `docs/design/`
+at the portfolio checkpoint.
+
+## Self-protection (phase 11)
 
 In user mode the service will:
 
@@ -384,6 +523,9 @@ drivers that strip dangerous rights from handles opened to their processes.
 
 ## References
 
+- [Microsoft: WinVerifyTrust](https://learn.microsoft.com/en-us/windows/win32/api/wintrust/nf-wintrust-winverifytrust)
+- [Microsoft: CertVerifyCertificateChainPolicy, with the policy for Microsoft's own roots](https://learn.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-certverifycertificatechainpolicy)
+- [Microsoft: CVE-2013-3900, data added next to a signature](https://msrc.microsoft.com/update-guide/vulnerability/CVE-2013-3900)
 - [Microsoft: Driver signing](https://learn.microsoft.com/windows-hardware/drivers/install/driver-signing)
 - [Microsoft: Protecting anti-malware services](https://learn.microsoft.com/en-us/windows/desktop/Services/protecting-anti-malware-services-)
 - [Microsoft: Early launch antimalware prerequisites](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/elam-prerequisites)

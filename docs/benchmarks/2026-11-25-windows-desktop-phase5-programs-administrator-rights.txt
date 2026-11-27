@@ -1,0 +1,14 @@
+scan-as-admin-trust: started
+2026-11-25T00:51:41Z rights: administrator=True windowsapps_can_be_listed=yes
+2026-11-25T00:51:42Z trust list: 2 publishers on the trust list that is part of this program (SHA-256 6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778)
+2026-11-25T00:51:43Z program: warden 0.1.0
+2026-11-25T00:51:43Z bundle: rules=5,132 excluded=6 purecrypter_in_bundle=True
+2026-11-25T00:51:44Z xpdagent: files=1 exit=0 (0 means every file is trusted)
+2026-11-25T00:51:46Z exclusion evidence: named=7 at_their_place=4 exit=1
+2026-11-25T00:51:46Z scan: started
+2026-11-25T01:13:05Z scan: finished exit=0
+2026-11-25T01:13:06Z survey trust-windowsapps: started
+2026-11-25T01:14:35Z survey trust-windowsapps: finished exit=0
+2026-11-25T01:14:35Z survey trust-system32: started
+2026-11-25T01:15:32Z survey trust-system32: finished exit=0
+2026-11-25T01:15:32Z scan-as-admin-trust: done

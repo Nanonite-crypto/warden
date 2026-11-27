@@ -1,0 +1,140 @@
+The restarts of the virtual machine while the autostart kit ran on
+2026-11-27, and what each of them took.
+
+The kit asks for Windows to be restarted twice. The first time this was
+done, the restart never finished, and the machine was reset by hand. The
+kit was then run to its end, and through a second time, and after that
+the machine was restarted three more times with nothing done before. This
+file says what was seen and measured of all nine restarts.
+
+Where the numbers come from
+---------------------------
+
+- "Windows' shutdown" and "next start" are events 200 and 100 of the
+  guest's log Microsoft-Windows-Diagnostics-Performance/Operational: the
+  time the event gives ("Incident Time (UTC)") and the duration it gives.
+  A service that Windows names as having held the shutdown up is its
+  event 203. These were read off the guest's Event Viewer on the screen,
+  by hand. They are not in the serial capture.
+- The times are the guest's clock. It was about nine hours ahead of the
+  real time, so restart A is at 17:34 by the guest and was at 08:34 UTC,
+  and the others are on 2026-11-28 by the guest and were between 20:07
+  and 20:39 UTC on 2026-11-27.
+- "Back at the desktop" is what the VirtualBox window showed, by the
+  host's clock, to about a quarter of a minute.
+- Restarts F to I were not looked up in the guest's log. That each of
+  them happened shows in the serial capture, where the machine's firmware
+  writes 87 bytes at every start. The capture has ten times that: the
+  start in the morning, the start after the reset by hand, and one for
+  each of the restarts B to I.
+- VirtualBox's own log of the machine was read on the screen as well.
+
+The restarts
+------------
+
+    What was done before          Windows' shutdown         Next start     Back at the
+    the restart                   began          took       began          desktop
+
+ A  kit, run 1: Warden had        17:34:21.195    7,791 ms  never          never
+    removed the seven entries
+ B  kit, run 2: Warden had        05:02:52.293    8,233 ms  05:02:38.620   within 45 s
+    put them back
+ C  kit, run 3: the kit had       05:07:50.817   10,725 ms  05:07:30.637   within 45 s
+    cleaned up
+ D  kit again, run 1: Warden      05:10:02.915    8,332 ms  05:11:25.621   after about
+    had removed the entries                                                two minutes
+ E  kit again, run 2: Warden      05:14:52.996    8,341 ms  05:14:38.627   within 40 s
+    had put them back
+ F  kit again, run 3: the kit     not read                  not read       within 40 s
+    had cleaned up, and Event
+    Viewer had been used
+ G  nothing                       not read                  not read       within 40 s
+ H  nothing                       not read                  not read       within 45 s
+ I  nothing                       not read                  not read       within 40 s
+
+Restart A
+
+- Windows was told to restart at 09:34 local time (08:34 UTC). The screen
+  went black and stayed black.
+- VirtualBox's log has "xHCI: USB Suspended" and "HDA: Reset" at 00:06:27
+  of the machine's running time, which is about when the restart was
+  asked for. Four minutes later those were still its last lines. At 21:02
+  local time its last lines were about the host's sound devices, and a
+  search for "Hardware reset" found two lines, the later one at 00:00:12
+  of the running time, from the start in the morning. Nothing in the log
+  spoke of a second start.
+- Moving the mouse over the window changed nothing, and neither did a key
+  sent to it.
+- At 21:03 local time, after 11 hours and 29 minutes, the machine was
+  reset by hand with VirtualBox's "Reset". Windows started and was at the
+  desktop within 45 seconds.
+- Windows' own record of that shutdown, written at this next start, says
+  that it took 7,791 ms, and counts it as slower than usual
+  ("IsDegradation: true"). It names the Task Scheduler service as having
+  held it up: a total time of 4,972 ms, of which 972 ms count as delay.
+
+Restarts B and C
+
+- Windows counts both shutdowns as slower than usual too. For B it names
+  no service. For C it names the Task Scheduler service again: a total
+  time of 4,977 ms, of which 977 ms count as delay. Both restarts were
+  quick.
+
+Restart D
+
+- The screen was black 45 seconds after the restart was asked for, showed
+  the mark of a starting Windows after about a minute and a half, and the
+  desktop after about two minutes.
+- Windows counts neither this shutdown nor that of restart E as slower
+  than usual.
+
+What the numbers say
+--------------------
+
+- Windows shut down in 7.8 to 10.7 seconds every time it was measured,
+  also in the restart that never finished and in the slow one.
+- In the three quick restarts that were looked up (B, C, E), the next
+  start is stamped 22 to 31 seconds before the end of the shutdown that
+  came before it. The stamps on the two sides of a start are therefore
+  not on one clock, and cannot be subtracted as they stand. The guest's
+  clock is apparently set anew when Windows starts; that was not looked
+  into. The stamps can be compared with one another: in restart D the
+  next start is stamped 74 seconds after the end of the shutdown. If the
+  clock was set by about as much each time, D took 96 to 105 seconds
+  longer than B, C and E between the end of Windows' shutdown and the
+  beginning of its next start. The screen agrees as far as it can: the
+  desktop was there after about two minutes where it was otherwise there
+  within three quarters of one.
+- That is where restart A stopped as well: Windows had shut down, and the
+  machine was not started again.
+
+What is not known
+-----------------
+
+- Why. The two restarts that did not go as usual are the two that followed
+  the kit's first run, after Warden had removed the entries. The seven
+  others went as usual: two after Warden had put the entries back, two
+  after the kit had cleaned up with Windows' own tools, three with nothing
+  done before. Nine restarts are few, and two of nine can fall on the
+  same step by chance.
+- What the kit's first run leaves behind that could matter after Windows
+  has shut down. Nothing was found. Among the warnings and errors of the
+  guest's System log, the shutdown before D has two entries, an error of
+  DistributedCOM (10010) and a warning of WinSrvExt (100), and the
+  shutdowns before B and E have the same two. Around A that log was not
+  looked at.
+- Whether it is the virtual machine. No other machine and no other
+  hypervisor was tried. This machine has left a black screen twice
+  before: at a restart during Windows Setup, before anything of Warden's
+  was on it, and once in the middle of a scan (docs/TESTING.md has both,
+  docs/BENCHMARKS.md the second).
+
+Not tried: the entries made and removed with Windows' own tools alone,
+followed by a restart; the five timed looks alone, followed by a restart;
+more restarts of each kind.
+
+The machine: Windows 11 Enterprise Evaluation 26H2 (10.0.26300, build
+26300.9457) as a guest of Oracle VirtualBox with 4 processors and 8 GB of
+memory, EFI with Secure Boot, a TPM 2.0, and "Nested Paging, Hyper-V
+Paravirtualization" as its acceleration. The host is the desktop of the
+other results.

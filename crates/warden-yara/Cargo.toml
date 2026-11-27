@@ -28,4 +28,6 @@ yara-x-parser.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
+warden-trust.workspace = true
+
 tempfile.workspace = true

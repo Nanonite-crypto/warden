@@ -6,8 +6,9 @@ name: Windows check
 # the whole of CI is spent on it. Start it by hand, or push a branch named
 # win-check/<anything>.
 #
-# The engine and the quarantine are here. The crates that need the rule
-# engine are not: building it takes most of the time CI takes.
+# The engine, the quarantine and the autostart entries are here. The crates
+# that need the rule engine are not: building it takes most of the time CI
+# takes.
 on:
   workflow_dispatch:
   push:
@@ -27,7 +28,7 @@ env:
 
 jobs:
   test:
-    name: Engine and quarantine on Windows
+    name: Engine, quarantine and autostart entries on Windows
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -36,12 +37,34 @@ jobs:
         shell: bash
         run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy --no-self-update
       - uses: Swatinem/rust-cache@v2
+      # The scripts in scripts/win are started by hand. That each of them
+      # parses is checked in the PowerShell every Windows has and in the
+      # newer one, which is the shell of these steps.
+      - name: Parse the PowerShell scripts
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\win\parse-check.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File scripts\win\parse-check.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Lint
-        run: cargo clippy -p warden-engine -p warden-quarantine --all-targets --locked -- -D warnings
+        run: cargo clippy -p warden-engine -p warden-quarantine -p warden-autostart --all-targets --locked -- -D warnings
       # All of them, also after one has failed: a round trip through CI
       # should say everything it can. From PowerShell, the default shell
       # here, for the reason given in ci.yml.
       - name: Test
-        run: cargo test -p warden-engine -p warden-quarantine --locked --no-fail-fast
+        run: cargo test -p warden-engine -p warden-quarantine -p warden-autostart --locked --no-fail-fast
         env:
           WARDEN_REQUIRE_ACCESS_TESTS: "1"
+      # The tests above left out the ones that change the machine. Here
+      # they run: they register a service, two tasks, three Run values and
+      # a Startup shortcut with Windows' own tools, let Warden remove them
+      # and put them back, and compare what those tools show before and
+      # after. The variable says in as many words that this machine may be
+      # changed, which is true of a hosted runner: it is deleted when the
+      # job ends. One test at a time and with its output, so that the log
+      # shows what Windows showed.
+      - name: Autostart entries, removed and put back on this machine
+        if: ${{ !cancelled() }}
+        run: cargo test -p warden-autostart --test on_windows --locked -- --nocapture --test-threads=1
+        env:
+          WARDEN_AUTOSTART_TESTS: this-machine-may-be-changed

@@ -26,6 +26,23 @@
 //!
 //! At no point is the only copy of a file one that is incomplete.
 //!
+//! # A last look
+//!
+//! Quarantining the wrong file can be undone, unless the file is one the
+//! system needs to start. A quarantine can be given a [`Guard`] that looks
+//! at every file before it goes and can say that it should stay. Taking
+//! such a file all the same is possible, and has to be asked for:
+//! [`Quarantine::add_with`] and [`AddOptions::overrule_guard`].
+//!
+//! # Records kept with an entry
+//!
+//! Taking a file away can mean taking more away than the file: what
+//! started it, for one. Whoever does that needs a place to write down
+//! what was taken, next to the entry, so that a restore can put it back.
+//! [`Quarantine::attach`] keeps such a record with an entry. The
+//! quarantine does not look into it; it keeps it whole, private, and for
+//! as long as it is wanted.
+//!
 //! # What the cipher is for
 //!
 //! Not secrecy: the key is stored next to the content. It makes sure that
@@ -65,6 +82,7 @@
 //! ```
 
 pub mod format;
+mod guard;
 mod hex;
 mod info;
 mod journal;
@@ -75,6 +93,7 @@ mod store;
 mod windows;
 
 pub use format::Problem;
+pub use guard::{AddOptions, Guard, Verdict};
 pub use info::{CIPHER, Cipher, EntryInfo, ExactPath, Reason, Stamp, Times, UnixMeta, WindowsMeta};
 pub use store::{
     Damaged, Entry, Listing, Operation, Outcome, Quarantine, QuarantineError, Recovered,

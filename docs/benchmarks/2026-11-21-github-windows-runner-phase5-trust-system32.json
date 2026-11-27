@@ -1,0 +1,315 @@
+{
+  "schema": 1,
+  "label": "GitHub-hosted Windows runner, System32",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 25 Model 17 Stepping 1, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Windows\\System32"
+  ],
+  "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+  "publishers_listed": 2,
+  "network": true,
+  "threads": 2,
+  "duration_ms": 54976,
+  "files": 21567,
+  "executables": 8760,
+  "could_not_list": 2,
+  "files_trusted": 8544,
+  "executables_trusted": 8544,
+  "trusted": [
+    {
+      "publisher": "Microsoft Corporation",
+      "route": "embedded",
+      "files": 132,
+      "executables": 132,
+      "example": {
+        "path": "C:\\Windows\\System32\\1028\\vsjitdebuggerui.dll",
+        "sha256": "5824289e15fd36232407fa0378cdf003bf9f540216d49e9d43416e11fb42ae50"
+      }
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "embedded",
+      "files": 1541,
+      "executables": 1541,
+      "example": {
+        "path": "C:\\Windows\\System32\\0ae3b998-9a38-4b72-a4c4-06849441518d_Servicing-Stack.dll",
+        "sha256": "2131759ff0d6537f03bbb7d8eeed341f686058be1aa1094ba9b2096bb25399b8"
+      }
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "windows_catalog",
+      "files": 6871,
+      "executables": 6871,
+      "example": {
+        "path": "C:\\Windows\\System32\\aadcloudap.dll",
+        "sha256": "1fc639a0e4562a1873a95c7a244b1ae97f9e97aeafa755f2c8324a1adb7cfa5e"
+      }
+    }
+  ],
+  "not_trusted": [
+    {
+      "reason": "no_signature",
+      "files": 12656,
+      "executables": 85,
+      "example": "C:\\Windows\\System32\\0409\\scregedit.ini"
+    },
+    {
+      "reason": "invalid",
+      "files": 4,
+      "executables": 4,
+      "example": "C:\\Windows\\System32\\DMRCDecoder.dll"
+    },
+    {
+      "reason": "not_listed",
+      "files": 127,
+      "executables": 127,
+      "example": "C:\\Windows\\System32\\ApplyTrustOffline.exe"
+    },
+    {
+      "reason": "not_checked",
+      "files": 236,
+      "executables": 0,
+      "example": "C:\\Windows\\System32\\5E37410B-D6F1-471D-AE27-563CEAC0D6B2"
+    }
+  ],
+  "details": [
+    {
+      "reason": "not_checked",
+      "detail": "the file cannot be opened in a way that keeps it from changing during the check: The process cannot access the file because it is being used by another process. (os error 32)",
+      "files": 232,
+      "example": "C:\\Windows\\System32\\5E37410B-D6F1-471D-AE27-563CEAC0D6B2"
+    },
+    {
+      "reason": "not_checked",
+      "detail": "the file cannot be opened in a way that keeps it from changing during the check: The file cannot be accessed by the system. (os error 1920)",
+      "files": 4,
+      "example": "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\ActionsMcpHost.exe"
+    },
+    {
+      "reason": "invalid",
+      "detail": "the signer's chain ends in a root that this machine does not trust (Windows error 0x800B0109)",
+      "files": 4,
+      "example": "C:\\Windows\\System32\\DMRCDecoder.dll"
+    }
+  ],
+  "details_truncated": false,
+  "signers": [
+    {
+      "common_name": "Microsoft Windows",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Windows",
+      "files": 8412,
+      "embedded": 1541,
+      "windows_catalog": 6871,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Corporation",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Corporation",
+      "files": 132,
+      "embedded": 132,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft Windows Software Compatibility Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 46,
+      "embedded": 46,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft Windows Hardware Compatibility Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 30,
+      "embedded": 30,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Windows Hardware Abstraction Layer Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 18,
+      "embedded": 18,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Windows Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 15,
+      "embedded": 15,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft 3rd Party Application Component",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 4,
+      "embedded": 4,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft Windows Kits Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 4,
+      "embedded": 4,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Windows Third Party Application Component",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 3,
+      "embedded": 3,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Intel Corporation - Client Components Group",
+      "organization": "Intel Corporation",
+      "microsoft_root": false,
+      "files": 2,
+      "embedded": 2,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 2,
+      "root": "AddTrust External CA Root",
+      "root_sha256": "687fa451382278fff0c8b11f8d43d576671c6eb2bceab413fb83d965d06d2ff2"
+    },
+    {
+      "common_name": "Microsoft Windows Early Launch Anti-malware Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 2,
+      "embedded": 2,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Google LLC",
+      "organization": "Google LLC",
+      "microsoft_root": false,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert Assured ID Root CA",
+      "root_sha256": "3e9099b5015e8f486c00bcea9d111ee721faba355a89bcf1df69561e3dc6325c"
+    },
+    {
+      "common_name": "Microsoft Corp Enclave Signer",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft Windows 3rd party Component",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    }
+  ],
+  "signers_not_listed": {
+    "signers": 12,
+    "files": 127,
+    "signers_under_a_microsoft_root": 10,
+    "files_under_a_microsoft_root": 124
+  },
+  "timing": [
+    {
+      "outcome": "all",
+      "files": 21567,
+      "mean_ms": 5.039821069226133,
+      "median_ms": 0.818,
+      "p95_ms": 18.474,
+      "max_ms": 3482.007
+    },
+    {
+      "outcome": "embedded",
+      "files": 1673,
+      "mean_ms": 15.475350866706515,
+      "median_ms": 5.95,
+      "p95_ms": 35.777,
+      "max_ms": 3482.007
+    },
+    {
+      "outcome": "windows_catalog",
+      "files": 6871,
+      "mean_ms": 9.43559132586232,
+      "median_ms": 5.498,
+      "p95_ms": 28.234,
+      "max_ms": 322.98
+    },
+    {
+      "outcome": "not_trusted",
+      "files": 13023,
+      "mean_ms": 1.3799900944482837,
+      "median_ms": 0.54,
+      "p95_ms": 3.222,
+      "max_ms": 934.85
+    }
+  ]
+}

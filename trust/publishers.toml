@@ -1,0 +1,102 @@
+# Publishers whose valid signature keeps a match of a published rule on
+# record and out of the verdict. docs/TRUST.md explains the list and says
+# how a publisher gets on it. In short:
+#
+# - An entry names a signing identity: the two names in the signer's
+#   certificate, and what its chain of certificates has to pass through.
+# - It says what that identity signs, and why it is on the list.
+# - It names at least one real file with such a signature: where it was
+#   seen, its SHA-256, the route its signature was found by, the day and
+#   the machine.
+# - It can say operating_system = true: this identity signs the operating
+#   system itself. The scan does nothing with that. The quarantine leaves
+#   such a file where it is unless it is told to take it all the same,
+#   because Windows may not start without one of its own files.
+#
+# The list is compiled into the program. A valid signature of a publisher
+# that is not here changes nothing.
+
+[[publisher]]
+name = "Microsoft Corporation"
+common_name = "Microsoft Corporation"
+organization = "Microsoft Corporation"
+anchor = "microsoft-root"
+signs = """\
+Microsoft's own applications, and the packages of the apps that Microsoft \
+itself publishes in the Microsoft Store. Not the apps of other publishers \
+in the Store, which are signed for an identity of their own, and not other \
+companies' drivers and components, which Microsoft signs under other names."""
+reason = """\
+A rule written by hand flagged a file of the Microsoft Defender app among \
+the programs of a desktop. Without this entry the rule had to be left out \
+of the bundle, for every file."""
+added = 2026-11-21
+
+[[publisher.evidence]]
+file = 'C:\Program Files\WindowsApps\Microsoft.6365217CE6EB4_102.2611.9002.0_x64__8wekyb3d8bbwe\MicrosoftSecurityApp\xpdAgent.exe'
+sha256 = "86f95974cb32af876d64a85b647b042e5aa3d215d8daff481d1f876b1373a8ec"
+route = "embedded"
+seen = 2026-11-21
+machine = "Windows 11 desktop"
+note = """\
+First read with Windows' own Get-AuthenticodeSignature, before Warden could \
+check a signature: valid, embedded, signed for Microsoft Corporation. The \
+SHA-256 is the one the scan of 2026-11-20 recorded for the file at this \
+path. On 2026-11-25 warden trust check said the same about it on that \
+desktop: the chain is Microsoft Corporation, Microsoft Windows Code Signing \
+PCA 2024, Microsoft Root Certificate Authority 2010, and revocation was \
+checked."""
+
+[[publisher.evidence]]
+file = 'C:\Program Files\PowerShell\7\pwsh.exe'
+sha256 = "e94166ed9f376559c1359bafb08bc49e463a494c330f67644ec1d9f1ffeb5ee5"
+route = "embedded"
+seen = 2026-11-21
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+note = """\
+Checked with warden trust check in CI. The chain is Microsoft Corporation, \
+Microsoft Code Signing PCA 2024, Microsoft Root Certificate Authority 2011, \
+and revocation was checked."""
+
+[[publisher]]
+name = "Microsoft Windows"
+common_name = "Microsoft Windows"
+organization = "Microsoft Corporation"
+anchor = "microsoft-root"
+operating_system = true
+signs = """\
+Windows itself: its system files, most of them through the catalogues that \
+Windows keeps and some in the file. Not Microsoft's applications, which are \
+signed as Microsoft Corporation, and not the drivers and components of \
+other companies, which Microsoft signs under other names."""
+reason = """\
+The files of Windows are the largest body of clean files on any machine, \
+and published rules have flagged files in System32 on a hosted runner and \
+on a desktop (docs/BENCHMARKS.md). Decided on 2026-11-21: the list starts \
+with Microsoft and the Windows catalogue."""
+added = 2026-11-21
+
+[[publisher.evidence]]
+file = 'C:\Windows\System32\ntdll.dll'
+sha256 = "4092c01cb70e15a956d76ca43366a6e324f1154eab7bf7636fe13236215c578a"
+route = "embedded"
+seen = 2026-11-21
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+note = """\
+Checked with warden trust check in CI. The chain is Microsoft Windows, \
+Microsoft Windows Production PCA 2026 RSA2048-SHA256, Microsoft Root \
+Certificate Authority 2010, and revocation was checked."""
+
+[[publisher.evidence]]
+file = 'C:\Windows\System32\whoami.exe'
+sha256 = "23240ef9f8b0a9a324110b1c2331de31dc1b0e08f5359cb707e51a939af56cd3"
+route = "windows_catalog"
+seen = 2026-11-21
+machine = "GitHub-hosted Windows runner (Windows Server 2025)"
+note = """\
+Checked with warden trust check in CI. The file carries no signature and \
+is listed in the catalogue \
+Microsoft-Windows-Utilities-Package~31bf3856ad364e35~amd64~~10.0.26100.4202.cat, \
+which is signed for Microsoft Windows. The chain is Microsoft Windows, \
+Microsoft Windows Production PCA 2011, Microsoft Root Certificate Authority \
+2010, and revocation was checked."""

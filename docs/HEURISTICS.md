@@ -293,8 +293,11 @@ With the threshold set by the same rule, it flags 18.1 % of the malicious
 files of the test weeks; the variant in use flags 24.6 %. Both keep the
 false alarms among the benign files of the test weeks below 0.006 %.
 
-Checking a signature for validity is a different matter, and later work. A
-valid signature from a known publisher may then lower a score.
+Checking a signature for validity is a different matter, and since phase 5
+Warden does it ([TRUST.md](TRUST.md)). What the valid signature of a trusted
+publisher changes is the match of a rule from a rule bundle. It does not
+lower this score: the score has flagged no clean file in any run, so
+nothing was measured that would call for it.
 
 ## The threshold
 

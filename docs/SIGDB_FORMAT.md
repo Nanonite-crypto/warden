@@ -84,7 +84,7 @@ Every one of these is checked before a database is handed to the caller:
 Steps 5 to 8 run even when the digest matches. The digest only detects
 accidental damage: anyone can compute it, so it says nothing about who wrote
 the file. Authenticity (a signed manifest over the database and the binaries)
-is part of the self-protection work in phase 10.
+is part of the self-protection work in phase 11.
 
 ## Updating a database in use
 

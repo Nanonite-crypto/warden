@@ -44,10 +44,12 @@ archives, property tests of the signature database, of the archive unpacker
 and of the reader for executables, tests of the rule layer and of every
 heuristic indicator, a test that fits the heuristic weights to the counts
 in `calibration/` again and compares them with the scanner's, the tests of
-the quarantine with every operation cut off at every step, and tests that
-drive the `warden` binary the way a user would. Among the last are two that
-give the program an output nobody reads any more, as `warden scan … | head`
-does: it has to end quietly, and it used to panic.
+the quarantine with every operation cut off at every step, the tests of the
+signature check and of the autostart entries with stand-ins that answer for
+Windows, and tests that drive the `warden` binary the way a user would.
+Among the last are two that give the program an output nobody reads any
+more, as `warden scan … | head` does: it has to end quietly, and it used to
+panic.
 
 The same checks CI runs before anything is merged:
 
@@ -59,10 +61,18 @@ cargo test --workspace --locked
 ```
 
 On Windows, `scripts\win\check.cmd` builds the release binary, checks EICAR
-detection, runs the tests and measures scan speed in one go. It writes its
-results to `target\check\`. With `-Rules` it also downloads the pinned rule
-package, builds the rule bundle and counts false positives in the Windows
-system folder.
+detection, asks who signed two files of Windows, times a look at what
+Windows starts on the machine, runs the tests and measures scan speed in
+one go. It writes its results to `target\check\`. Of the look it keeps
+how long it took and how many entries of each kind there are, and not the
+list: that would say what is installed on the machine. With `-Rules` it
+also downloads the pinned rule package, builds the rule bundle and counts
+false positives in the Windows system folder.
+
+The script runs every test file, also after one of them has failed, and
+its summary names the tests that failed. Its log, `target\check\test.log`,
+keeps what the tests print, for those that pass as well: a test that could
+not be exercised on the machine passes, and says there why.
 
 ## EICAR in three forms
 
@@ -82,7 +92,7 @@ other scanners. A test checks the rule file for it.
 
 ## EICAR and your antivirus
 
-Three tests, and the demo, write the EICAR test file to disk and scan it.
+Four tests, and the demo, write the EICAR test file to disk and scan it.
 On a machine with a resident antivirus (on Windows, Microsoft Defender)
 that file is removed or locked within moments. That is correct behaviour,
 and it means Warden never gets to see the file.
@@ -114,6 +124,36 @@ The third EICAR test is the one for the quarantine. It writes the test
 file into the excluded folder and keeps the quarantine itself in an
 ordinary temporary folder, which is not excluded. That is on purpose: what
 lies in a quarantine must not set off a resident antivirus.
+
+On the desktop, where Microsoft Defender's real-time protection is on,
+that test showed something about Defender on 2026-11-27. Right after
+`warden quarantine restore` had put the file back, the first read of it
+was refused with Windows' error 225, "the file contains a virus or
+potentially unwanted software", although the folder is excluded. A later
+attempt got the file, and it was the test file. A run a few hours before
+had failed at that point without saying why; since then the test reads
+the file itself, tries a hundred times with a tenth of a second in
+between, and prints what Windows said. The run after that wrote down how
+long it took: the file was handed out at the 51st attempt, after 9.5
+seconds.
+
+Why Defender keeps a file in an excluded folder back is not known. Nine
+and a half seconds is close to the ten for which, by
+[Microsoft's documentation](https://learn.microsoft.com/en-us/defender-endpoint/configure-cloud-block-timeout-period-microsoft-defender-antivirus),
+Defender blocks a file that it finds suspicious while it asks its cloud
+service about it. Whether that is what happened here was not checked. The
+tests that write the file there themselves have not been refused on that
+machine. For Warden it means that a restored file which Defender itself
+takes for a threat may not be readable for some seconds, even where the
+user has told Defender to leave the folder alone.
+
+The fourth is a test of the rule layer together with the signature check.
+It needs a file on disk that a built-in rule matches, to see that nobody
+is asked who signed it, and the only built-in rule is the one for the test
+file. Until 2026-11-27 it wrote the file into the system's temporary
+folder on every system, against the rule above, and on the desktop it
+failed that day: nothing was detected, because the file was gone or
+blocked before the scan. It now uses the excluded folder like the others.
 
 ### Excluding one folder from Microsoft Defender
 
@@ -207,6 +247,17 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
   neither a hash nor a stated reason for withholding it, and an entry that
   would take out a rule that has to stay. A test loads the list in this
   repository, so a mistake in it fails in CI.
+- The signature check reads three things before anybody has vouched for
+  them: the signature file of an app package, its block map, and the
+  table of an executable that holds its signature. Each reader states
+  its limits, and one test feeds each of them a well-formed input cut off
+  at every length, with every byte changed three ways, and with four
+  thousand random changes. A block map with a document type declaration
+  is refused: that is where XML keeps its ways of blowing up.
+- The trust list is edited by hand as well, and is as strict: an entry
+  without evidence, an unknown field, a hash of the wrong length or two
+  entries for one identity are refused. A test loads the list in this
+  repository, so a mistake in it fails in CI.
 - A rule set that takes more than 30 seconds on one file is stopped, and
   the file is reported as checked in part.
 - In the scan pipeline, a detector that panics costs one file, which is
@@ -216,7 +267,7 @@ Anything Warden parses is treated as hostile, because for a scanner it is.
 
 The tests above try the damage somebody thought of. A fuzzer tries what
 nobody thought of: it runs a function millions of times on inputs it
-mutates, and keeps the mutations that reach new code. `fuzz/` holds three
+mutates, and keeps the mutations that reach new code. `fuzz/` holds six
 targets for [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
 
 | Target | What it runs | What must hold |
@@ -224,6 +275,9 @@ targets for [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
 | `pe_read` | The reader for executables and every indicator, on arbitrary bytes | No panic, no hang, and the facts stay within the reader's limits |
 | `scan_bytes` | The scan pipeline on one in-memory file, with the hash layer and the heuristic layer, archives included | No panic, no hang |
 | `sigdb` | The signature database reader | No panic; it only reaches the checks in front of the digest, because a mutated database fails that first |
+| `trust_signature_file` | The reader that digs the signed digests out of a package's signature file | No panic |
+| `trust_block_map` | The reader of a package's block map, and the comparison of a file with its entry | No panic, no hang |
+| `trust_signature_area` | The look through the table of an executable that holds its signature | No panic |
 
 The YARA layer has no target here: YARA-X fuzzes its own parsers and
 compiler upstream.
@@ -233,7 +287,10 @@ each for a minute, seeded with the inert executables, on every pull request
 that touches the code they cover. A minute finds shallow mistakes, which is
 what a change is most likely to add; a longer run can be started by hand.
 The first run, on 2026-11-18, made 123,277 executions of `pe_read`, 54,970
-of `scan_bytes` and 18.2 million of `sigdb`, and found nothing. To run a
+of `scan_bytes` and 18.2 million of `sigdb`, and found nothing. The three
+targets of the signature check ran first on 2026-11-21: 12.9 million
+executions of `trust_signature_file`, 1.9 million of `trust_block_map` and
+15.1 million of `trust_signature_area`, and nothing found either. To run a
 target yourself (Linux or macOS, nightly toolchain):
 
 ```
@@ -291,6 +348,11 @@ with made-up bytes in temporary folders:
 | Windows | Windows | Attribute bits, all three timestamps, the mark of the internet, and the security descriptor come back; so do access rights that deny the restoring user everything but reading; a restore cut off after the file had its name still gives the file its rights |
 | The check of security descriptors | Everywhere | A descriptor whose parts do not lie inside it is refused, and no input makes the check panic: every prefix of a good descriptor and a good one with each byte changed in turn |
 | The command line | Everywhere | The round trip, the refusals and a run that died, through `warden quarantine` the way a person would type it; and the EICAR file, see above |
+| The guard, with made-up guards | Everywhere | A file the guard would leave stays, and the quarantine holds nothing afterwards: no entry, no half-written copy, no note; the guard is asked about every file, by its full path, and not about what cannot be quarantined anyway; a file is taken past it only when that is asked for; a file whose content is another than the one the guard looked at stays |
+| The guard, with a stand-in for Windows | Everywhere | With the trust list that is part of the program: a file signed for Microsoft Windows stays, also when its certificates could not be looked up; one signed for Microsoft Corporation, one with the names of Windows under another root and one without a signature go; a file that could not be checked stays |
+| The guard, with real files of Windows | Windows | Copies of `ntdll.dll`, which carries its signature, and of `whoami.exe`, which a catalogue lists: each stays, with the reason and the flag in the message, goes with the flag, and comes back byte for byte. The same file with one byte more goes without the flag, and so does a program that Microsoft signed as Microsoft Corporation |
+| The second guard, with made-up drivers | Everywhere | Of the entries of a survey, the drivers with the start "boot" and no others; a file is known as such a driver's however the entry writes its path, and a file that only begins the same way is not; several guards leave a file if one of them would |
+| The second guard, with a real entry | CI on Windows | A harmless file is put into the drivers folder of Windows and registered with `sc` as a driver with the start "boot", on a runner that is never restarted. In a temporary folder the service manager turns the same driver down, and takes it with the start "demand". The library knows the file in the drivers folder for the driver's and a file of the same name elsewhere for nobody's, and the entry goes and comes back as `sc` and `reg` showed it. Through `warden`, the file stays, with the driver's name and the flag in the message, and nothing is changed. The flag for files of Windows does not take it. Its own flag does, and the entry goes with it; a restore brings back the file and the entry as `sc` and `reg` showed it |
 
 Two things about the Windows tests.
 
@@ -307,14 +369,192 @@ is another one. Each test now gives its folder rights of its own first.
 
 The Windows code cannot be built on another system, and the whole of CI
 takes about twenty minutes on Windows. The `Windows check` workflow runs
-the lints and tests of this one crate on a Windows runner in about two,
-for a first answer. It starts by hand or when a branch named
-`win-check/...` is pushed.
+the lints and tests of the crates that have code for Windows, and need no
+rule engine, on a Windows runner in a few minutes, for a first answer. It
+starts by hand or when a branch named `win-check/...` is pushed.
 
 **Not tested:** a power cut, as opposed to a program that dies; file
 systems other than the runner's NTFS and the Linux container's; a Windows
 user without administrator rights, which the user of the CI runner has;
 restoring a file that belongs to another user.
+
+## Autostart entries
+
+[REMEDIATION.md](REMEDIATION.md) describes how Warden removes what starts
+a quarantined file and puts it back, and
+[how that is tested](REMEDIATION.md#how-it-is-tested). Three things about
+those tests belong here.
+
+**Most of them run against a stand-in.** The rules are the same on every
+system: record first, look before removing, look before putting back,
+never remove what could not be put back. They are tried with a stand-in
+for Windows that keeps entries in memory, a real quarantine and real
+files, and they run with `cargo test` everywhere.
+
+**Some change the machine they run on, and say so first.** The part that
+talks to Windows can only be tried on Windows, with real entries: a
+service, two tasks, three Run values and a Startup shortcut, made with
+`reg`, `schtasks`, `sc` and the shell. All of them name a harmless file
+that nothing starts, and all are removed again, whatever happens. Even so
+these tests run only where the environment says in as many words that the
+machine may be changed:
+
+```
+WARDEN_AUTOSTART_TESTS=this-machine-may-be-changed
+```
+
+CI sets that on the hosted Windows runner, which is deleted after the job.
+Without it the tests skip themselves and say why. Do not set it on a
+machine you use. `scripts\win\check.cmd` takes the variable away before it
+runs the tests, in case it was set.
+
+**They ask Windows, not Warden.** What `reg query`, `schtasks /query`
+and seven commands of `sc` print for each entry is recorded before the file
+is quarantined and compared after it is restored, as text. The first run
+on Windows failed that comparison in two places where Warden had been sure
+of itself; [REMEDIATION.md](REMEDIATION.md#what-a-real-windows-said-to-the-first-attempt)
+has the story.
+
+### The run in a virtual machine
+
+No test can restart Windows. That Windows itself stops starting a
+quarantined program, and starts it again after a restore, is shown by
+hand, in a virtual machine installed for the purpose
+([as below](#a-machine-the-list-was-not-written-from)), with a harmless
+program:
+
+- `warden-dummy.exe` adds one line to a file next to itself when it is
+  started: when, as which process, by which user, with which arguments.
+  Then it ends. It opens no connection, starts nothing and touches no
+  other file. It is a crate of this repository and not part of Warden.
+- `autostart-remedy.cmd` does the rest, in three runs with a restart of
+  Windows after the first and the second. It keeps its place in
+  `C:\warden-test`.
+
+The kit builder puts both on the CD image:
+
+```
+cargo build --release -p warden-cli -p warden-dummy
+python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --dummy target/release/warden-dummy.exe --out rules/vendor/warden-kit.iso
+```
+
+In the machine, right-click `autostart-remedy.cmd` and choose "Run as
+administrator", three times:
+
+| Run | What the script does | Then |
+|---|---|---|
+| 1 | Times a look at everything that the machine starts, before anything is added, and keeps the times and the counts. Registers the dummy in seven places with Windows' own tools, each entry with a word of its own. Records what Windows shows of each. Builds a signature database that names the dummy and lets `warden scan` report it. Lets Warden quarantine it, and checks that Windows shows none of the entries any more | Restart Windows, log on, wait a minute |
+| 2 | Checks that the dummy was not started and that no entry came back. Lets Warden restore it, and checks that Windows shows every entry as before | Restart Windows, log on, wait two minutes |
+| 3 | Reads the dummy's file: each of the seven entries has to have left a line with its word. Removes the entries and the folder | Nothing |
+
+The result is `C:\warden-out\autostart-remedy.json`, a list of checks
+with a yes or no for each, and it goes out through the serial port like
+the results of the scan kit. `autostart-remedy.cmd -Reset` removes
+whatever a run left behind.
+
+A slip in a script like this costs whoever runs it an afternoon. CI
+therefore rehearses it on the hosted runner before anybody does it by
+hand: the same three runs with the same two programs, without the
+restarts. Every check has to hold except the seven that only a restart can
+pass. CI also checks that every script in `scripts/win` parses, in the
+PowerShell that every Windows has and in the newer one.
+
+The run was done on 2026-11-27, twice in a row, and every check held both
+times ([BENCHMARKS.md](BENCHMARKS.md#the-run-by-hand-in-the-virtual-machine)).
+One thing from it for whoever repeats it: **a restart may not come
+back.** The first restart of the first pass left a black screen for as
+long as it was given, eleven and a half hours. Windows had shut down, and
+the machine did not start again. VirtualBox's "Reset" started it, and the
+script went on with its second run, because it keeps its place on the
+disk. A result with a reset in it is not the same as one without, so the
+whole was done a second time; there the same restart took two minutes
+where the others took less than one. Why is not known
+([what was seen](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-restarts.txt)).
+
+## Signatures
+
+[TRUST.md](TRUST.md) describes the check of who signed a file. Nearly all
+of it is tested without Windows, and the part that is not is tested
+against signatures that are made for the purpose.
+
+**Without Windows.** What Warden asks of Windows is three questions, and
+in the tests a stand-in answers them: "the signature in this file is
+valid and was made by so-and-so", or whatever the test needs. Everything
+else is the same code as on Windows. That covers, on every system:
+
+- **The policy alone**, on findings written out by hand: a finding that
+  yields is set aside by a trusted signature, backs up nothing afterwards,
+  and counts with any other answer; a finding that does not yield is
+  untouched.
+- **The scan pipeline**, with stand-in detectors and a check that goes by
+  file names: who is asked about, and who never is. A file without
+  findings, a file inside an archive and bytes in memory are never asked
+  about.
+- **The check itself**: the order of the routes, the look through the
+  signature table, the package arithmetic with real block maps and
+  hashes, a file that changed since it was scanned, and the trust list:
+  a valid signature of somebody else, the right names under another root,
+  revocation that could not be checked.
+- **The rule layer, the engine and the check together.** A test rule, a
+  file that passes for an executable, and a stand-in that says Microsoft
+  signed it: the match is on record and not reported. A hash match on the
+  same file and the match of a built-in rule are reported.
+
+**On Windows, in CI.** A signature check has to be tested against
+signatures, and the ones that matter are the ones it has to turn down.
+Nobody hands those out. A step of the Windows job makes them,
+[`signed-test-files.ps1`](../.github/scripts/signed-test-files.ps1), and
+the tests then ask the real Windows about them:
+
+| File | What Windows says | What Warden has to say |
+|---|---|---|
+| A small program, unsigned | Not signed | No signature, by any route |
+| The same, signed by a test publisher | Valid | A valid signature, of a publisher that is on no list: not trusted |
+| That file with one byte changed | Hash mismatch | Does not hold: changed after it was signed |
+| That file with bytes added inside the signature table | **Valid** | Does not hold: bytes follow the signature inside its entry |
+| The program signed for "Microsoft Corporation", twice in the certificate, under a root made on the spot | **Valid** | A valid signature that says Microsoft Corporation, and no root of Microsoft's: not trusted, and the reason names the chain the list asks for |
+| A text file and a program in a signed app package | Valid, for the package | Vouched for by the package's signature; the publisher is on no list |
+| The package's block map and `[Content_Types].xml` | | Vouched for by the digests the signature names |
+| The package's signature file | | Nothing covers it |
+| A file of the package changed, and a file added | | Not vouched for |
+
+The two lines with a bold "Valid" are the reason for the list and for the
+look through the signature table. "What Windows says" is what PowerShell's
+`Get-AuthenticodeSignature` printed on the runner when the files were
+made.
+
+For Windows to call these signatures valid, the script tells the machine
+to trust two root certificates of its own making. That is a change to the
+security settings of the machine it runs on. So it runs on a GitHub-hosted
+runner, which is deleted after the job, and refuses to run anywhere else.
+It takes the roots out again at the end, and nothing it makes is uploaded.
+**Do not run it on a machine you keep.**
+
+The same job tests against files that need no making: files of Windows
+that carry their signature and files that are listed in a catalogue have
+to come back trusted as Microsoft Windows, and a program of Microsoft's
+as Microsoft Corporation. Where a file that the trust list names as
+evidence is on the machine with the same content, the check has to come
+to what the list claims. And one test goes the whole way with the real
+program: a rule that matches every Windows program, a folder with copies
+of files that Microsoft signed next to the test files, and a scan that
+has to put the first on record and report the rest, each with its reason.
+
+These tests print a note and pass where their files are missing.
+`WARDEN_SIGNED_FIXTURES` names the folder of the test files, and
+`WARDEN_REQUIRE_SIGNED_FIXTURES=1` turns the notes into failures, as CI
+does. On a developer's Windows machine, `cargo test` runs the ones that
+need only Windows; they use the network, because Windows asks over it
+whether a certificate was revoked.
+
+**Not tested:** a certificate that was revoked, which nobody hands out
+either; what is tested is a certificate that names no place to ask. A
+catalogue that lists a file by SHA-1 only. A machine without a network.
+A package of a publisher other than Microsoft from the Store, as a test:
+a survey of a desktop met 13,440 files in such packages and trusted none
+([BENCHMARKS.md](BENCHMARKS.md#on-the-desktop)). In CI, no Windows other
+than the runner's Windows Server 2025; a Windows 11 desktop was checked by
+hand.
 
 ## False positives
 
@@ -352,13 +592,17 @@ files it was built from and which rules were left out of it on purpose.
 Results are in [BENCHMARKS.md](BENCHMARKS.md#false-positives).
 
 A flagged file is not the end of a run but the start of a small
-investigation: what is the file, and what in it does the rule match? A rule
-that cannot tell a clean file from its target goes on the exclusion list,
+investigation: what is the file, who signed it, and what in it does the
+rule match? If the file comes from a publisher that belongs on the
+[trust list](TRUST.md#the-trust-list), that is the remedy: the rule keeps
+working on everybody else's files. Otherwise a rule that cannot tell a
+clean file from its target goes on the exclusion list,
 [`rules/exclusions.toml`](../rules/exclusions.toml), with that file as
-evidence, and the run is repeated. [RULES.md](RULES.md#rules-that-are-left-out)
-describes the list. The scripts and workflows below build the bundle with
-it; `scripts\win\check.cmd -Rules -AllRules` builds it without, which is
-how the numbers from before an entry can be measured again.
+evidence. Either way the run is repeated.
+[RULES.md](RULES.md#rules-that-are-left-out) describes the list. The
+scripts and workflows below build the bundle with it;
+`scripts\win\check.cmd -Rules -AllRules` builds it without, which is how
+the numbers from before an entry can be measured again.
 
 The heuristic layer has a second check of its own. Its threshold is set on
 the benign files of a dataset, which are files that somebody uploaded to a
@@ -373,7 +617,12 @@ result.
 Windows system files are scanned on a GitHub-hosted runner by the
 `False positives` workflow. It reads many gigabytes from a slow disk, so it
 runs when started by hand or when a branch named `fp-run/...` is pushed,
-not on every change.
+not on every change. Since phase 5 it scans everything twice, with the
+signature check and with `--no-trust`, so that the difference is what the
+check took off the list of flagged files. It asks who signed the files
+that the exclusion list names, where the runner has them. And it runs
+`warden trust survey` over the same folders, which checks every file and
+counts who signed what, by which route, and how long a check took.
 
 On your own Windows machine, `scripts\win\check.cmd -Rules` does the same
 for the System32 folder. Microsoft Defender blocks the rule package it
@@ -459,7 +708,10 @@ Three things to know before the first run:
   of Windows Setup and left a black screen, and later a machine that had
   apparently gone to sleep did not wake up. Neither has to do with Warden.
   Powering the machine off and starting it again helped both times;
-  Windows Setup went on where it had stopped.
+  Windows Setup went on where it had stopped. A third time the same
+  machine did not come back from a restart of Windows, during
+  [the run with the autostart kit](#the-run-in-a-virtual-machine), and a
+  reset helped. Whether that one has to do with Warden is not known.
 
 The runs with the kit are in
 [BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11).

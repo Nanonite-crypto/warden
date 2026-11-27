@@ -1,0 +1,231 @@
+{
+  "schema": 1,
+  "label": "GitHub-hosted Windows runner, app packages",
+  "engine_version": "0.1.0",
+  "system": {
+    "os": "windows",
+    "arch": "x86_64",
+    "logical_cpus": 2,
+    "cpu": "AMD64 Family 25 Model 17 Stepping 1, AuthenticAMD"
+  },
+  "paths": [
+    "C:\\Program Files\\WindowsApps"
+  ],
+  "trust_list": "6f21a3f5e025d990a1bcabdbffe4f7f799807cb4afea2fa17066985bbb0f3778",
+  "publishers_listed": 2,
+  "network": true,
+  "threads": 2,
+  "duration_ms": 12812,
+  "files": 2178,
+  "executables": 1054,
+  "could_not_list": 0,
+  "files_trusted": 2145,
+  "executables_trusted": 1054,
+  "trusted": [
+    {
+      "publisher": "Microsoft Corporation",
+      "route": "embedded",
+      "files": 632,
+      "executables": 632,
+      "example": {
+        "path": "C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.26.510.0_x64__8wekyb3d8bbwe\\AppInstaller.winmd",
+        "sha256": "1f55fb6b639874dd4c242bf650aa161d8750beb7a847dcccc92953382029e5d3"
+      }
+    },
+    {
+      "publisher": "Microsoft Corporation",
+      "route": "package",
+      "files": 1505,
+      "executables": 414,
+      "example": {
+        "path": "C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.26.510.0_neutral_split.scale-100_8wekyb3d8bbwe\\AppxManifest.xml",
+        "sha256": "fab22b34ac0703f87a5da4cfc34a07ebaa6defb54facd0ef41a94cea3744dc06"
+      }
+    },
+    {
+      "publisher": "Microsoft Windows",
+      "route": "embedded",
+      "files": 8,
+      "executables": 8,
+      "example": {
+        "path": "C:\\Program Files\\WindowsApps\\Microsoft.WindowsAppRuntime.2_2.6.5.0_x64__8wekyb3d8bbwe\\Microsoft.Internal.FrameworkUdk.dll",
+        "sha256": "a9eb6c0de80645c3f3b0570636f37966f5cf8c9583c91ce1b8760a937a243e44"
+      }
+    }
+  ],
+  "not_trusted": [
+    {
+      "reason": "invalid",
+      "files": 33,
+      "executables": 0,
+      "example": "C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.26.510.0_neutral_split.scale-100_8wekyb3d8bbwe\\AppxSignature.p7x"
+    }
+  ],
+  "details": [
+    {
+      "reason": "invalid",
+      "detail": "this is the signature file of a package, and a signature does not cover itself",
+      "files": 20,
+      "example": "C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.26.510.0_neutral_split.scale-100_8wekyb3d8bbwe\\AppxSignature.p7x"
+    },
+    {
+      "reason": "invalid",
+      "detail": "the block map of the file's package does not list the file",
+      "files": 13,
+      "example": "C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.26.510.0_x64__8wekyb3d8bbwe\\microsoft.system.package.metadata\\resources.dffef997.pri"
+    }
+  ],
+  "details_truncated": false,
+  "signers": [
+    {
+      "common_name": "Microsoft Corporation",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Corporation",
+      "files": 2137,
+      "embedded": 632,
+      "windows_catalog": 0,
+      "package": 1505,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": ".NET",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 375,
+      "embedded": 375,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Windows Phone",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 11,
+      "embedded": 11,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft Windows",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "listed_as": "Microsoft Windows",
+      "files": 8,
+      "embedded": 8,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Microsoft 3rd Party Application Component",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 4,
+      "embedded": 4,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2011",
+      "root_sha256": "847df6a78497943f27fc72eb93f9a637320a02b561d0a91b09e87a7807ed7c61"
+    },
+    {
+      "common_name": "Microsoft Windows Publisher",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 4,
+      "embedded": 4,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": ".NET DAC",
+      "organization": "Microsoft Corporation",
+      "microsoft_root": true,
+      "files": 3,
+      "embedded": 3,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "Microsoft Root Certificate Authority 2010",
+      "root_sha256": "df545bf919a2439c36983b54cdfc903dfa4f37d3996d8d84b4c31eec6f3c163e"
+    },
+    {
+      "common_name": "Humanizer (.NET Foundation)",
+      "organization": "Humanizer (.NET Foundation)",
+      "microsoft_root": false,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert High Assurance EV Root CA",
+      "root_sha256": "7431e5f4c3c1ce4690774f0b61e05440883ba9a01ed00ba6abd7806ed3b118cf"
+    },
+    {
+      "common_name": "Json.NET (.NET Foundation)",
+      "organization": "Json.NET (.NET Foundation)",
+      "microsoft_root": false,
+      "files": 1,
+      "embedded": 1,
+      "windows_catalog": 0,
+      "package": 0,
+      "revocation_unknown": 0,
+      "root": "DigiCert CS RSA4096 Root G5",
+      "root_sha256": "7353b6d6c2d6da4247773f3f07d075decb5134212bead0928ef1f46115260941"
+    }
+  ],
+  "signers_not_listed": {
+    "signers": 7,
+    "files": 399,
+    "signers_under_a_microsoft_root": 5,
+    "files_under_a_microsoft_root": 397
+  },
+  "timing": [
+    {
+      "outcome": "all",
+      "files": 2178,
+      "mean_ms": 11.502687786960514,
+      "median_ms": 5.682,
+      "p95_ms": 29.858,
+      "max_ms": 1231.559
+    },
+    {
+      "outcome": "embedded",
+      "files": 640,
+      "mean_ms": 17.9412109375,
+      "median_ms": 8.056,
+      "p95_ms": 70.876,
+      "max_ms": 568.831
+    },
+    {
+      "outcome": "package",
+      "files": 1505,
+      "mean_ms": 9.00754950166113,
+      "median_ms": 4.386,
+      "p95_ms": 20.365,
+      "max_ms": 1231.559
+    },
+    {
+      "outcome": "not_trusted",
+      "files": 33,
+      "mean_ms": 0.42778787878787883,
+      "median_ms": 0.147,
+      "p95_ms": 0.278,
+      "max_ms": 8.981
+    }
+  ]
+}

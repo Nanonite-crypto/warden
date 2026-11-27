@@ -7,6 +7,7 @@ use time::OffsetDateTime;
 
 use crate::detector::DetectorInfo;
 use crate::finding::{Finding, Verdict};
+use crate::trust::{TrustAnswer, TrustCheckInfo};
 
 /// Why a file was not scanned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -137,6 +138,9 @@ pub struct Detection {
     pub sha256: String,
     /// The decision about the file.
     pub verdict: Verdict,
+    /// What the check of the file's signature said, if it was asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust: Option<TrustAnswer>,
     /// What the detectors found, with reasons. A finding about a file
     /// inside an archive says which member it is about. At most 100 are
     /// listed; when there are more, the strongest stay.
@@ -150,8 +154,9 @@ pub struct Detection {
 ///
 /// Nothing is wrong with such a file as far as Warden can tell. What is
 /// kept is what a detector noticed and the verdict policy did not count: a
-/// rule match that waits for a second sign and got none, for example. It is
-/// kept so that "why was this file not flagged?" has an answer.
+/// rule match that waits for a second sign and got none, for example, or
+/// one in a file that a trusted publisher signed. It is kept so that "why
+/// was this file not flagged?" has an answer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Recorded {
     /// Where the file is.
@@ -161,6 +166,9 @@ pub struct Recorded {
     pub size: u64,
     /// SHA-256 of the file, in lowercase hexadecimal.
     pub sha256: String,
+    /// What the check of the file's signature said, if it was asked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust: Option<TrustAnswer>,
     /// What the detectors noticed, with reasons. At most 100 are listed.
     pub findings: Vec<Finding>,
     /// Findings left out because there were more than 100.
@@ -179,6 +187,15 @@ pub struct ScanStats {
     pub detections: u64,
     /// Files whose verdict is clean and that have findings on record.
     pub files_recorded: u64,
+    /// Files whose signature was checked: the ones with a finding that
+    /// yields to a trusted signature and would otherwise have been
+    /// reported.
+    pub trust_checks: u64,
+    /// How many of those have a valid signature of a publisher on the
+    /// trust list. Their yielding findings are on record and did not
+    /// count; a file among them can still be a detection for another
+    /// reason.
+    pub files_trusted: u64,
     /// Files that could not be scanned.
     pub files_skipped: u64,
     /// Folders that could not be opened. What is in them was neither
@@ -235,6 +252,8 @@ pub struct ScanReport {
     pub threads: usize,
     /// The detectors that ran, with their signature counts.
     pub detectors: Vec<DetectorInfo>,
+    /// What was asked who signed a file, if the scan had such a check.
+    pub trust_check: Option<TrustCheckInfo>,
     /// Counters.
     pub stats: ScanStats,
     /// Every file whose verdict is not clean, sorted by path.

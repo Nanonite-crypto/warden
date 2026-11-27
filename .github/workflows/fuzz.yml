@@ -15,6 +15,7 @@ on:
       - "crates/warden-pe/**"
       - "crates/warden-engine/**"
       - "crates/warden-sigdb/**"
+      - "crates/warden-trust/**"
       - "fuzz/**"
       - ".github/workflows/fuzz.yml"
   workflow_dispatch:
@@ -66,12 +67,14 @@ jobs:
           cp fuzz/corpus/pe_read/* fuzz/corpus/scan_bytes/
           (cd fuzz/corpus/pe_read && zip --quiet ../scan_bytes/fixtures.zip ./*)
           (cd fuzz/corpus/scan_bytes && zip --quiet nested.zip fixtures.zip)
+          cargo run --quiet --locked -p warden-trust --example seeds -- fuzz/corpus
 
       - name: Run each target
         run: |
           set -euo pipefail
           cd fuzz
-          for target in pe_read scan_bytes sigdb; do
+          for target in pe_read scan_bytes sigdb \
+            trust_block_map trust_signature_area trust_signature_file; do
             echo "::group::$target for $SECONDS_PER_TARGET seconds"
             cargo +nightly fuzz run "$target" -- \
               -max_total_time="$SECONDS_PER_TARGET" -max_len=131072 -timeout=30 -rss_limit_mb=4096 \

@@ -904,6 +904,40 @@ rule Unscored { condition: false }
 }
 
 #[test]
+fn a_match_of_a_bundled_rule_yields_to_a_trusted_signature_and_a_builtin_one_does_not() {
+    // One bundle with both kinds: the rules that are part of the program,
+    // and the marker rules, which came with the bundle.
+    let detector = YaraDetector::new(marker_bundle().bundle);
+
+    let builtin = reported(&detector, &eicar::test_file());
+    assert_eq!(builtin.len(), 1);
+    assert_eq!(builtin[0].name, eicar::DETECTION_NAME);
+    assert!(!builtin[0].yields_to_trust);
+
+    for content in [
+        &b"WARDEN-YARA-HIGH"[..],
+        b"WARDEN-YARA-MEDIUM",
+        b"WARDEN-YARA-LOW",
+        b"WARDEN-YARA-NAMED",
+    ] {
+        let bundled = reported(&detector, content);
+        assert_eq!(bundled.len(), 1);
+        assert!(bundled[0].yields_to_trust, "{}", bundled[0].name);
+    }
+
+    // A generated rule yields as well, on top of waiting for a second
+    // sign.
+    let generated = reported(&generated_detector(), b"WARDEN-YARA-GENERATED-QUIET");
+    assert_eq!(generated[0].counts, Counts::WithSecondSign);
+    assert!(generated[0].yields_to_trust);
+
+    // With only the built-in rules nothing yields.
+    let only_builtin = YaraDetector::builtin().unwrap();
+    let findings = reported(&only_builtin, &eicar::test_file());
+    assert!(!findings[0].yields_to_trust);
+}
+
+#[test]
 fn the_recorded_engine_is_the_one_this_crate_is_built_with() {
     let lock = include_str!("../../../Cargo.lock");
     let entry = lock

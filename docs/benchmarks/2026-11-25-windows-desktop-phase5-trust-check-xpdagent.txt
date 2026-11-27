@@ -1,0 +1,12 @@
+C:\Program Files\WindowsApps\Microsoft.6365217CE6EB4_102.2611.9002.0_x64__8wekyb3d8bbwe\MicrosoftSecurityApp\xpdAgent.exe
+  Trusted     yes: signed for Microsoft Corporation, a publisher on the trust list, found in the file itself
+  SHA-256     86f95974cb32af876d64a85b647b042e5aa3d215d8daff481d1f876b1373a8ec
+  In the file a signature that holds
+              signed for Microsoft Corporation
+              chain: Microsoft Corporation < Microsoft Windows Code Signing PCA 2024 < Microsoft Root Certificate Authority 2010
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked
+  Catalogue   not tried: the file has a signature table, which the hash in a catalogue does not cover
+  Package     a signature that holds, in C:\Program Files\WindowsApps\Microsoft.6365217CE6EB4_102.2611.9002.0_x64__8wekyb3d8bbwe
+              signed for Microsoft Corporation
+              chain: Microsoft Corporation < Microsoft Marketplace CA G 023 < Microsoft MarketPlace PCA 2011 < Microsoft Root Certificate Authority 2011
+              the chain ends in a root of Microsoft's: yes; revocation: checked, nothing revoked

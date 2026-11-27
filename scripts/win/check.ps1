@@ -4,8 +4,10 @@
 
 .DESCRIPTION
     Builds the release binary, checks that the EICAR antivirus test file is
-    detected in each of its forms, runs the test suite and measures scan
-    throughput. With -Rules it also builds a rule bundle from YARA Forge,
+    detected in each of its forms and that Warden can tell who signed two
+    files of Windows, times a look at what Windows starts on this machine,
+    runs the test suite and measures scan throughput.
+    With -Rules it also builds a rule bundle from YARA Forge,
     without the rules that rules\exclusions.toml names, and counts false
     positives over the benchmark folder.
 
@@ -21,12 +23,21 @@
       rules\yara-forge.pin, checked against the SHA-256 recorded there.
     - The benchmark and the false-positive check read the folder they are
       pointed at and change nothing.
+    - The check of signatures lets Windows ask over the network whether a
+      certificate was revoked, as Windows does whenever it checks one.
+    - The look at what Windows starts reads the Run keys, the scheduled
+      tasks, the services and the Startup folders, and changes nothing.
+      That list says what is installed on a machine, so it is written
+      nowhere: the result holds how long each look took and how many
+      entries of each kind there are.
+    - The test suite never runs the tests that register a service or a
+      task. Those are for a machine made for the purpose.
     - It never changes a Windows or antivirus setting, and it never updates
       rustup.
 
     Results are written to target\check\ so they can be read back later:
-    summary.json, system.json, bench.json, eicar-scan.json, fp.json and one
-    log per step.
+    summary.json, system.json, bench.json, eicar-scan.json, trust.json,
+    autostart.json, fp.json and one log per step.
 
 .PARAMETER BenchPath
     Folder to benchmark and, with -Rules, to check for false positives.
@@ -40,6 +51,9 @@
 
 .PARAMETER SkipBench
     Skip the benchmark.
+
+.PARAMETER SkipAutostart
+    Skip the look at what Windows starts on this machine.
 
 .PARAMETER Rules
     Also fetch the pinned YARA Forge rule package, build a rule bundle from
@@ -62,6 +76,7 @@ param(
     [int]$BenchRuns = 3,
     [switch]$SkipTests,
     [switch]$SkipBench,
+    [switch]$SkipAutostart,
     [switch]$Rules,
     [switch]$AllRules,
     [switch]$RequireEicar
@@ -110,6 +125,23 @@ function Invoke-Logged([string]$Name, [string]$CommandLine) {
     $code = $LASTEXITCODE
     Write-Utf8 (Join-Path $out "$Name.log") ($lines -join "`n")
     return $code
+}
+
+# Runs a command line through cmd.exe as above, without showing or saving
+# what it prints. Returns the text, and leaves the exit code in
+# $LASTEXITCODE.
+function Invoke-Tool([string]$CommandLine) {
+    $said = cmd /c "($CommandLine) 2>&1"
+    return ((@($said) | ForEach-Object { [string]$_ }) -join "`n").Trim()
+}
+
+# The number that `warden autostart list` prints after one of its headings.
+function Get-ListedCount([string]$Listing, [string]$Heading) {
+    $found = [regex]::Match($Listing, '(?m)^' + [regex]::Escape($Heading) + ': ([0-9,]+)')
+    if (-not $found.Success) {
+        throw "warden autostart list has no line for: $Heading"
+    }
+    return [int]($found.Groups[1].Value -replace ',', '')
 }
 
 # True when the file exists and can be read. A resident antivirus removes the
@@ -357,7 +389,95 @@ if ($detected) {
     Write-Host 'With another antivirus, add the same folder to its exclusions instead.' -ForegroundColor Yellow
 }
 
-# --- 4. Test suite --------------------------------------------------------------------
+# --- 4. Signatures ------------------------------------------------------------------
+# Two files that every Windows has and that Windows signs in two different
+# ways: one in the file, one in a catalogue. If Warden trusts both, it can
+# read signatures on this machine, and Windows could find out that their
+# certificates were not revoked.
+Write-Heading 'Signatures'
+$system32 = Join-Path $env:SystemRoot 'System32'
+$signedFiles = @((Join-Path $system32 'ntdll.dll'), (Join-Path $system32 'whoami.exe'))
+& $warden trust check @signedFiles
+$trustJson = (& $warden trust check --json @signedFiles) -join "`n"
+Write-Utf8 (Join-Path $out 'trust.json') $trustJson
+# The answers are read out of the text. Windows PowerShell hands a JSON
+# list on as one object, and what a filter makes of that depends on the
+# version of PowerShell; a pattern over the text means the same everywhere.
+$trusted = [regex]::Matches($trustJson, '"answer":\s*"trusted",\s*"publisher":\s*"Microsoft Windows",\s*"route":\s*"(\w+)"')
+$offline = [regex]::Matches($trustJson, '"reason":\s*"revocation_unknown"')
+if ($trusted.Count -eq $signedFiles.Count) {
+    $steps.signatures = 'passed'
+    $routes = @($trusted | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    $notes.signatures = "two files of Windows, found by: $($routes -join ', ')"
+} elseif ($offline.Count -gt 0) {
+    # Not a fault of Warden's: the signatures are there, and what is
+    # missing is the answer to whether a certificate was revoked.
+    $steps.signatures = 'blocked'
+    $notes.signatures = 'Windows could not find out whether a certificate was revoked; is this machine online?'
+} else {
+    $steps.signatures = 'failed'
+    Write-Host 'Warden does not trust two files that Windows itself signed. The lines above say why.' -ForegroundColor Red
+}
+
+# --- 5. What Windows starts -----------------------------------------------------------
+# How long a look at everything that Windows starts on this machine takes,
+# and how many such entries there are. The list says what is installed
+# here, so it is written nowhere. The looks that are timed throw their
+# output away, and of one more look only the counts are kept.
+if ($SkipAutostart) {
+    $steps.autostart = 'skipped'
+} else {
+    Write-Heading 'Autostart entries: five looks at what Windows starts here (read-only, numbers only)'
+    $steps.autostart = 'failed'
+    try {
+        $looks = @()
+        foreach ($look in 1..5) {
+            $watch = [System.Diagnostics.Stopwatch]::StartNew()
+            $null = Invoke-Tool "`"$warden`" autostart list --json >nul"
+            $watch.Stop()
+            if ($LASTEXITCODE -ne 0) {
+                throw "warden autostart list --json ended with exit code $LASTEXITCODE"
+            }
+            $looks += [int]$watch.ElapsedMilliseconds
+        }
+        $listing = Invoke-Tool "`"$warden`" autostart list"
+        if ($LASTEXITCODE -ne 0) {
+            throw "warden autostart list ended with exit code $LASTEXITCODE"
+        }
+        $runValues = Get-ListedCount $listing 'Run and RunOnce values'
+        $tasks = Get-ListedCount $listing 'Scheduled tasks'
+        $services = Get-ListedCount $listing 'Services and drivers'
+        $shortcuts = Get-ListedCount $listing 'Shortcuts in the Startup folders'
+        # What could not be looked at is listed last, a line for each.
+        $problems = 0
+        $tail = $listing.IndexOf('Not everything could be looked at:')
+        if ($tail -ge 0) {
+            $problems = [regex]::Matches($listing.Substring($tail), '(?m)^  - ').Count
+        }
+        $listing = $null
+        $result = [ordered]@{
+            label                = 'local machine, release build: the whole program each time, started through cmd.exe, its output thrown away'
+            milliseconds         = $looks
+            run_values           = $runValues
+            tasks                = $tasks
+            services_and_drivers = $services
+            shortcuts            = $shortcuts
+            problems             = $problems
+        }
+        Write-Utf8 (Join-Path $out 'autostart.json') ($result | ConvertTo-Json -Depth 5)
+        $entries = $runValues + $tasks + $services + $shortcuts
+        $middle = @($looks | Sort-Object)[2]
+        Write-Host "  $entries entries: $runValues Run values, $tasks tasks, $services services and drivers, $shortcuts shortcuts"
+        Write-Host "  could not be looked at: $problems"
+        Write-Host "  five looks: $($looks -join ', ') ms"
+        $notes.autostart = "$entries entries, a look takes $middle ms"
+        $steps.autostart = 'passed'
+    } catch {
+        Write-Host "The look at what Windows starts failed: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+# --- 6. Test suite --------------------------------------------------------------------
 if ($SkipTests) {
     $steps.tests = 'skipped'
 } else {
@@ -372,14 +492,37 @@ if ($SkipTests) {
         Remove-Item Env:WARDEN_EICAR_DIR -ErrorAction SilentlyContinue
         Remove-Item Env:WARDEN_REQUIRE_EICAR -ErrorAction SilentlyContinue
     }
-    if ((Invoke-Logged 'test' 'cargo test --workspace --locked') -eq 0) {
+    # Some tests register a service and tasks to see Warden remove them.
+    # They run only where this variable allows it in as many words, which
+    # is on a machine made for the purpose. This script never allows it.
+    Remove-Item Env:WARDEN_AUTOSTART_TESTS -ErrorAction SilentlyContinue
+    # Every test file runs, also after one of them has failed: one failure
+    # should not hide what the rest would have said. And what a test prints
+    # is kept for the ones that pass as well, because a test that was not
+    # exercised here passes and says why.
+    $testCode = Invoke-Logged 'test' 'cargo test --workspace --locked --no-fail-fast -- --show-output'
+    if ($testCode -eq 0) {
         $steps.tests = 'passed'
     } else {
         $steps.tests = 'failed'
     }
+    # For the summary: how many tests passed, and which failed.
+    try {
+        $testLog = Get-Content -LiteralPath (Join-Path $out 'test.log') -Raw -Encoding UTF8
+        $passedTests = 0
+        foreach ($result in [regex]::Matches($testLog, '(?m)^test result: \w+\. (\d+) passed')) {
+            $passedTests += [int]$result.Groups[1].Value
+        }
+        $failedTests = @([regex]::Matches($testLog, '(?m)^test (\S+) \.\.\. FAILED') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+        if ($failedTests.Count -gt 0) {
+            $notes.tests = "$passedTests passed, $($failedTests.Count) failed: $($failedTests -join ', ')"
+        } else {
+            $notes.tests = "$passedTests passed"
+        }
+    } catch { }
 }
 
-# --- 5. Benchmark ------------------------------------------------------------------------
+# --- 7. Benchmark ------------------------------------------------------------------------
 if ($SkipBench) {
     $steps.benchmark = 'skipped'
 } else {
@@ -392,7 +535,7 @@ if ($SkipBench) {
     }
 }
 
-# --- 6. Rule bundle and false positives ------------------------------------------------------
+# --- 8. Rule bundle and false positives ------------------------------------------------------
 if ($Rules) {
     Write-Heading 'Rule bundle from YARA Forge'
     # The bundle is kept next to the package it is built from. Microsoft
