@@ -72,8 +72,11 @@ See [TESTING.md](TESTING.md).
   was started, put to sleep or woken. It prints times and the numbers of
   the events, and nothing that names a file or a program. It was written
   after one scan of the desktop took four times as long as the scans
-  before it, with nothing on record that could say why: see
+  before it, with nothing on record that could say why. The list showed
+  that Defender was running a full scan of its own at the time: see
   [that scan](#the-desktops-programs-with-the-rule-back-in-the-bundle).
+  A number from a machine with a resident antivirus is worth laying next
+  to this list before it is believed.
 
 ## Results: phase 1
 
@@ -1600,9 +1603,30 @@ bundle built there from the pinned package and the list of six.
   of its `NativeHostNE.dll` matches as the old one did.
 - **The scan took four times as long as the two before it**, which ran in
   4 min 54 s and 4 min 53 s. The check is not the reason: one file was
-  asked about. Twenty minutes earlier the same build had scanned System32
-  with the same rules at the usual speed. What else the machine was doing
-  during the scan was not recorded, so the reason is not known.
+  asked about. **Microsoft Defender was running a full scan of the machine
+  at the time.** Defender's own log has that scan from 23:37:18 to 01:31:49
+  UTC, for 1 h 54 min. Warden's scan ran from 00:51:46 to 01:13:05, all of
+  it inside. During the two scans before, on 2026-11-20 and 2026-11-21,
+  Defender ran no scan of its own. That is the one difference between the
+  three scans that the machine's logs show, and it fits: two scanners
+  read the same disk, and Defender also looks at every file that Warden
+  opens. It is what one night shows, and no experiment: the scan was not
+  repeated during another full scan of Defender.
+- **System32 was not slower in the same hour.** Twenty minutes before
+  that scan, and during the same full scan of Defender, the same build
+  scanned System32 with the same rules in 23.5 s, as on other days. The
+  likely reason is memory: the passes just before had read those 10 GB,
+  and the machine has 32 GB. The programs are 77.5 GB, and most of them
+  had to come from the disk that Defender was reading. That was not
+  measured apart.
+- **What the logs were asked.** The list is from
+  `scripts\win\machine-events.cmd`, run on the desktop on 2026-11-27. It
+  has the times of Defender's own scans and updates, of the work of
+  Windows Update and of the starts of Windows, with event numbers and
+  version numbers, and no path and no name. Windows had been running
+  since 2026-11-14, so none of the three scans came after a fresh start.
+  Defender updated its definitions at 01:19:17, six minutes after
+  Warden's scan had ended.
 
 The acceptance script ran on the desktop before that scan, with the same
 build. Its new step asked who signed two files of Windows, and both came
@@ -1630,6 +1654,9 @@ Microsoft's, and the signer is whoever published the app.
 As in the earlier results of the desktop, the paths of four files that
 could not be read are replaced in the raw results, two among the programs
 and two in System32, and each result says so at its top.
+
+The part of the machine's list that bears on the three scans:
+[2026-11-27-windows-desktop-phase5-machine-events.txt](benchmarks/2026-11-27-windows-desktop-phase5-machine-events.txt).
 
 Raw results:
 [programs](benchmarks/2026-11-25-windows-desktop-phase5-programs-administrator-false-positives.json),

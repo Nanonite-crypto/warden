@@ -1,0 +1,112 @@
+What the desktop's own logs say it was doing around three scans of its
+installed programs, taken from the list that scripts\win\machine-events.cmd
+wrote there on 2026-11-27. Times are UTC. The list has times, the numbers of
+events and, for Microsoft Defender, kinds of scan and version numbers. It
+has no path and no name of a file, a program or a user.
+
+This is a part of that list, which has 517 events of 14 days:
+  1. the head of the list, as written;
+  2. every scan that Defender ran by itself in those 14 days, and the one
+     start of Windows;
+  3. everything the list has from an hour before to an hour after each of
+     the three scans.
+Left out are the other lines: updates of Defender's definitions, of which
+there are several a day, definitions fetched from the cloud, and the work
+of Windows Update, outside those hours.
+
+== 1. The head of the list
+# What this machine's logs say it was doing, since 2026-11-13T03:17:25Z. Times are UTC.
+# Listed at 2026-11-27T03:17:25Z. Nothing was changed.
+# defender: 200 events, from the log Microsoft-Windows-Windows Defender/Operational, which reaches back to 2026-04-06T04:22:42Z
+# update: 316 events, from the log System, which reaches back to 2026-08-26T21:49:15Z
+# start: 1 events, from the log System, which reaches back to 2026-08-26T21:49:15Z
+# sleep: 0 events, from the log System, which reaches back to 2026-08-26T21:49:15Z
+
+== 2. Defender's own scans, and starts of Windows
+2026-11-13T17:40:20Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-13T17:43:36Z  defender   1001  a scan of its own finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan; Scan Time Hours=0; Scan Time Minutes=03; Scan Time Seconds=16]
+2026-11-14T11:21:22Z  start        12  Windows started
+2026-11-14T18:14:36Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-14T18:17:12Z  defender   1001  a scan of its own finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan; Scan Time Hours=0; Scan Time Minutes=02; Scan Time Seconds=35]
+2026-11-15T23:33:44Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-15T23:33:44Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-16T17:30:40Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-16T17:30:40Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-18T02:17:27Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-18T02:17:27Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-18T19:45:16Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-18T19:45:16Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-19T17:31:27Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-19T17:31:27Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-20T17:45:49Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-20T17:45:49Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-21T18:46:18Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-21T18:47:51Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-21T19:02:50Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-21T19:04:43Z  defender   1001  a scan of its own finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan; Scan Time Hours=0; Scan Time Minutes=01; Scan Time Seconds=53]
+2026-11-22T17:51:31Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-22T17:51:31Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-23T17:34:14Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-23T17:34:14Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-24T18:42:39Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-24T18:42:39Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-24T23:37:18Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=2; Scan Type=Antimalware; Scan Parameters Index=2; Scan Parameters=Full Scan]
+2026-11-25T01:31:49Z  defender   1001  a scan of its own finished  [Product Version=4.18.26100.4; Scan Type Index=2; Scan Type=Antimalware; Scan Parameters Index=2; Scan Parameters=Full Scan; Scan Time Hours=1; Scan Time Minutes=54; Scan Time Seconds=30]
+2026-11-25T17:40:25Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-25T17:40:25Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+
+== 3. Around the scan that took 21 minutes: 2026-11-25T00:51:46Z to 01:13:05Z
+2026-11-24T23:37:18Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=2; Scan Type=Antimalware; Scan Parameters Index=2; Scan Parameters=Full Scan]
+2026-11-24T23:37:36Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-24T23:46:59Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:04:52Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:04:53Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:08:37Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:12:16Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:20:57Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:21:17Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:21:43Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:22:21Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:23:12Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:23:13Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:23:13Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:23:13Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:24:06Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:24:07Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:24:25Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T00:50:32Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T01:15:55Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T01:15:55Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T01:15:55Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T01:17:30Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T01:17:30Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T01:17:46Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.448.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-25T01:18:47Z  update       44  the download of an update started
+2026-11-25T01:18:47Z  update       43  the installation of an update started
+2026-11-25T01:19:17Z  defender   2000  definitions updated  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.457.0; Previous security intelligence Version=1.463.448.0; Update Type Index=2; Update Type=Delta; Current Engine Version=1.1.26100.4; Previous Engine Version=1.1.26100.4]
+2026-11-25T01:19:17Z  defender   2000  definitions updated  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.457.0; Previous security intelligence Version=1.463.448.0; Update Type Index=2; Update Type=Delta; Current Engine Version=1.1.26100.4; Previous Engine Version=1.1.26100.4]
+2026-11-25T01:19:17Z  update       19  an update was installed
+2026-11-25T01:31:49Z  defender   1001  a scan of its own finished  [Product Version=4.18.26100.4; Scan Type Index=2; Scan Type=Antimalware; Scan Parameters Index=2; Scan Parameters=Full Scan; Scan Time Hours=1; Scan Time Minutes=54; Scan Time Seconds=30]
+
+== 3. Around a scan that took 4 min 55 s: 2026-11-20T17:55:46Z to 18:00:41Z
+2026-11-20T17:45:49Z  defender   1000  a scan of its own started  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+2026-11-20T17:45:49Z  defender   1002  a scan of its own was stopped before it finished  [Product Version=4.18.26100.4; Scan Type Index=1; Scan Type=Antimalware; Scan Parameters Index=1; Scan Parameters=Quick Scan]
+
+== 3. Around a scan that took 4 min 54 s: 2026-11-21T08:27:42Z to 08:32:36Z
+2026-11-21T08:28:59Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:28:59Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:28:59Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:28:59Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:28:59Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:28:59Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:29:19Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:31:26Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T08:47:45Z  update       44  the download of an update started
+2026-11-21T08:47:45Z  update       44  the download of an update started
+2026-11-21T08:48:10Z  update       43  the installation of an update started
+2026-11-21T08:48:13Z  update       19  an update was installed
+2026-11-21T08:48:23Z  update       43  the installation of an update started
+2026-11-21T08:48:26Z  update       19  an update was installed
+2026-11-21T08:53:29Z  update       44  the download of an update started
+2026-11-21T09:18:17Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
+2026-11-21T09:18:49Z  defender   2010  more definitions fetched from the cloud  [Product Version=4.18.26100.4; Current security intelligence Version=1.463.390.0; Current Engine Version=1.1.26100.4; Cloud protection intelligence Version=0.0.0.0]
