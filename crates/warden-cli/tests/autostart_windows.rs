@@ -94,8 +94,15 @@ fn what_is_there_can_be_listed_without_changing_anything() {
     assert!(listed["problems"].is_array());
 
     // The same for people to read: a count for each of the four places.
-    let (ok, text) = run(warden().args(["autostart", "list"]));
-    assert!(ok, "{text}");
+    // The list itself is never printed, not even when something is wrong
+    // with it: on a person's machine it says what is installed there.
+    let output = warden().args(["autostart", "list"]).output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8_lossy(&output.stdout);
     for heading in [
         "Run and RunOnce values: ",
         "Scheduled tasks: ",

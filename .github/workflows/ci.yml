@@ -189,8 +189,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # The same script a developer double-clicks on their own machine, run
       # through the same launcher and Windows PowerShell. It builds the
-      # release binary, checks EICAR detection in all three forms, measures
-      # scan throughput, builds the rule bundle from the pinned YARA Forge
+      # release binary, checks EICAR detection in all three forms, times a
+      # look at what Windows starts on the machine, measures scan
+      # throughput, builds the rule bundle from the pinned YARA Forge
       # package and counts false positives. The tests already ran in the job
       # above. Everything is pointed at a small folder: a hosted runner's
       # disk is slow on first read, and numbers from shared CI hardware are
@@ -227,33 +228,6 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Write-Host '::endgroup::'
           }
-      # How long the look at the four places for autostart entries takes
-      # with the release build, and how many entries it reads. Numbers only.
-      - name: Time the look at what starts programs
-        shell: pwsh
-        run: |
-          $warden = 'target\release\warden.exe'
-          $runs = @()
-          foreach ($run in 1..5) {
-            $watch = [System.Diagnostics.Stopwatch]::StartNew()
-            $json = & $warden autostart list --json
-            $watch.Stop()
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            $runs += $watch.ElapsedMilliseconds
-          }
-          $listed = ($json -join "`n") | ConvertFrom-Json
-          $count = { param($kind) @($listed.entries | Where-Object { $_.entry.kind -eq $kind }).Count }
-          $result = [ordered]@{
-            label = 'GitHub-hosted Windows runner, release build, the whole program each time'
-            milliseconds = $runs
-            run_values = & $count 'run_value'
-            tasks = & $count 'task'
-            services_and_drivers = & $count 'service'
-            shortcuts = & $count 'shortcut'
-            problems = @($listed.problems).Count
-          }
-          $result | ConvertTo-Json | Set-Content -LiteralPath 'target\check\autostart.json' -Encoding utf8
-          $result | ConvertTo-Json
       # The run in the virtual machine is done by hand: three runs of a
       # script, with a restart of Windows after the first and the second.
       # A slip in that script costs a person an afternoon, so the script is

@@ -14,6 +14,9 @@
     read-only, a CD image for instance.
 
     Run 1:
+    - It times a look at everything that Windows starts on the machine,
+      before it adds anything, and writes down the times and how many
+      entries of each kind there are.
     - It copies the dummy to C:\warden-test\dummy and registers it in the
       places Windows starts programs from, with Windows' own tools: three
       Run values, a task at logon, a task at boot, a service, and a
@@ -363,10 +366,73 @@ function Invoke-Warden([string]$Arguments) {
     return (Invoke-Tool "`"$warden`" $Arguments")
 }
 
+# The number that `warden autostart list` prints after one of its headings.
+function Get-ListedCount([string]$Listing, [string]$Heading) {
+    $found = [regex]::Match($Listing, '(?m)^' + [regex]::Escape($Heading) + ': ([0-9,]+)')
+    if (-not $found.Success) {
+        throw "warden autostart list has no line for: $Heading"
+    }
+    return [int]($found.Groups[1].Value -replace ',', '')
+}
+
+# How long a look at everything that Windows starts on this machine takes,
+# and how many such entries there are, before the test adds its own. Five
+# looks are timed with their output thrown away; one more is counted. Only
+# numbers are written down, as on every machine. Returns a line about it.
+function Save-Look {
+    $looks = @()
+    foreach ($look in 1..5) {
+        $watch = [System.Diagnostics.Stopwatch]::StartNew()
+        $null = Invoke-Warden 'autostart list --json >nul'
+        $watch.Stop()
+        if ($LASTEXITCODE -ne 0) {
+            throw "warden autostart list --json ended with exit code $LASTEXITCODE"
+        }
+        $looks += [int]$watch.ElapsedMilliseconds
+    }
+    $listing = Invoke-Warden 'autostart list'
+    if ($LASTEXITCODE -ne 0) {
+        throw "warden autostart list ended with exit code $LASTEXITCODE"
+    }
+    $runValues = Get-ListedCount $listing 'Run and RunOnce values'
+    $tasks = Get-ListedCount $listing 'Scheduled tasks'
+    $services = Get-ListedCount $listing 'Services and drivers'
+    $shortcuts = Get-ListedCount $listing 'Shortcuts in the Startup folders'
+    # What could not be looked at is listed last, a line for each.
+    $problems = 0
+    $tail = $listing.IndexOf('Not everything could be looked at:')
+    if ($tail -ge 0) {
+        $problems = [regex]::Matches($listing.Substring($tail), '(?m)^  - ').Count
+    }
+    $result = [ordered]@{
+        label                = 'the machine of the kit, release build: the whole program each time, started through cmd.exe, its output thrown away'
+        milliseconds         = $looks
+        run_values           = $runValues
+        tasks                = $tasks
+        services_and_drivers = $services
+        shortcuts            = $shortcuts
+        problems             = $problems
+    }
+    Write-Utf8 (Join-Path $OutDir 'autostart-look.json') ($result | ConvertTo-Json -Depth 5)
+    $entries = $runValues + $tasks + $services + $shortcuts
+    return "$entries entries, five looks: $($looks -join ', ') ms"
+}
+
 # --- Run 1: plant, scan, quarantine -------------------------------------------
 function Invoke-FirstRun {
     Write-Host 'Run 1 of 3: the dummy is registered, found by a scan and quarantined.' -ForegroundColor Cyan
     Remove-Everything
+
+    # The machine as it is, before anything is added to it.
+    $looked = ''
+    try {
+        $looked = Save-Look
+        Add-Check 'Warden could look at everything that this machine starts' $true $looked
+        Write-Host "          $looked"
+    } catch {
+        Add-Check 'Warden could look at everything that this machine starts' $false "$($_.Exception.Message)"
+    }
+
     New-Item -ItemType Directory -Force -Path $dummyDir | Out-Null
     Copy-Item -LiteralPath $dummySource -Destination $dummy -Force
 
