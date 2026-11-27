@@ -14,6 +14,9 @@
 //! is deleted after the job, and in the virtual machine, from the kit. A
 //! developer's `cargo test` makes none.
 //!
+//! A [`BootDriver`] is a scene of one entry: a driver that Windows would
+//! load while it starts. It is made under the same condition.
+//!
 //! This file is shared. The tests of `warden-autostart` use it, and those
 //! of the command line include it by its path, so that both work with the
 //! same entries.
@@ -521,6 +524,113 @@ impl Drop for Scene {
             "$s = New-Object -ComObject Schedule.Service; $s.Connect(); \
              try { $s.GetFolder('\\').DeleteFolder('Warden Test', 0) } catch { }",
         );
+    }
+}
+
+/// The name of the driver that a [`BootDriver`] registers.
+pub const BOOT_DRIVER: &str = "WardenTestBootDriver";
+
+/// A driver that Windows would load while it starts, were this machine
+/// started again: the kind of entry that the second guard of the
+/// quarantine looks for.
+///
+/// The service manager takes such a driver only if its file is in the
+/// Windows folder; a test in `on_windows.rs` shows it turning down one
+/// that is elsewhere. So the file goes where drivers are, into
+/// `System32\drivers`, under a name of its own. It is a copy of the test
+/// and no driver, nothing loads it while the machine runs, and the entry
+/// tells Windows to go on without it. The entry and the file are removed
+/// again when the value goes, whatever happened in between.
+pub struct BootDriver {
+    file: PathBuf,
+    _alone: MutexGuard<'static, ()>,
+}
+
+impl BootDriver {
+    /// Puts the file into the drivers folder of Windows and registers it
+    /// with `sc`. One at a time: the name is the same for all.
+    pub fn register() -> Self {
+        static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+        let alone = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let windows = std::env::var_os("SystemRoot").expect("the folder of Windows");
+        let driver = Self {
+            file: Path::new(&windows)
+                .join("System32")
+                .join("drivers")
+                .join("wardentest.sys"),
+            _alone: alone,
+        };
+        driver.clear();
+        fs::copy(
+            std::env::current_exe().expect("this test's file"),
+            &driver.file,
+        )
+        .expect("a copy of this test in the drivers folder");
+        must(
+            "sc",
+            &[
+                "create",
+                BOOT_DRIVER,
+                "type=",
+                "kernel",
+                "start=",
+                "boot",
+                // If Windows ever did get to it: go on without it.
+                "error=",
+                "ignore",
+                "binPath=",
+                &driver.file.display().to_string(),
+                "DisplayName=",
+                "Warden test boot driver",
+            ],
+        );
+        driver
+    }
+
+    /// The file that the entry names.
+    pub fn file(&self) -> &Path {
+        &self.file
+    }
+
+    /// What Windows' own tools show of the entry: its settings, and its
+    /// whole key with the lines in order.
+    pub fn shown_by_windows(&self) -> Views {
+        let shown = |program: &str, arguments: &[&str]| {
+            let (ok, text) = tool(program, arguments);
+            ok.then_some(text)
+        };
+        let key = format!(r"HKLM\SYSTEM\CurrentControlSet\Services\{BOOT_DRIVER}");
+        vec![
+            ("the driver's settings", shown("sc", &["qc", BOOT_DRIVER])),
+            (
+                "who may do what with the driver",
+                shown("sc", &["sdshow", BOOT_DRIVER]),
+            ),
+            (
+                "the driver's key in the registry, its lines in order",
+                shown("reg", &["query", &key, "/s"]).map(|text| {
+                    let mut lines: Vec<&str> = text
+                        .lines()
+                        .map(str::trim_end)
+                        .filter(|line| !line.is_empty())
+                        .collect();
+                    lines.sort_unstable();
+                    lines.join("\n")
+                }),
+            ),
+        ]
+    }
+
+    /// Removes the entry and the file, whether they are there or not.
+    fn clear(&self) {
+        let _ = tool("sc", &["delete", BOOT_DRIVER]);
+        let _ = fs::remove_file(&self.file);
+    }
+}
+
+impl Drop for BootDriver {
+    fn drop(&mut self) {
+        self.clear();
     }
 }
 

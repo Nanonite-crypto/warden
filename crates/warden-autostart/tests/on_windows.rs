@@ -8,7 +8,8 @@
 //!
 //! The first test only reads and runs everywhere. The others change the
 //! machine, and run only where the environment allows it in as many
-//! words; see `scene/mod.rs`.
+//! words; see `scene/mod.rs`. The last of them is about a driver that
+//! Windows loads while it starts, which the quarantine leaves alone.
 
 #![cfg(windows)]
 #![allow(clippy::unwrap_used)]
@@ -17,8 +18,10 @@ mod scene;
 
 use std::time::Instant;
 
-use scene::{ENTRIES, Report, SERVICE, Scene, print_views};
-use warden_autostart::{Entry, KIND, Outcome, REG_EXPAND_SZ, REG_SZ, Remedy, find, this_system};
+use scene::{BOOT_DRIVER, BootDriver, ENTRIES, Report, SERVICE, Scene, print_views};
+use warden_autostart::{
+    Entry, KIND, Outcome, REG_EXPAND_SZ, REG_SZ, Remedy, Spellings, find, find_in, this_system,
+};
 use warden_quarantine::{Quarantine, Reason, RestoreOptions};
 
 fn as_json(entry: &Entry) -> String {
@@ -370,5 +373,176 @@ fn a_file_goes_into_the_quarantine_with_what_starts_it_and_comes_back_with_it() 
     report.check(remedy.put_back(&id).unwrap().is_none(), || {
         "a second put-back found a record".to_owned()
     });
+    report.finish();
+}
+
+/// A driver that Windows loads while it starts, on a real Windows: where
+/// the file of one has to be, that a survey knows it for such a driver by
+/// the path of its file, and that it goes and comes back like a service.
+#[test]
+fn a_driver_that_windows_loads_while_it_starts_is_known_and_goes_and_comes_back() {
+    if !scene::may_change_the_machine() {
+        return;
+    }
+    let mut report = Report::default();
+
+    // Where the file of such a driver can be. In a folder of one's own
+    // the service manager takes a driver that is loaded on demand, and
+    // turns the same one down with the start "boot". The documents say
+    // so, and this is where it shows.
+    const ELSEWHERE: &str = "WardenTestDriverElsewhere";
+    let dir = tempfile::Builder::new()
+        .prefix("Warden driver elsewhere ")
+        .tempdir()
+        .unwrap();
+    let elsewhere = dir.path().join("wardentest.sys");
+    std::fs::copy(std::env::current_exe().unwrap(), &elsewhere).unwrap();
+    let _ = scene::tool("sc", &["delete", ELSEWHERE]);
+    for (start, expected) in [("boot", false), ("demand", true)] {
+        let (taken, said) = scene::tool(
+            "sc",
+            &[
+                "create",
+                ELSEWHERE,
+                "type=",
+                "kernel",
+                "start=",
+                start,
+                "error=",
+                "ignore",
+                "binPath=",
+                &elsewhere.display().to_string(),
+            ],
+        );
+        println!(
+            "==== a driver with its file outside the Windows folder, start \"{start}\" ====\n{}",
+            said.trim()
+        );
+        if taken {
+            let (_, shown) = scene::tool("sc", &["qc", ELSEWHERE]);
+            println!("{}", shown.trim());
+        }
+        let _ = scene::tool("sc", &["delete", ELSEWHERE]);
+        report.check(taken == expected, || {
+            format!(
+                "the service manager {} a driver outside the Windows folder with the start \"{start}\":\n{said}",
+                if taken { "took" } else { "turned down" }
+            )
+        });
+    }
+    println!();
+
+    let driver = BootDriver::register();
+    let before = driver.shown_by_windows();
+    print_views("what Windows' tools show of the driver", &before);
+    report.all_there(&before);
+
+    let system = this_system();
+    let file = driver.file();
+    println!("the file: {}", file.display());
+    println!("as Windows writes it: {:?}", system.spellings(file));
+
+    // A survey knows the file for one that Windows loads while it
+    // starts, by the path a person would write. The copy elsewhere, with
+    // the same name, is no such file.
+    let survey = system.survey();
+    let spelled = |file: &std::path::Path| {
+        let mut paths = vec![file.display().to_string()];
+        paths.extend(system.spellings(file));
+        Spellings::new(paths)
+    };
+    let drivers = survey.boot_drivers();
+    let drivers_of = |file: &std::path::Path| -> Vec<String> {
+        let file = spelled(file);
+        drivers
+            .iter()
+            .filter(|driver| driver.is_file(&file))
+            .map(|driver| driver.name.clone())
+            .collect()
+    };
+    println!(
+        "{} drivers are loaded while this Windows starts; the file is that of {:?}",
+        drivers.len(),
+        drivers_of(file)
+    );
+    report.check(drivers_of(file) == [BOOT_DRIVER], || {
+        format!(
+            "the file is taken for that of {:?}, and not of {BOOT_DRIVER} alone",
+            drivers_of(file)
+        )
+    });
+    report.check(drivers_of(&elsewhere).is_empty(), || {
+        format!(
+            "a file elsewhere is taken for that of {:?}",
+            drivers_of(&elsewhere)
+        )
+    });
+
+    // What starts the file is the driver, and nothing else.
+    let found = find_in(system.as_ref(), &survey, file);
+    for seen in &found.starting {
+        println!("  {}\n      {:?}", seen.entry, seen.lines);
+    }
+    let places: Vec<String> = found
+        .starting
+        .iter()
+        .map(|seen| seen.entry.to_string())
+        .collect();
+    report.check(places == [format!("the driver {BOOT_DRIVER}")], || {
+        format!("what starts the file was found to be {places:?}")
+    });
+    let Some(seen) = found.starting.first() else {
+        report.finish();
+        return;
+    };
+    let entry = &seen.entry;
+    println!("{}", as_json(entry));
+    match entry {
+        Entry::Service(service) => {
+            report.check(service.is_loaded_at_boot(), || {
+                format!(
+                    "it was read with type {:#x} and start {}",
+                    service.service_type, service.start_type
+                )
+            });
+            report.check(service.error_control == 0, || {
+                format!("it was read with error control {}", service.error_control)
+            });
+        }
+        other => report.wrong(format!("it was read as {other}")),
+    }
+
+    // It goes and comes back as a service does. The file is not part of
+    // that: files are the quarantine's business.
+    if let Err(failure) = system.remove(entry) {
+        report.wrong(format!("it could not be removed, because {failure}"));
+    }
+    match system.current(entry) {
+        Ok(None) => {}
+        other => report.wrong(format!("after its removal Warden reads {other:?}")),
+    }
+    report.all_gone(&driver.shown_by_windows());
+    report.check(file.is_file(), || "the file went with the entry".to_owned());
+    match system.create(entry) {
+        Ok(notes) => report.check(notes.is_empty(), || {
+            format!("it was put back with reservations: {notes:?}")
+        }),
+        Err(failure) => report.wrong(format!("it could not be put back, because {failure}")),
+    }
+    match system.current(entry) {
+        Ok(Some(now)) if now == *entry => {}
+        Ok(Some(now)) => report.wrong(format!(
+            "Warden reads it differently after putting it back.\n--- written down ---\n{}\n--- now ---\n{}",
+            as_json(entry),
+            as_json(&now)
+        )),
+        other => report.wrong(format!("after putting it back Warden reads {other:?}")),
+    }
+    let after = driver.shown_by_windows();
+    print_views(
+        "what Windows' tools show after the driver was put back",
+        &after,
+    );
+    report.same_as_before(&before, &after);
     report.finish();
 }
