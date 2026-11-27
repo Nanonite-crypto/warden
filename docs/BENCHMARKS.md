@@ -66,6 +66,14 @@ See [TESTING.md](TESTING.md).
 - On Windows, Microsoft Defender scans the same files as they are opened.
   That overhead is part of the measured time, because it is what a user
   would experience.
+- **What else the machine was doing.** `scripts\win\machine-events.cmd`
+  lists from Windows' own logs when Microsoft Defender updated itself or
+  ran a scan of its own, when Windows Update worked, and when the machine
+  was started, put to sleep or woken. It prints times and the numbers of
+  the events, and nothing that names a file or a program. It was written
+  after one scan of the desktop took four times as long as the scans
+  before it, with nothing on record that could say why: see
+  [that scan](#the-desktops-programs-with-the-rule-back-in-the-bundle).
 
 ## Results: phase 1
 
