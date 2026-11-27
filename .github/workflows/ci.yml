@@ -280,6 +280,40 @@ jobs:
           if (@($result.checks).Count -ne 24) { Write-Host "::error::$(@($result.checks).Count) checks, where a kit with the automated tests has 24."; exit 1 }
           Write-Host 'The rehearsal went as it should: everything held but the seven checks that need a restart.'
           exit 0
+      # The restart study restarts a virtual machine about forty times by
+      # itself. Here it goes through one round of each kind without the
+      # waiting and without a restart: the look alone, the entries made and
+      # removed with Windows' tools, the kit's first run, and nothing. Its
+      # task is registered and removed, and the way to end a study is tried.
+      - name: Rehearse the restart study
+        shell: pwsh
+        run: |
+          $kit = Join-Path $env:RUNNER_TEMP 'autostart-kit'
+          $out = Join-Path $env:RUNNER_TEMP 'restart-study-out'
+          Copy-Item -Path 'scripts\win\restart-study.ps1' -Destination $kit
+          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $kit 'restart-study.ps1') -Rehearse -OutDir $out -SerialPort none
+          $code = $LASTEXITCODE
+          Write-Host "The rehearsal ended with exit code $code."
+          Write-Host '::group::The lines the study writes to the serial port'
+          Get-Content -LiteralPath (Join-Path $out 'restart-study-lines.txt') -ErrorAction SilentlyContinue
+          Write-Host '::endgroup::'
+          Write-Host '::group::restart-study.json'
+          Get-Content -LiteralPath (Join-Path $out 'restart-study.json') -ErrorAction SilentlyContinue
+          Write-Host '::endgroup::'
+          if ($code -ne 0) { Write-Host '::error::The rehearsal of the restart study failed.'; exit 1 }
+          $result = Get-Content -LiteralPath (Join-Path $out 'restart-study.json') -Raw | ConvertFrom-Json
+          $kinds = @($result.rounds | ForEach-Object { $_.kind } | Sort-Object)
+          if (($kinds -join ',') -ne 'entries,look,nothing,warden') { Write-Host "::error::The rounds were: $($kinds -join ',')"; exit 1 }
+          $wrong = @($result.rounds | Where-Object { $_.exit -ne 0 })
+          if ($wrong.Count -gt 0) { Write-Host "::error::$($wrong.Count) rounds went wrong."; exit 1 }
+          if (-not $result.finished) { Write-Host '::error::The study did not finish.'; exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $kit 'restart-study.ps1') -Stop -OutDir $out -SerialPort none
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::Ending a study failed.'; exit 1 }
+          $left = @('C:\warden-study', 'C:\warden-test') | Where-Object { Test-Path -LiteralPath $_ }
+          if ($left) { Write-Host "::error::Left on the machine: $($left -join ', ')"; exit 1 }
+          Copy-Item -LiteralPath (Join-Path $out 'restart-study.json') -Destination 'target\check\restart-study-rehearsal.json'
+          Write-Host 'The rehearsal went as it should: four rounds, one of each kind, and nothing left.'
+          exit 0
       # The list of a machine's own events once came back without any of
       # Defender's. Its query named 25 event numbers, Windows takes 22 in
       # one query, and the answer read as if there were no such events. The
@@ -325,7 +359,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          for file in summary.json system.json bench.json fp.json trust-drivers.json trust-powershell.json trust-windowsapps.json autostart.json autostart-kit-rehearsal.json; do
+          for file in summary.json system.json bench.json fp.json trust-drivers.json trust-powershell.json trust-windowsapps.json autostart.json autostart-kit-rehearsal.json restart-study-rehearsal.json; do
             echo "::group::$file"
             cat "target/check/$file" 2>/dev/null || echo "(not written)"
             echo

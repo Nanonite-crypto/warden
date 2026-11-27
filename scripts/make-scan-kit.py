@@ -18,13 +18,17 @@ whether the machine's antivirus tells it from the bundle under the cipher.
 
 `--dummy` adds what the second run on such a machine needs, the one that
 shows Warden removing autostart entries and putting them back: the harmless
-stand-in `warden-dummy.exe` and the script `autostart-remedy`. `--tests`
-adds the automated tests of the Windows side as a program, for that script
+stand-in `warden-dummy.exe` and the script `autostart-remedy`. With them
+comes `restart-study`, which restarts the machine again and again to see
+whether a restart stumbles over something that Warden does. `--tests` adds
+the automated tests of the Windows side as a program, for `autostart-remedy`
 to run at its end:
 
     cargo build --release -p warden-cli -p warden-dummy
+    cargo test -p warden-autostart --test on_windows --no-run
     python3 scripts/make-scan-kit.py --warden target/release/warden.exe \\
         --rules rules/vendor/rules.wrb --dummy target/release/warden-dummy.exe \\
+        --tests target/debug/deps/on_windows-<what cargo printed>.exe \\
         --out rules/vendor/warden-kit.iso
 
 Keep the image where the bundle is. It holds the bundle, and an antivirus
@@ -77,7 +81,7 @@ def main() -> None:
     parser.add_argument(
         "--dummy",
         type=Path,
-        help="warden-dummy.exe, built for Windows: adds it and the autostart-remedy script",
+        help="warden-dummy.exe, built for Windows: adds it, the autostart-remedy script and the restart study",
     )
     parser.add_argument(
         "--tests",
@@ -99,8 +103,14 @@ def main() -> None:
         files["rules-plain.wrb"] = args.control
     if args.dummy is not None:
         files["warden-dummy.exe"] = args.dummy
-        files["autostart-remedy.cmd"] = SCRIPTS / "autostart-remedy.cmd"
-        files["autostart-remedy.ps1"] = SCRIPTS / "autostart-remedy.ps1"
+        for script in (
+            "autostart-remedy.cmd",
+            "autostart-remedy.ps1",
+            "restart-study.cmd",
+            "restart-study.ps1",
+            "restart-study-stop.cmd",
+        ):
+            files[script] = SCRIPTS / script
     if args.tests is not None:
         files["autostart-tests.exe"] = args.tests
     for name, path in files.items():
