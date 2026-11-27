@@ -39,12 +39,20 @@
     Run 3:
     - It reads the file the dummy writes: there has to be a line for each
       entry, with that entry's word.
+    - If autostart-tests.exe is in its folder, the automated tests of the
+      Windows side built as a program, it runs them here, and then removes
+      with Windows' tools whatever they may have left.
     - It removes the entries with Windows' tools, and the folder.
     - It writes the result to C:\warden-out\autostart-remedy.json, and
       sends it out through the serial port if the machine has one.
 
     With -Reset the script removes everything it may have left behind,
-    in whatever run it stopped, and does nothing else.
+    in whatever run it stopped, and whatever the automated tests may have
+    left, and does nothing else.
+
+    With -Only the script does one part of run 1 and nothing else. That
+    is for restart-study.ps1, which asks what it is about run 1 that a
+    restart of Windows may stumble over.
 
     It registers a service and two tasks, and writes to the Run keys.
     Never run it on a machine that is in use. It changes no antivirus
@@ -59,12 +67,30 @@
 
 .PARAMETER Reset
     Remove what an earlier run left behind, and stop.
+
+.PARAMETER Only
+    Look: time the look at what the machine starts, as run 1 does, and add
+    nothing to the machine. Entries: make the seven entries with Windows'
+    own tools, write down what Windows shows of them, and remove them
+    again with Windows' own tools, without starting Warden once. Either
+    way the script keeps no place and writes no result of the three runs.
+
+.PARAMETER BootDriverTest
+    Let the automated tests include the one that registers a driver with
+    the start "boot". Without this switch that test is left out: for a
+    second or two it leaves the machine with a driver that is none, to be
+    loaded at the next start, and a machine that is kept should not be one
+    power cut away from not starting. CI gives the switch on its runner,
+    which is deleted after the job.
 #>
 [CmdletBinding()]
 param(
     [string]$OutDir = (Join-Path "$env:SystemDrive\" 'warden-out'),
     [string]$SerialPort = 'COM1',
-    [switch]$Reset
+    [switch]$Reset,
+    [ValidateSet('', 'Look', 'Entries')]
+    [string]$Only = '',
+    [switch]$BootDriverTest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -96,6 +122,25 @@ $logonTask = '\WardenTest\DummyAtLogon'
 $bootTask = '\WardenTest\DummyAtBoot'
 $service = 'WardenTestDummy'
 $shortcutName = 'WardenTestDummy.lnk'
+
+# What the automated tests make on a real Windows, by the names they give
+# it in crates/warden-autostart/tests: scene/mod.rs and on_windows.rs. The
+# tests remove all of it themselves. This script removes it once more with
+# Windows' own tools after the tests ran, in case the test program died
+# half way. A test of that crate checks that every name is known here.
+$testRunValue = 'WardenTestThreat'
+$testMachineValue = 'WardenTestThreatForAll'
+$testOldViewValue = 'WardenTestThreat32'
+$testTaskFolder = 'Warden Test'
+$testLogonTask = '\Warden Test\Threat at logon'
+$testBootTask = '\Warden Test\Threat at boot'
+$testService = 'WardenTestThreat'
+$testShortcut = 'WardenTestThreat.lnk'
+$testBootDriver = 'WardenTestBootDriver'
+$testOtherDriver = 'WardenTestDriverElsewhere'
+$testDriverFile = Join-Path $env:SystemRoot 'System32\drivers\wardentest.sys'
+# The test that registers the driver with the start "boot".
+$bootDriverTestName = 'a_driver_that_windows_loads_while_it_starts_is_known_and_goes_and_comes_back'
 
 # The word each entry passes to the dummy, by a name for the entry.
 $words = [ordered]@{
@@ -291,6 +336,45 @@ function Remove-Everything {
     }
 }
 
+# Removes what the automated tests make, with Windows' tools, there or not.
+function Remove-TestLeftovers {
+    $null = Invoke-Tool "reg delete HKCU\$runKey /v $testRunValue /f"
+    $null = Invoke-Tool "reg delete HKLM\$runKey /v $testMachineValue /f"
+    $null = Invoke-Tool "reg delete HKLM\$runKey /v $testOldViewValue /f /reg:32"
+    $null = Invoke-Tool "schtasks /delete /tn `"$testLogonTask`" /f"
+    $null = Invoke-Tool "schtasks /delete /tn `"$testBootTask`" /f"
+    $null = Invoke-Tool "sc.exe delete $testService"
+    $null = Invoke-Tool "sc.exe delete $testBootDriver"
+    $null = Invoke-Tool "sc.exe delete $testOtherDriver"
+    try {
+        $scheduler = New-Object -ComObject Schedule.Service
+        $scheduler.Connect()
+        $scheduler.GetFolder('\').DeleteFolder($testTaskFolder, 0)
+    } catch { }
+    foreach ($file in @((Join-Path (Get-StartupFolder) $testShortcut), $testDriverFile)) {
+        if (Test-Path -LiteralPath $file) {
+            Remove-Item -LiteralPath $file -Force
+        }
+    }
+}
+
+# What is left of the automated tests, by a name for each thing. Nothing,
+# if all is as it should be.
+function Get-TestLeftovers {
+    $left = @()
+    if ($null -ne (Get-Shown "reg query HKCU\$runKey /v $testRunValue")) { $left += 'the Run value of the user' }
+    if ($null -ne (Get-Shown "reg query HKLM\$runKey /v $testMachineValue")) { $left += 'the Run value of the machine' }
+    if ($null -ne (Get-Shown "reg query HKLM\$runKey /v $testOldViewValue /reg:32")) { $left += 'the Run value in the 32-bit view' }
+    if ($null -ne (Get-Shown "schtasks /query /tn `"$testLogonTask`"")) { $left += 'the task at logon' }
+    if ($null -ne (Get-Shown "schtasks /query /tn `"$testBootTask`"")) { $left += 'the task at boot' }
+    if ($null -ne (Get-Shown "sc.exe qc $testService")) { $left += 'the service' }
+    if ($null -ne (Get-Shown "sc.exe qc $testBootDriver")) { $left += 'the driver with the start boot' }
+    if ($null -ne (Get-Shown "sc.exe qc $testOtherDriver")) { $left += 'the other driver' }
+    if (Test-Path -LiteralPath (Join-Path (Get-StartupFolder) $testShortcut)) { $left += 'the shortcut' }
+    if (Test-Path -LiteralPath $testDriverFile) { $left += 'the file in the drivers folder' }
+    return ,$left
+}
+
 # --- The result -----------------------------------------------------------------
 $resultFile = Join-Path $OutDir 'autostart-remedy.json'
 
@@ -418,6 +502,55 @@ function Save-Look {
     return "$entries entries, five looks: $($looks -join ', ') ms"
 }
 
+# Puts the dummy into its folder and registers it in seven places, with
+# Windows' own tools.
+function New-Entries {
+    New-Item -ItemType Directory -Force -Path $dummyDir | Out-Null
+    Copy-Item -LiteralPath $dummySource -Destination $dummy -Force
+
+    $null = Invoke-Must "reg add HKCU\$runKey /v $userValue /t REG_SZ /d `"$dummy --from-run`" /f"
+    $null = Invoke-Must "reg add HKLM\$runKey /v $machineValue /t REG_SZ /d `"$dummy --from-run-for-all`" /f"
+    $null = Invoke-Must "reg add HKLM\$runKey /v $oldViewValue /t REG_SZ /d `"$dummy --from-run-32`" /f /reg:32"
+    $null = Invoke-Must "schtasks /create /tn $logonTask /tr `"$dummy --from-logon-task`" /sc onlogon /f"
+    $null = Invoke-Must "schtasks /create /tn $bootTask /tr `"$dummy --from-boot-task`" /sc onstart /ru SYSTEM /f"
+    $null = Invoke-Must "sc.exe create $service binPath= `"$dummy --service`" start= auto DisplayName= WardenTestDummy"
+    $null = Invoke-Must "sc.exe description $service WardenTestDummy"
+    $null = Invoke-Must "sc.exe sidtype $service unrestricted"
+    New-Item -ItemType Directory -Force -Path (Get-StartupFolder) | Out-Null
+    $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Get-ShortcutPath))
+    $link.TargetPath = $dummy
+    $link.Arguments = '--from-shortcut'
+    $link.Save()
+}
+
+# --- A part of run 1 by itself, for the restart study ----------------------------
+# The look, timed as run 1 times it. Nothing is added to the machine.
+function Invoke-OnlyLook {
+    Write-Host 'Only the look: what the machine starts is read, and nothing is added.' -ForegroundColor Cyan
+    $looked = Save-Look
+    Write-Host "  $looked"
+    Send-Line "WARDEN-KIT ONLY look: $looked"
+}
+
+# The seven entries, made and removed with Windows' own tools. Warden is
+# not started. Fails if an entry does not show after it was made, or still
+# shows after it was removed.
+function Invoke-OnlyEntries {
+    Write-Host 'Only the entries: made and removed with the tools of Windows, without Warden.' -ForegroundColor Cyan
+    Remove-Everything
+    New-Entries
+    $made = Get-Views
+    $present = Get-Present $made
+    Remove-Everything
+    $left = Get-Present (Get-Views)
+    $said = "$($present.Count) of $($made.Count) views showed something, $($left.Count) show something now"
+    Write-Host "  $said"
+    Send-Line "WARDEN-KIT ONLY entries: $said"
+    if (($present.Count -ne $made.Count) -or ($left.Count -ne 0)) {
+        throw "the entries were not made and removed as they should be: $said"
+    }
+}
+
 # --- Run 1: plant, scan, quarantine -------------------------------------------
 function Invoke-FirstRun {
     Write-Host 'Run 1 of 3: the dummy is registered, found by a scan and quarantined.' -ForegroundColor Cyan
@@ -433,23 +566,7 @@ function Invoke-FirstRun {
         Add-Check 'Warden could look at everything that this machine starts' $false "$($_.Exception.Message)"
     }
 
-    New-Item -ItemType Directory -Force -Path $dummyDir | Out-Null
-    Copy-Item -LiteralPath $dummySource -Destination $dummy -Force
-
-    # The entries, made with Windows' own tools.
-    $null = Invoke-Must "reg add HKCU\$runKey /v $userValue /t REG_SZ /d `"$dummy --from-run`" /f"
-    $null = Invoke-Must "reg add HKLM\$runKey /v $machineValue /t REG_SZ /d `"$dummy --from-run-for-all`" /f"
-    $null = Invoke-Must "reg add HKLM\$runKey /v $oldViewValue /t REG_SZ /d `"$dummy --from-run-32`" /f /reg:32"
-    $null = Invoke-Must "schtasks /create /tn $logonTask /tr `"$dummy --from-logon-task`" /sc onlogon /f"
-    $null = Invoke-Must "schtasks /create /tn $bootTask /tr `"$dummy --from-boot-task`" /sc onstart /ru SYSTEM /f"
-    $null = Invoke-Must "sc.exe create $service binPath= `"$dummy --service`" start= auto DisplayName= WardenTestDummy"
-    $null = Invoke-Must "sc.exe description $service WardenTestDummy"
-    $null = Invoke-Must "sc.exe sidtype $service unrestricted"
-    New-Item -ItemType Directory -Force -Path (Get-StartupFolder) | Out-Null
-    $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Get-ShortcutPath))
-    $link.TargetPath = $dummy
-    $link.Arguments = '--from-shortcut'
-    $link.Save()
+    New-Entries
 
     $before = Get-Views
     Write-Utf8 $beforeFile ($before | ConvertTo-Json -Depth 3)
@@ -547,14 +664,31 @@ function Invoke-ThirdRun {
     }
 
     # The automated tests, if the kit brought them: the same round trips as
-    # in CI, on this Windows.
+    # in CI, on this Windows. One after the other, because they share the
+    # names of what they make.
     if (Test-Path -LiteralPath $tests) {
+        $arguments = '--test-threads=1'
+        $which = 'all of them'
+        if (-not $BootDriverTest) {
+            $arguments = "$arguments --skip $bootDriverTestName"
+            $which = 'without the one that registers a driver with the start boot'
+        }
         $env:WARDEN_AUTOSTART_TESTS = 'this-machine-may-be-changed'
-        $said = Invoke-Tool "`"$tests`" --test-threads=1"
+        $said = Invoke-Tool "`"$tests`" $arguments"
         $code = $LASTEXITCODE
         Remove-Item Env:\WARDEN_AUTOSTART_TESTS
         Write-Utf8 (Join-Path $OutDir 'autostart-tests.txt') $said
-        Add-Check 'the automated tests of the Windows side pass here' ($code -eq 0) "exit code $code"
+        $counted = [regex]::Match($said, 'test result: \S+ (\d+) passed; (\d+) failed')
+        $numbers = 'no count in what the tests printed'
+        if ($counted.Success) {
+            $numbers = "$($counted.Groups[1].Value) passed, $($counted.Groups[2].Value) failed"
+        }
+        Add-Check 'the automated tests of the Windows side pass here' ($code -eq 0) "exit code $code, $numbers, $which"
+        # Whatever the tests may have left, before anything restarts this
+        # machine: above all the driver.
+        Remove-TestLeftovers
+        $leftovers = Get-TestLeftovers
+        Add-Check 'nothing of the automated tests is left on the machine' ($leftovers.Count -eq 0) ($leftovers -join '; ')
     }
 
     Remove-Everything
@@ -580,6 +714,7 @@ if (-not $script:machine.administrator_rights) {
 
 if ($Reset) {
     Remove-Everything
+    Remove-TestLeftovers
     Send-Line 'WARDEN-KIT DONE reset'
     Close-Serial
     Write-Host 'Everything the script makes is removed.' -ForegroundColor Green
@@ -593,6 +728,24 @@ foreach ($needed in @($warden, $dummySource)) {
         Write-Host "FAILED: $needed is missing." -ForegroundColor Red
         exit 2
     }
+}
+
+if ($Only) {
+    try {
+        if ($Only -eq 'Look') {
+            Invoke-OnlyLook
+        } else {
+            Invoke-OnlyEntries
+        }
+    } catch {
+        Send-Line "WARDEN-KIT FAILED $($_.Exception.Message)"
+        Close-Serial
+        Write-Host "FAILED: $($_.Exception.Message)" -ForegroundColor Red
+        exit 2
+    }
+    Send-Line "WARDEN-KIT DONE $(Get-UtcNow) only=$Only"
+    Close-Serial
+    exit 0
 }
 
 $stage = 1
