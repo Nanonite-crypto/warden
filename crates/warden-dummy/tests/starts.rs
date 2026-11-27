@@ -42,3 +42,46 @@ fn each_start_adds_one_line_next_to_the_program() {
     names.sort();
     assert_eq!(names, [name, "warden-dummy-starts.log"]);
 }
+
+/// The stand-in is started on a Windows that nobody has prepared, as Warden
+/// is: the virtual machine it is made for was installed and nothing else.
+/// So it may not ask for a library that only comes with Microsoft's Visual
+/// C++ runtime, or Windows could not start it there. The build setting that
+/// sees to it is in `.cargo/config.toml`, and holds for every program of
+/// this workspace.
+#[cfg(windows)]
+#[test]
+fn it_needs_no_library_that_a_fresh_windows_lacks() {
+    let bytes = fs::read(env!("CARGO_BIN_EXE_warden-dummy")).unwrap();
+    let facts = warden_pe::read(&bytes).unwrap();
+    let libraries: Vec<String> = facts
+        .imports
+        .iter()
+        .map(|library| library.name.to_ascii_lowercase())
+        .collect();
+    assert!(
+        libraries.iter().any(|name| name == "kernel32.dll"),
+        "the import table was not read: {libraries:?}"
+    );
+    let not_part_of_windows = [
+        "vcruntime",
+        "msvcp",
+        "msvcr",
+        "vccorlib",
+        "concrt",
+        "ucrtbased",
+    ];
+    let missing_on_a_fresh_windows: Vec<&String> = libraries
+        .iter()
+        .filter(|name| {
+            not_part_of_windows
+                .iter()
+                .any(|family| name.starts_with(family))
+        })
+        .collect();
+    assert!(
+        missing_on_a_fresh_windows.is_empty(),
+        "warden-dummy.exe loads {missing_on_a_fresh_windows:?}, which a fresh Windows does not have; \
+         is RUSTFLAGS set, so that .cargo/config.toml is ignored?"
+    );
+}
