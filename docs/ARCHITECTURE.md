@@ -456,8 +456,12 @@ with an entry for whoever asks, and does not read it.
 
 Quarantining the file of a program that runs is not built: Windows does
 not let such a file be removed. It makes sense only together with stopping
-the program, which takes the rights of a service. Where it goes is an
-[open decision](ROADMAP.md#open-decisions).
+the program, which takes the rights of a service, and comes with the
+service of phase 6.
+
+The same look at what starts programs feeds the quarantine's second guard:
+a file that Windows loads as a driver while it starts stays where it is
+([QUARANTINE.md](QUARANTINE.md#drivers-that-windows-loads-while-it-starts)).
 
 ## Real-time protection (phase 9)
 

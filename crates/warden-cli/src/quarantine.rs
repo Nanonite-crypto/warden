@@ -2,11 +2,14 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use anyhow::{Context, anyhow};
 use clap::{Args, Subcommand};
 use serde::Serialize;
-use warden_autostart::{Record, Remedy, find_in, this_system};
+use warden_autostart::{
+    BootDriver, Record, Remedy, Spellings, Survey, find_in, spellings_here, this_system,
+};
 use warden_quarantine::{
     AddOptions, Damaged, Entry, EntryInfo, Guard, Quarantine, QuarantineError, Reason,
     RestoreOptions, Stamp, Verdict, default_dir,
@@ -37,6 +40,9 @@ pub enum QuarantineCommand {
     /// A file that is part of Windows stays where it is: Windows may not
     /// start without it, and then nothing is left to restore it with.
     /// Warden tells such a file by its signature, see `warden trust check`.
+    /// A driver that Windows loads while it starts stays as well, whoever
+    /// made it. Each of the two has a flag that takes the file all the
+    /// same.
     ///
     /// What makes Windows start the file goes with it: values under the
     /// Run keys, scheduled tasks, services, and shortcuts in the Startup
@@ -56,6 +62,11 @@ pub enum QuarantineCommand {
         /// could not be checked whether it is
         #[arg(long)]
         even_if_signed_by_windows: bool,
+
+        /// Quarantine a file even if Windows loads it as a driver while
+        /// it starts
+        #[arg(long)]
+        even_if_loaded_at_boot: bool,
 
         #[command(flatten)]
         place: Place,
@@ -185,11 +196,19 @@ fn attributes(bits: u32) -> String {
     }
 }
 
-/// The flag that takes a file past the guard, as it is typed.
-const PAST_THE_GUARD: &str = "--even-if-signed-by-windows";
+/// The flags that take a file past a guard, as they are typed.
+const PAST_SYSTEM_FILES: &str = "--even-if-signed-by-windows";
+const PAST_BOOT_DRIVERS: &str = "--even-if-loaded-at-boot";
 
-/// The guard of this quarantine: a file that is part of the operating
-/// system stays where it is.
+/// Which guards the user has waved a file past.
+#[derive(Debug, Clone, Copy, Default)]
+struct Past {
+    system_files: bool,
+    boot_drivers: bool,
+}
+
+/// The first guard of this quarantine: a file that is part of the
+/// operating system stays where it is.
 ///
 /// Which signature makes a file part of the operating system is not
 /// written here. The trust list marks the publisher, and
@@ -238,44 +257,133 @@ impl Guard for SystemFiles {
     }
 }
 
+/// The second guard: a file that Windows loads as a driver while it starts
+/// stays where it is, whoever made it.
+///
+/// The first guard knows the files of Windows by their signature. A driver
+/// of another maker that the loader reads in together with the kernel is
+/// no such file, and a machine may not start without it all the same: a
+/// driver for the disk Windows is on, say. Which files those are is in
+/// the registry, and a survey of what starts programs has read it.
+#[derive(Debug)]
+struct BootDrivers {
+    drivers: Vec<BootDriver>,
+}
+
+impl BootDrivers {
+    fn of(survey: &Survey) -> Self {
+        Self {
+            drivers: survey.boot_drivers(),
+        }
+    }
+
+    /// The driver whose file this is, if it is one's. The path is looked
+    /// for in every way the system writes it.
+    fn driver_of(&self, path: &Path) -> Option<&BootDriver> {
+        let mut paths = vec![path.to_string_lossy().into_owned()];
+        paths.extend(spellings_here(path));
+        let file = Spellings::new(paths);
+        self.drivers.iter().find(|driver| driver.is_file(&file))
+    }
+}
+
+impl Guard for BootDrivers {
+    fn look_at(&self, path: &Path) -> Verdict {
+        match self.driver_of(path) {
+            Some(driver) => Verdict::Leave {
+                why: format!(
+                    "Windows loads it as the driver {} while it starts",
+                    driver.name
+                ),
+            },
+            // Nothing was read, so there is no content to hold the file to.
+            None => Verdict::Take { sha256: None },
+        }
+    }
+}
+
+/// A guard that the quarantine asks, and that this program can ask again:
+/// for what it would have said about a file that was waved past it, and
+/// for which of the guards it was that left a file.
+#[derive(Debug)]
+struct Shared<T>(Arc<T>);
+
+impl<T: Guard> Guard for Shared<T> {
+    fn look_at(&self, path: &Path) -> Verdict {
+        self.0.look_at(path)
+    }
+}
+
+/// Several guards as one. The first that would leave a file decides, and
+/// a file is taken if none would.
+#[derive(Debug)]
+struct Guards(Vec<Box<dyn Guard>>);
+
+impl Guard for Guards {
+    fn look_at(&self, path: &Path) -> Verdict {
+        let mut content = None;
+        for guard in &self.0 {
+            match guard.look_at(path) {
+                Verdict::Leave { why } => return Verdict::Leave { why },
+                // The content one of them read is the content to hold
+                // the file to.
+                Verdict::Take { sha256 } => content = content.or(sha256),
+            }
+        }
+        Verdict::Take { sha256: content }
+    }
+}
+
 fn add(
     files: &[PathBuf],
     reason: Option<&String>,
-    even_if_signed_by_windows: bool,
+    past: Past,
     place: &Place,
 ) -> anyhow::Result<ExitCode> {
     let mut quarantine = open(place)?;
-    let guard = SystemFiles::new()?;
-    // Told to take such files, the quarantine gets no guard. It is still
-    // asked here, so that what was taken all the same can be said.
-    let overruled = if even_if_signed_by_windows {
-        Some(guard)
-    } else {
-        quarantine.set_guard(Box::new(guard));
-        None
-    };
-    let options = AddOptions {
-        overrule_guard: even_if_signed_by_windows,
-    };
     // What starts programs on this machine, looked at once for all files.
     let system = this_system();
     let survey = system.survey();
+    // A guard that the user waved a file past is not given to the
+    // quarantine. It is still asked here, so that what was taken all the
+    // same can be said.
+    let system_files = Arc::new(SystemFiles::new()?);
+    let boot_drivers = Arc::new(BootDrivers::of(&survey));
+    let mut asked: Vec<Box<dyn Guard>> = Vec::new();
+    if !past.boot_drivers {
+        asked.push(Box::new(Shared(Arc::clone(&boot_drivers))));
+    }
+    if !past.system_files {
+        asked.push(Box::new(Shared(Arc::clone(&system_files))));
+    }
+    quarantine.set_guard(Box::new(Guards(asked)));
+    let options = AddOptions::default();
     let remedy = Remedy::new(system.as_ref(), &quarantine);
+    let leaves = |guard: &dyn Guard, path: &Path| match guard.look_at(path) {
+        Verdict::Leave { why } => Some(why),
+        Verdict::Take { .. } => None,
+    };
 
     let mut failed = false;
-    let mut guarded = false;
+    // Which flags would have taken the files that were left.
+    let mut left = Past::default();
     for file in files {
         let reason = reason.map_or_else(Reason::default, Reason::note);
-        let although = overruled.as_ref().and_then(|guard| {
-            match guard.look_at(&std::path::absolute(file).ok()?) {
-                Verdict::Leave { why } => Some(why),
-                Verdict::Take { .. } => None,
-            }
-        });
+        let absolute = std::path::absolute(file).ok();
+        // What a guard would have said that the file was waved past.
+        let of_windows = absolute
+            .as_deref()
+            .filter(|_| past.system_files)
+            .and_then(|path| leaves(system_files.as_ref(), path));
+        let boot_driver = absolute
+            .as_deref()
+            .filter(|_| past.boot_drivers)
+            .and_then(|path| leaves(boot_drivers.as_ref(), path));
         // While the file is still there: the system is asked for the
         // other ways its path is written.
-        let starting = std::path::absolute(file)
-            .map(|path| find_in(system.as_ref(), &survey, &path).starting)
+        let starting = absolute
+            .as_deref()
+            .map(|path| find_in(system.as_ref(), &survey, path).starting)
             .unwrap_or_default();
         match quarantine.add_with(file, reason, &options) {
             Ok(entry) => {
@@ -286,8 +394,10 @@ fn add(
                     entry.info.sha256,
                     group_digits(entry.info.size)
                 )?;
-                if let Some(why) = although {
-                    outln!("  although   {}", shown(&why))?;
+                for why in boot_driver.iter().chain(&of_windows) {
+                    outln!("  although   {}", shown(why))?;
+                }
+                if of_windows.is_some() {
                     // A file of Windows can have services of Windows that
                     // start it. They stay.
                     for seen in &starting {
@@ -311,7 +421,14 @@ fn add(
             }
             Err(error) => {
                 failed = true;
-                guarded |= matches!(error, QuarantineError::Guarded { .. });
+                if let (QuarantineError::Guarded { .. }, Some(path)) = (&error, &absolute) {
+                    // Which of the guards would leave it: each has a flag
+                    // of its own, and a file can need both.
+                    left.boot_drivers |=
+                        !past.boot_drivers && leaves(boot_drivers.as_ref(), path).is_some();
+                    left.system_files |=
+                        !past.system_files && leaves(system_files.as_ref(), path).is_some();
+                }
                 errln!("error: {}", shown(&error.to_string()));
             }
         }
@@ -322,9 +439,14 @@ fn add(
             shown(problem)
         );
     }
-    if guarded {
+    if left.system_files {
         errln!(
-            "Without a file of its own the system may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add {PAST_THE_GUARD}."
+            "Without a file of its own the system may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add {PAST_SYSTEM_FILES}."
+        );
+    }
+    if left.boot_drivers {
+        errln!(
+            "Without a driver that it loads while it starts, Windows may not start, and then nothing is left to restore the file with. To quarantine such a file all the same, add {PAST_BOOT_DRIVERS}."
         );
     }
     if failed {
@@ -661,8 +783,17 @@ pub fn run(command: &QuarantineCommand) -> anyhow::Result<ExitCode> {
             files,
             reason,
             even_if_signed_by_windows,
+            even_if_loaded_at_boot,
             place,
-        } => add(files, reason.as_ref(), *even_if_signed_by_windows, place),
+        } => add(
+            files,
+            reason.as_ref(),
+            Past {
+                system_files: *even_if_signed_by_windows,
+                boot_drivers: *even_if_loaded_at_boot,
+            },
+            place,
+        ),
         QuarantineCommand::List { json, place } => list(*json, place),
         QuarantineCommand::Info { id, json, place } => info(id, *json, place),
         QuarantineCommand::Restore {
@@ -702,6 +833,130 @@ mod tests {
 
     fn windows() -> warden_trust::Signer {
         signer("Microsoft Windows", "Microsoft Corporation", true)
+    }
+
+    fn boot_driver(name: &str, line: &str) -> BootDriver {
+        BootDriver {
+            name: name.to_owned(),
+            lines: vec![line.to_owned()],
+        }
+    }
+
+    #[test]
+    fn the_second_guard_leaves_a_file_that_windows_loads_as_a_driver_at_boot() {
+        let guard = BootDrivers {
+            drivers: vec![
+                boot_driver("disk", r"C:\Windows\System32\drivers\disk.sys"),
+                boot_driver("vendor", r"C:\Program Files\Vendor\vendor.sys"),
+            ],
+        };
+        assert_eq!(
+            guard.look_at(Path::new(r"C:\Program Files\Vendor\vendor.sys")),
+            Verdict::Leave {
+                why: "Windows loads it as the driver vendor while it starts".to_owned()
+            }
+        );
+        // However the path is cased.
+        assert!(matches!(
+            guard.look_at(Path::new(r"c:\windows\system32\DRIVERS\DISK.SYS")),
+            Verdict::Leave { .. }
+        ));
+        // Another file in the same folder, and the same name elsewhere.
+        // Nothing was read, so no content is named.
+        for other in [
+            r"C:\Program Files\Vendor\vendor.exe",
+            r"D:\Vendor\vendor.sys",
+        ] {
+            assert_eq!(
+                guard.look_at(Path::new(other)),
+                Verdict::Take { sha256: None },
+                "{other}"
+            );
+        }
+        // On a machine without such drivers, as on every system that is
+        // not Windows, every file passes.
+        let nothing = BootDrivers::of(&Survey::default());
+        assert_eq!(
+            nothing.look_at(Path::new(r"C:\Windows\System32\drivers\disk.sys")),
+            Verdict::Take { sha256: None }
+        );
+    }
+
+    /// A guard that always says the same.
+    #[derive(Debug)]
+    struct Says(Verdict);
+
+    impl Guard for Says {
+        fn look_at(&self, _: &Path) -> Verdict {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn several_guards_leave_a_file_if_one_of_them_would() {
+        let take = || Says(Verdict::Take { sha256: None });
+        let read = |byte: u8| {
+            Says(Verdict::Take {
+                sha256: Some([byte; 32]),
+            })
+        };
+        let leave = |why: &str| {
+            Says(Verdict::Leave {
+                why: why.to_owned(),
+            })
+        };
+        let path = Path::new("any");
+        let all = |guards: Vec<Says>| {
+            Guards(
+                guards
+                    .into_iter()
+                    .map(|guard| Box::new(guard) as Box<dyn Guard>)
+                    .collect(),
+            )
+            .look_at(path)
+        };
+
+        // No guard at all takes everything, and so do guards that agree.
+        assert_eq!(all(vec![]), Verdict::Take { sha256: None });
+        assert_eq!(all(vec![take(), take()]), Verdict::Take { sha256: None });
+        // The content that one of them read is what the file is held to.
+        assert_eq!(
+            all(vec![take(), read(7)]),
+            Verdict::Take {
+                sha256: Some([7; 32])
+            }
+        );
+        assert_eq!(
+            all(vec![read(7), take()]),
+            Verdict::Take {
+                sha256: Some([7; 32])
+            }
+        );
+        // One that would leave the file is enough, wherever it stands,
+        // and the first one to say so gives the reason.
+        for guards in [
+            vec![leave("first"), take()],
+            vec![take(), leave("first")],
+            vec![read(7), leave("first"), leave("second")],
+        ] {
+            assert_eq!(
+                all(guards),
+                Verdict::Leave {
+                    why: "first".to_owned()
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn a_shared_guard_says_what_the_guard_says() {
+        let guard = Arc::new(Says(Verdict::Leave {
+            why: "it says so".to_owned(),
+        }));
+        assert_eq!(
+            Shared(Arc::clone(&guard)).look_at(Path::new("any")),
+            guard.look_at(Path::new("any"))
+        );
     }
 
     #[test]

@@ -117,8 +117,9 @@ rights, its attribute bits and the mark that says it was downloaded. An
 operation that is cut off is finished or undone the next time the
 quarantine is opened; the tests stop every operation after every step,
 the way a program that dies would. A file that Windows itself signed is
-left where it is, because Windows may not start without it; a flag that
-has to be typed out takes it all the same.
+left where it is, because Windows may not start without it, and so is a
+driver that Windows loads while it starts, whoever made it. For each, a
+flag that has to be typed out takes the file all the same.
 [docs/QUARANTINE.md](docs/QUARANTINE.md) has the format, the reasoning and
 the limits.
 
@@ -191,7 +192,7 @@ routes to a signature, the list, and the limits.
 |---|---|
 | `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report, `--no-trust` reports every rule match whoever signed the file. |
 | `warden trust check <file>...` / `list` / `survey <folder>` | Says who signed a file, by which of three routes, and whether that publisher is on the trust list; prints the list; or checks every file of a folder and counts. Windows only. |
-| `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. `add` leaves a file that Windows itself signed where it is, unless `--even-if-signed-by-windows` is given. On Windows, `add` also removes what starts the file, and `restore` puts it back. |
+| `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. `add` leaves a file that Windows itself signed where it is, unless `--even-if-signed-by-windows` is given, and a driver that Windows loads while it starts, unless `--even-if-loaded-at-boot` is given. On Windows, `add` also removes what starts the file, and `restore` puts it back. |
 | `warden autostart find <file>` / `list` / `remove <entry>` | Shows which Run values, scheduled tasks, services and Startup shortcuts start a file; lists every such entry of the machine; or goes on removing what starts a quarantined file. `find` and `list` change nothing. Windows only. |
 | `warden inspect <file>` | Shows what the heuristics see in one Windows executable: its sections, imports and header, every indicator that applies with its weight, the score and the threshold. |
 | `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. The bundle keeps its contents under a cipher, so that an antivirus does not take it for the malware its rules describe. |
@@ -435,10 +436,11 @@ produced. In short, as of phase 5:
 criterion. Phase 5 so far: Warden checks who signed a file, so that a
 match of a published rule in a file from a trusted publisher is recorded
 instead of reported; the quarantine leaves a file that Windows itself
-signed where it is; and it removes the autostart entries that start a
-quarantined file and puts them back on restore. What is open in that
-phase is the run in a virtual machine, where Windows is restarted to see
-that it no longer starts the program, and starts it again after a restore.
+signed where it is, and a driver that Windows loads while it starts; and
+it removes the autostart entries that start a quarantined file and puts
+them back on restore. What is open in that phase is the run in a virtual
+machine, where Windows is restarted to see that it no longer starts the
+program, and starts it again after a restore.
 
 ## How this project is built
 

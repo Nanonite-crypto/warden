@@ -276,3 +276,153 @@ fn deleting_the_file_for_good_leaves_nothing_of_what_started_it() {
     });
     report.finish();
 }
+
+/// The entry of a driver that Windows loads while it starts, made with
+/// `sc` for a file that is no driver. Removed again when it goes, whatever
+/// happened: Windows would look at such an entry the next time it starts,
+/// and this one is never there for that.
+struct BootDriver {
+    name: &'static str,
+}
+
+impl BootDriver {
+    fn register(name: &'static str, file: &std::path::Path) -> Self {
+        // What an earlier run may have left.
+        let _ = scene::tool("sc", &["delete", name]);
+        let driver = Self { name };
+        scene::must(
+            "sc",
+            &[
+                "create",
+                name,
+                "type=",
+                "kernel",
+                "start=",
+                "boot",
+                // If Windows ever did get to it: go on without it.
+                "error=",
+                "ignore",
+                "binPath=",
+                &file.display().to_string(),
+                "DisplayName=",
+                "Warden test boot driver",
+            ],
+        );
+        driver
+    }
+
+    /// What `sc` and `reg` show of the entry: its settings, and its whole
+    /// key. An entry that is not there shows as `None`.
+    fn shown(&self) -> (Option<String>, Option<String>) {
+        let key = format!(r"HKLM\SYSTEM\CurrentControlSet\Services\{}", self.name);
+        let view = |(ok, text): (bool, String)| ok.then_some(text);
+        (
+            view(scene::tool("sc", &["qc", self.name])),
+            view(scene::tool("reg", &["query", &key, "/s"])),
+        )
+    }
+}
+
+impl Drop for BootDriver {
+    fn drop(&mut self) {
+        let _ = scene::tool("sc", &["delete", self.name]);
+    }
+}
+
+/// The second guard of the quarantine, on a real Windows: a file that
+/// Windows loads as a driver while it starts is left where it is, with
+/// the driver's name. With the flag of its own it is taken, its entry
+/// goes with it, and a restore brings both back as `sc` and `reg` showed
+/// them.
+#[test]
+fn a_driver_that_windows_loads_while_it_starts_stays_unless_the_flag_is_given() {
+    if !scene::may_change_the_machine() {
+        return;
+    }
+    const NAME: &str = "WardenTestBootDriver";
+    const WHY: &str = "Windows loads it as the driver WardenTestBootDriver while it starts";
+    const FLAG: &str = "--even-if-loaded-at-boot";
+
+    // A folder with blanks in its name, and a real program in it that is
+    // no driver and that nothing ever loads: a copy of this test.
+    let dir = tempfile::Builder::new()
+        .prefix("Warden boot driver ")
+        .tempdir()
+        .unwrap();
+    let file = dir.path().join("wardentest.sys");
+    fs::copy(std::env::current_exe().unwrap(), &file).unwrap();
+    let store = dir.path().join("quarantine");
+    let driver = BootDriver::register(NAME, &file);
+    let before = driver.shown();
+    println!("{before:#?}");
+    assert!(before.0.is_some() && before.1.is_some(), "{before:?}");
+
+    // Warden sees which driver the file is.
+    let (ok, found) = run(warden().args(["autostart", "find"]).arg(&file));
+    println!("{found}");
+    assert!(ok, "{found}");
+    assert!(found.contains(&format!("the driver {NAME}")), "{found}");
+
+    // Left where it is, with the reason and the way past it. Nothing is
+    // changed: not the file, not the entry, and nothing is in quarantine.
+    let (ok, refused) = run(warden()
+        .args(["quarantine", "add", "--dir"])
+        .arg(&store)
+        .arg(&file));
+    println!("{refused}");
+    assert!(!ok, "{refused}");
+    assert!(
+        refused.contains(&format!("was left where it is: {WHY}")),
+        "{refused}"
+    );
+    assert!(refused.contains(&format!("add {FLAG}.")), "{refused}");
+    // It is no file of Windows, so the other flag is not asked for.
+    assert!(
+        !refused.contains("--even-if-signed-by-windows"),
+        "{refused}"
+    );
+    assert!(file.exists());
+    assert_eq!(driver.shown(), before);
+    let (_, listed) = run(warden().args(["quarantine", "list", "--dir"]).arg(&store));
+    assert!(listed.contains("Nothing is in quarantine."), "{listed}");
+
+    // The flag for files of Windows is not the flag for this.
+    let (ok, wrong_flag) = run(warden()
+        .args(["quarantine", "add", "--even-if-signed-by-windows", "--dir"])
+        .arg(&store)
+        .arg(&file));
+    assert!(!ok, "{wrong_flag}");
+    assert!(file.exists());
+
+    // With its own flag the file is taken, and the output says what was
+    // set aside. The entry goes with the file.
+    let (ok, added) = run(warden()
+        .args(["quarantine", "add", FLAG, "--dir"])
+        .arg(&store)
+        .arg(&file));
+    println!("{added}");
+    assert!(ok, "{added}");
+    assert!(added.contains(&format!("although   {WHY}")), "{added}");
+    assert!(
+        added.contains(&format!("removed    the driver {NAME}")),
+        "{added}"
+    );
+    assert!(!file.exists());
+    assert_eq!(driver.shown(), (None, None));
+
+    // Restored: the file, and the entry as Windows showed it before.
+    let id = entry_of(&added);
+    let (ok, restored) = run(warden()
+        .args(["quarantine", "restore", &id, "--dir"])
+        .arg(&store));
+    println!("{restored}");
+    assert!(ok, "{restored}");
+    assert!(file.exists());
+    assert!(
+        restored.contains(&format!("the driver {NAME}")),
+        "{restored}"
+    );
+    let after = driver.shown();
+    println!("{after:#?}");
+    assert_eq!(after, before, "the entry is not what it was");
+}

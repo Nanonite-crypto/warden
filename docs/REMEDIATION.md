@@ -209,9 +209,11 @@ written again after every single removal.
   Without them, what belongs to the user goes, and the rest is named.
   `warden autostart remove <entry>` removes it later, from a prompt with
   those rights.
-- **Never for a file of Windows.** A file that was taken past the
-  [guard](QUARANTINE.md#the-guard) keeps its entries. A program of Windows
-  can have services of Windows that start it.
+- **Never for a file of Windows.** A file of Windows that was taken past
+  the [guard](QUARANTINE.md#the-guard) keeps its entries. A program of
+  Windows can have services of Windows that start it. A driver of another
+  maker that was taken past the second guard loses its entry like any
+  other file: Windows then no longer looks for it when it starts.
 - **Nothing is stopped.** Warden removes what would start a program the
   next time. A program that runs is not ended, and the file of a program
   that runs cannot be quarantined at all yet; see [Limits](#limits).
@@ -307,13 +309,13 @@ Warden prints it and records it nowhere.
 - **A file that is in use.** Windows does not let the file of a running
   program be removed. `warden quarantine add` then fails, takes nothing
   and touches no entry. Stopping the program first takes the rights of a
-  service. Whether that comes with the service of phase 6 is one of the
-  open decisions in the [roadmap](ROADMAP.md#open-decisions).
-- **A file that Windows needs to start.** The guard keeps files that
-  Windows itself signed out of the quarantine. A driver of another maker
-  that Windows loads at boot is not such a file, and without it a machine
-  may not start. Warden does not look at this yet; see the open decisions
-  in the [roadmap](ROADMAP.md#open-decisions).
+  service, and comes with the service of phase 6.
+- **A file that Windows needs to start** stays where it is: a file that
+  Windows itself signed, and a driver that Windows loads while it starts,
+  whoever made it. Each has a flag that takes the file all the same. A
+  driver whose entry names no file is not seen, and neither is a driver
+  with a later start that Windows is set to stop for. See
+  [the guard](QUARANTINE.md#the-guard).
 - **The places above that are not looked at.**
 - **A setting that could not be told to the service manager** holds from
   the next start of Windows. The restore says so.
