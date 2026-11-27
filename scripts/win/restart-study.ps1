@@ -614,10 +614,12 @@ function Invoke-Rehearsal {
     Send-Line "WARDEN-STUDY CLEANED before the first round exit=$($cleaned.code)"
     $seen = @{}
     foreach ($name in $eventLogs.Keys) {
-        # Ten events back, so that the rehearsal has something to pass on.
+        # From the first event on and with their fields, so that the
+        # rehearsal has something to pass on from each log that can be read.
+        $eventLogs[$name].Fields = $true
         $newest = Get-NewestRecord $eventLogs[$name].Log
-        if ($newest -gt 10) {
-            $newest = $newest - 10
+        if ($newest -gt 0) {
+            $newest = 0
         }
         $seen[$name] = $newest
     }

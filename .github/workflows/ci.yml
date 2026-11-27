@@ -301,6 +301,9 @@ jobs:
           Get-Content -LiteralPath (Join-Path $out 'restart-study.json') -ErrorAction SilentlyContinue
           Write-Host '::endgroup::'
           if ($code -ne 0) { Write-Host '::error::The rehearsal of the restart study failed.'; exit 1 }
+          $events = @(Select-String -LiteralPath (Join-Path $out 'restart-study-lines.txt') -Pattern '^WARDEN-STUDY EVENT ')
+          Write-Host "The study passed on $($events.Count) events of Windows."
+          if ($events.Count -lt 1) { Write-Host '::error::The study passed on no event of Windows, not even a start of this machine.'; exit 1 }
           $result = Get-Content -LiteralPath (Join-Path $out 'restart-study.json') -Raw | ConvertFrom-Json
           $kinds = @($result.rounds | ForEach-Object { $_.kind } | Sort-Object)
           if (($kinds -join ',') -ne 'entries,look,nothing,warden') { Write-Host "::error::The rounds were: $($kinds -join ',')"; exit 1 }
