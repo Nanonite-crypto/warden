@@ -18,6 +18,13 @@
     and no other field: those can hold paths, and the names of users,
     programs and devices.
 
+    One kind of event gets more: where Defender found the EICAR test file.
+    Warden's own tests write that file, and whether Defender got to it is
+    what such a line is for. It names what Defender called the file, what
+    found it and what was done, and the file's place if that is inside
+    this repository. Of anything else that Defender found on this machine
+    the list says when, and nothing more.
+
     The list is printed and written to target\check\machine-events.txt.
 
 .PARAMETER Days
@@ -63,6 +70,13 @@ $sources = @(
             '2010' = 'more definitions fetched from the cloud'
             '2011' = 'definitions from the cloud deleted as out of date'
             '2013' = 'all definitions from the cloud deleted'
+            '1006' = 'it found something'
+            '1007' = 'it acted on what it found'
+            '1008' = 'an action on what it found failed'
+            '1116' = 'it found something'
+            '1117' = 'it acted on what it found'
+            '1118' = 'an action on what it found failed'
+            '1119' = 'an action on what it found failed badly'
             '3002' = 'real-time protection failed'
             '3007' = 'real-time protection recovered from a failure'
             '5000' = 'real-time protection switched on'
@@ -104,6 +118,11 @@ $sources = @(
 # The fields of an event that are shown, by their names: the kind of scan,
 # how long a scan took, the kind of update, and version numbers.
 $shown = '^(Scan Type|Scan Parameters|Scan Time Hours|Scan Time Minutes|Scan Time Seconds|Update Type)( Index)?$|Version$'
+
+# The events that say Defender found something, and the fields of such an
+# event that are shown if what it found is the EICAR test file.
+$findings = @('1006', '1007', '1008', '1116', '1117', '1118', '1119')
+$shownOfTheTestFile = @('Threat Name', 'Source Name', 'Action Name', 'Error Code', 'Error Description')
 
 function Format-Utc($Time) {
     return ([datetime]$Time).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -154,6 +173,54 @@ function Get-Fields($Record) {
     return ($parts -join '; ')
 }
 
+# What may be shown of an event that says Defender found something. If it
+# is the EICAR test file: what Defender called it, what found it, what was
+# done, and where the file was if that is inside this repository. Of
+# anything else, nothing: what an antivirus found on a machine is the
+# business of whoever owns it.
+function Get-Finding($Record) {
+    $values = @{}
+    try {
+        $xml = [xml]$Record.ToXml()
+        foreach ($data in @($xml.Event.EventData.Data)) {
+            if ($null -eq $data) {
+                continue
+            }
+            $values[[string]$data.Name] = [string]$data.'#text'
+        }
+    } catch { }
+    # The test file is known by its name in what Defender calls it, looked
+    # for in every field: the fields have had other names in other versions.
+    $all = (@($values.Values) | ForEach-Object { [string]$_ }) -join ' '
+    if (-not ($all -match 'EICAR')) {
+        return 'not the test file'
+    }
+    $parts = @()
+    foreach ($name in $shownOfTheTestFile) {
+        if ($values.ContainsKey($name) -and $values[$name]) {
+            $parts += "$name=$($values[$name])"
+        }
+    }
+    # The place, or the places: several are separated by semicolons.
+    $places = @()
+    foreach ($place in @(([string]$values['Path']) -split ';')) {
+        $place = $place.Trim()
+        if (-not $place) {
+            continue
+        }
+        $at = $place.ToLowerInvariant().IndexOf($repo.ToLowerInvariant())
+        if ($at -ge 0) {
+            $places += '<repository>' + $place.Substring($at + $repo.Length)
+        } else {
+            $places += '(a place outside this repository)'
+        }
+    }
+    if ($places.Count -gt 0) {
+        $parts += "Path=$($places -join ', ')"
+    }
+    return ($parts -join '; ')
+}
+
 $lines = New-Object 'System.Collections.Generic.List[string]'
 $lines.Add("# What this machine's logs say it was doing, since $(Format-Utc $since). Times are UTC.")
 $lines.Add("# Listed at $(Format-Utc (Get-Date)). Nothing was changed.")
@@ -172,7 +239,11 @@ foreach ($source in $sources) {
         $what = $source.Events[[string]$record.Id]
         $line = '{0}  {1,-8}  {2,5}  {3}' -f (Format-Utc $record.TimeCreated), $source.Name, $record.Id, $what
         if ($source.Name -eq 'defender') {
-            $fields = Get-Fields $record
+            if ($findings -contains [string]$record.Id) {
+                $fields = Get-Finding $record
+            } else {
+                $fields = Get-Fields $record
+            }
             if ($fields) {
                 $line = "$line  [$fields]"
             }
