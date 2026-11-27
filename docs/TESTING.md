@@ -69,6 +69,11 @@ list: that would say what is installed on the machine. With `-Rules` it
 also downloads the pinned rule package, builds the rule bundle and counts
 false positives in the Windows system folder.
 
+The script runs every test file, also after one of them has failed, and
+its summary names the tests that failed. Its log, `target\check\test.log`,
+keeps what the tests print, for those that pass as well: a test that could
+not be exercised on the machine passes, and says there why.
+
 ## EICAR in three forms
 
 `warden eicar write <folder>` writes the test file three ways, one for each

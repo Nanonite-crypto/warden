@@ -496,11 +496,30 @@ if ($SkipTests) {
     # They run only where this variable allows it in as many words, which
     # is on a machine made for the purpose. This script never allows it.
     Remove-Item Env:WARDEN_AUTOSTART_TESTS -ErrorAction SilentlyContinue
-    if ((Invoke-Logged 'test' 'cargo test --workspace --locked') -eq 0) {
+    # Every test file runs, also after one of them has failed: one failure
+    # should not hide what the rest would have said. And what a test prints
+    # is kept for the ones that pass as well, because a test that was not
+    # exercised here passes and says why.
+    $testCode = Invoke-Logged 'test' 'cargo test --workspace --locked --no-fail-fast -- --show-output'
+    if ($testCode -eq 0) {
         $steps.tests = 'passed'
     } else {
         $steps.tests = 'failed'
     }
+    # For the summary: how many tests passed, and which failed.
+    try {
+        $testLog = Get-Content -LiteralPath (Join-Path $out 'test.log') -Raw -Encoding UTF8
+        $passedTests = 0
+        foreach ($result in [regex]::Matches($testLog, '(?m)^test result: \w+\. (\d+) passed')) {
+            $passedTests += [int]$result.Groups[1].Value
+        }
+        $failedTests = @([regex]::Matches($testLog, '(?m)^test (\S+) \.\.\. FAILED') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+        if ($failedTests.Count -gt 0) {
+            $notes.tests = "$passedTests passed, $($failedTests.Count) failed: $($failedTests -join ', ')"
+        } else {
+            $notes.tests = "$passedTests passed"
+        }
+    } catch { }
 }
 
 # --- 7. Benchmark ------------------------------------------------------------------------
