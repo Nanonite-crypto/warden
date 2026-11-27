@@ -25,6 +25,18 @@ The counts hold nothing about a single file: no names, no hashes, no
 content. EMBER2024 itself holds features and labels of files, not the
 files, so no malware is downloaded or handled at any point.
 
+## Where the dataset comes from
+
+`ember2024-counts.zip` was computed from the EMBER2024 dataset by Robert J.
+Joyce, Gideon Miller, Phil Roth, Richard Zak, Elliott Zaresky-Williams,
+Hyrum Anderson, Edward Raff and James Holt
+([paper](https://arxiv.org/abs/2506.05074),
+[dataset](https://huggingface.co/datasets/joyce8/EMBER2024),
+[code](https://github.com/FutureComputing4AI/EMBER2024)). EMBER2024 is
+published under the
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). What is
+here is not the dataset but counts made from it with `warden-calibrate`.
+
 ## Why the counts are in the repository
 
 A weight in `crates/warden-pe/src/indicators.rs` is a number somebody could
