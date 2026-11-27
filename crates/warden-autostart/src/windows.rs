@@ -185,33 +185,7 @@ impl System for Windows {
     }
 
     fn spellings(&self, file: &Path) -> Vec<String> {
-        let given = HSTRING::from(file.as_os_str());
-        let mut spellings = Vec::new();
-        let Some(full) = path_from(|buffer| {
-            // SAFETY: `given` is a zero-terminated string that lives
-            // through the call, and the buffer is a slice of our own.
-            unsafe { GetFullPathNameW(&given, Some(buffer), None) }
-        }) else {
-            return spellings;
-        };
-        let full_wide = HSTRING::from(full.as_str());
-        for other in [
-            path_from(|buffer| {
-                // SAFETY: as above.
-                unsafe { GetLongPathNameW(&full_wide, Some(buffer)) }
-            }),
-            path_from(|buffer| {
-                // SAFETY: as above.
-                unsafe { GetShortPathNameW(&full_wide, Some(buffer)) }
-            }),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            spellings.push(other);
-        }
-        spellings.insert(0, full);
-        spellings
+        spellings(file)
     }
 
     fn current(&self, entry: &Entry) -> Result<Option<Entry>, Failure> {
@@ -1754,6 +1728,38 @@ fn until_zero(units: &[u16]) -> String {
         .position(|unit| *unit == 0)
         .unwrap_or(units.len());
     String::from_utf16_lossy(&units[..end])
+}
+
+/// The ways Windows writes the path of a file that exists: in full, with
+/// long names and with short ones. Needs no thread of its own.
+pub(crate) fn spellings(file: &Path) -> Vec<String> {
+    let given = HSTRING::from(file.as_os_str());
+    let mut spellings = Vec::new();
+    let Some(full) = path_from(|buffer| {
+        // SAFETY: `given` is a zero-terminated string that lives
+        // through the call, and the buffer is a slice of our own.
+        unsafe { GetFullPathNameW(&given, Some(buffer), None) }
+    }) else {
+        return spellings;
+    };
+    let full_wide = HSTRING::from(full.as_str());
+    for other in [
+        path_from(|buffer| {
+            // SAFETY: as above.
+            unsafe { GetLongPathNameW(&full_wide, Some(buffer)) }
+        }),
+        path_from(|buffer| {
+            // SAFETY: as above.
+            unsafe { GetShortPathNameW(&full_wide, Some(buffer)) }
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        spellings.push(other);
+    }
+    spellings.insert(0, full);
+    spellings
 }
 
 /// Calls a function that writes a path into a buffer and returns how many

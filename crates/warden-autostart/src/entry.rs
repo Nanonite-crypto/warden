@@ -220,6 +220,16 @@ impl Service {
         const USER_SERVICE_INSTANCE: u32 = 0x80;
         self.service_type & USER_SERVICE_INSTANCE != 0
     }
+
+    /// Whether this is a driver that Windows loads while it starts: its
+    /// start is "boot", which means that the loader reads the driver into
+    /// memory together with the kernel, before anything else runs. The
+    /// drivers a machine needs in order to start are of this kind.
+    #[must_use]
+    pub fn is_loaded_at_boot(&self) -> bool {
+        const BOOT_START: u32 = 0;
+        self.is_driver() && self.start_type == BOOT_START
+    }
 }
 
 /// A registry key with everything below it.
@@ -411,6 +421,36 @@ mod tests {
         assert!(!of_type(0x50).is_user_instance());
         assert!(of_type(0xd0).is_user_instance());
         assert!(of_type(0xe0).is_user_instance());
+    }
+
+    #[test]
+    fn only_a_driver_with_a_start_at_boot_is_loaded_at_boot() {
+        let service = |service_type, start_type| Service {
+            name: "svc".to_owned(),
+            display_name: String::new(),
+            service_type,
+            start_type,
+            error_control: 1,
+            image_path: r"System32\drivers\svc.sys".to_owned(),
+            load_order_group: String::new(),
+            dependencies: Vec::new(),
+            account: String::new(),
+            security: None,
+            key: RegKey::default(),
+        };
+        // A kernel driver and a driver for a file system, with a start
+        // at boot.
+        assert!(service(0x1, 0).is_loaded_at_boot());
+        assert!(service(0x2, 0).is_loaded_at_boot());
+        // The same drivers with every other start: by the system as it
+        // comes up, by the service manager, on demand, never.
+        for start_type in 1..=4 {
+            assert!(!service(0x1, start_type).is_loaded_at_boot());
+            assert!(!service(0x2, start_type).is_loaded_at_boot());
+        }
+        // A program is not loaded by the loader, whatever its key says.
+        assert!(!service(0x10, 0).is_loaded_at_boot());
+        assert!(!service(0x20, 0).is_loaded_at_boot());
     }
 
     #[test]

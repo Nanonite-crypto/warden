@@ -80,11 +80,29 @@ pub use remedy::{
     AutostartError, Found, Left, Outcome, PutBack, Remedy, Removal, Step, find, find_in,
 };
 pub use starts::{Spellings, stands_in, starts};
-pub use system::{Failure, Nowhere, Seen, Survey, System};
+pub use system::{BootDriver, Failure, Nowhere, Seen, Survey, System};
 
 /// Whether this is a system with the autostart entries Warden looks at.
 /// Windows is; nothing else.
 pub const ON_THIS_SYSTEM: bool = cfg!(windows);
+
+/// The other ways this system writes the path of a file that exists, such
+/// as with short names: what [`System::spellings`] gives for the system
+/// the program runs on. It needs nothing that belongs to one thread, so
+/// it can be asked from anywhere. On a system that is not Windows a path
+/// is written one way, and the answer is empty.
+#[must_use]
+pub fn spellings_here(file: &std::path::Path) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        windows::spellings(file)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = file;
+        Vec::new()
+    }
+}
 
 /// The system this program runs on. On Windows that is Windows; anywhere
 /// else it is [`Nowhere`], on which there is nothing to find.
