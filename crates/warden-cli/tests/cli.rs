@@ -26,6 +26,20 @@ fn stdout_of(command: &mut Command) -> String {
     String::from_utf8(command.assert().get_output().stdout.clone()).unwrap()
 }
 
+/// What `quarantine add` may say on the error stream when all went well:
+/// nothing, or that the look at what starts programs did not see
+/// everything. On a real Windows that is so for whoever lacks an
+/// administrator's rights, and it is no fault of the file's.
+fn nothing_but_notes_about_the_look() -> impl Predicate<str> {
+    predicate::function(|said: &str| {
+        said.lines().all(|line| {
+            line.is_empty()
+                || line
+                    .starts_with("note: not everything that starts programs could be looked at: ")
+        })
+    })
+}
+
 /// SHA-256 of bytes, in lowercase hexadecimal.
 fn sha256_hex(bytes: &[u8]) -> String {
     warden_sigdb::hex::encode(&warden_engine::sha256(bytes))
@@ -2342,7 +2356,7 @@ fn quarantine_takes_an_ordinary_file_with_and_without_the_flag_past_its_guard() 
             .success()
             .stdout(predicate::str::contains("Quarantined"))
             .stdout(predicate::str::contains("although").not())
-            .stderr(predicate::str::is_empty());
+            .stderr(nothing_but_notes_about_the_look());
         assert!(!file.exists(), "{name} is gone from its place");
     }
 

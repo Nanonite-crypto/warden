@@ -31,6 +31,20 @@ fn warden() -> Command {
     command
 }
 
+/// What `quarantine add` may say on the error stream when all went well:
+/// nothing, or that the look at what starts programs did not see
+/// everything. On a real Windows that is so for whoever lacks an
+/// administrator's rights, and it is no fault of the file's.
+fn nothing_but_notes_about_the_look() -> impl Predicate<str> {
+    predicate::function(|said: &str| {
+        said.lines().all(|line| {
+            line.is_empty()
+                || line
+                    .starts_with("note: not everything that starts programs could be looked at: ")
+        })
+    })
+}
+
 fn system32(name: &str) -> PathBuf {
     let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
     PathBuf::from(root).join("System32").join(name)
@@ -129,7 +143,7 @@ fn a_file_that_windows_did_not_sign_goes_as_before() {
             .success()
             .stdout(predicate::str::contains("Quarantined"))
             .stdout(predicate::str::contains("although").not())
-            .stderr(predicate::str::is_empty());
+            .stderr(nothing_but_notes_about_the_look());
         assert!(!file.exists(), "{} is gone", file.display());
     }
     assert_eq!(entries(&store).len(), 2);
