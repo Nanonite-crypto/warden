@@ -76,7 +76,15 @@ See [TESTING.md](TESTING.md).
   that Defender was running a full scan of its own at the time: see
   [that scan](#the-desktops-programs-with-the-rule-back-in-the-bundle).
   A number from a machine with a resident antivirus is worth laying next
-  to this list before it is believed.
+  to this list before it is believed. The list is worth a second look as
+  well. One run of it on the desktop showed nothing of Defender for
+  fourteen days, because the script then asked about 25 event numbers in
+  one query. On the CI runner a query for 22 numbers finds its events, and
+  the same query with a 23rd number comes back from PowerShell's
+  `Get-WinEvent` as "no matching events found", which reads like an
+  answer. The script asks about each number by itself since, and CI
+  counts the runner's starts and shutdowns a second way to see that the
+  list has them all.
 
 ## Results: phase 1
 
@@ -862,28 +870,30 @@ Hardware: an AMD EPYC 9V74 with 2 logical processors, 8 GB RAM, Windows
 Server 2025 (10.0.26100), Microsoft Defender's real-time protection off.
 
 On the desktop, the same day, with the same script and administrator
-rights, twice, five hours apart:
+rights, three times:
 
 | Look | 1 | 2 | 3 | 4 | 5 |
 |---|---|---|---|---|---|
 | 02:56 UTC, commit 71248e5 | 451 ms | 376 ms | 349 ms | 366 ms | 419 ms |
 | 08:00 UTC, commit 4e126ae | 384 ms | 237 ms | 246 ms | 238 ms | 249 ms |
+| 21:09 UTC, commit f9217ba | 479 ms | 254 ms | 244 ms | 255 ms | 252 ms |
 
-That Windows had 1,099 entries both times: 30 Run values, 263 scheduled
+That Windows had 1,099 entries each time: 30 Run values, 263 scheduled
 tasks, 794 services and drivers, and 12 shortcuts. Warden could read every
 one. As for every result from a private machine, the numbers are all that
 is kept.
 
 - **A look takes between a quarter and four tenths of a second there**,
-  for a fifth more entries than the runner has: 1.7 times the runner's
-  time in the later run, 2.6 times in the earlier one, by the middle of
-  the five. The desktop runs Microsoft Defender's real-time protection,
-  which the runner has switched off, and it has more entries of every
-  kind. Which of the two makes the difference was not measured.
-- **The two runs differ by a third, and the look did not change between
-  them.** The commits between them changed what the quarantine does with
-  what the look finds, not the look. What else the machine was doing was
-  not recorded either time, so the difference stands unexplained.
+  for a fifth more entries than the runner has: 2.6, 1.7 and 1.8 times the
+  runner's time, by the middle of the five. The desktop runs Microsoft
+  Defender's real-time protection, which the runner has switched off, and
+  it has more entries of every kind. Which of the two makes the difference
+  was not measured.
+- **The first run is a third slower than the two after it, and the look
+  did not change between them.** The commits between them changed what the
+  quarantine does with what the look finds, and documents, not the look.
+  What else the machine was doing was not recorded any of the times, so
+  the difference stands unexplained.
 - **It is still a cost per command**, and one that a person does not
   wait for: `warden quarantine add` looks once.
 
@@ -1025,8 +1035,10 @@ Raw results:
 [the times from the tests](benchmarks/2026-11-26-github-windows-runner-phase5-autostart-test-times.txt);
 [the five looks on the desktop](benchmarks/2026-11-27-windows-desktop-phase5-autostart.json),
 [its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-machine.json),
-[the five looks of the later run](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run.json),
-[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run-machine.json);
+[the five looks of the second run](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run.json),
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run-machine.json),
+[the five looks of the third run](benchmarks/2026-11-27-windows-desktop-phase5-autostart-third-run.json),
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-third-run-machine.json);
 [the run in the virtual machine](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-kit.json),
 [its first pass](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-kit-first-pass.json),
 [what the machine sent](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-serial-capture.txt),

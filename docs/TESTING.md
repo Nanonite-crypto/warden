@@ -130,13 +130,22 @@ that test showed something about Defender on 2026-11-27. Right after
 `warden quarantine restore` had put the file back, the first read of it
 was refused with Windows' error 225, "the file contains a virus or
 potentially unwanted software", although the folder is excluded. A later
-attempt got the file, and it was the test file; how many attempts that
-took, the test did not write down then, and does now. A run a few hours
-before had failed at that point without saying why; since then the test
-reads the file itself, tries every tenth of a second for up to ten
-seconds, and prints what Windows said. Why Defender refuses a file in an
-excluded folder for a moment is not known. The tests that write the file
-there themselves have not been refused on that machine.
+attempt got the file, and it was the test file. A run a few hours before
+had failed at that point without saying why; since then the test reads
+the file itself, tries a hundred times with a tenth of a second in
+between, and prints what Windows said. The run after that wrote down how
+long it took: the file was handed out at the 51st attempt, after 9.5
+seconds.
+
+Why Defender keeps a file in an excluded folder back is not known. Nine
+and a half seconds is close to the ten for which, by
+[Microsoft's documentation](https://learn.microsoft.com/en-us/defender-endpoint/configure-cloud-block-timeout-period-microsoft-defender-antivirus),
+Defender blocks a file that it finds suspicious while it asks its cloud
+service about it. Whether that is what happened here was not checked. The
+tests that write the file there themselves have not been refused on that
+machine. For Warden it means that a restored file which Defender itself
+takes for a threat may not be readable for some seconds, even where the
+user has told Defender to leave the folder alone.
 
 The fourth is a test of the rule layer together with the signature check.
 It needs a file on disk that a built-in rule matches, to see that nobody
