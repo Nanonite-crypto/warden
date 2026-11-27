@@ -18,6 +18,7 @@ Every number on this page comes from a run that is recorded in
 | What the signature check says about signatures that were made to be turned down | Phase 5 |
 | Who signed the files of a Windows installation, by which of three routes that is found out, and what one check costs | Phase 5 |
 | What the signature check changes about the false positives | Phase 5 |
+| What a look at everything that a machine starts costs, and what putting one such entry back costs | Phase 5 |
 | Real-time time-to-detect | From phase 9 |
 
 **Not measured, by design:** detection rates on live malware samples. Warden
@@ -536,6 +537,10 @@ and who signed them? What does one check cost? What the check changes
 about a scan is a question of false positives, and is under
 [With the signature check](#with-the-signature-check).
 
+The second piece removes what starts a quarantined file, and puts it back
+with the file. Its numbers are at the end of this section, under
+[The look at autostart entries](#the-look-at-autostart-entries).
+
 Most of this section was measured on GitHub-hosted Windows runners on
 2026-11-21: Windows Server 2025 (10.0.26100, runner image
 `windows-2025-vs2026` 20261116.315), 2 logical processors, 8 GB RAM. The
@@ -801,6 +806,122 @@ Raw results:
 [System32](benchmarks/2026-11-25-windows-desktop-phase5-trust-system32.json),
 [app packages](benchmarks/2026-11-25-windows-desktop-phase5-trust-windowsapps.json),
 [machine](benchmarks/2026-11-25-windows-desktop-phase5-machine.json).
+
+### The look at autostart entries
+
+The second piece of phase 5 removes what starts a quarantined file, and
+puts it back when the file is restored ([REMEDIATION.md](REMEDIATION.md)).
+Whether it does that right is a question for tests, which compare what
+Windows' own tools show before and after. Two things can be measured: what
+one look at everything that a machine starts costs, and what putting one
+entry back costs.
+
+All of it is from GitHub-hosted Windows runners, on 2026-11-26 and
+2026-11-27. Nothing here is from the desktop or from the virtual machine
+yet. The acceptance script and the kit for the virtual machine both time
+the look, so their numbers come with the next run on each.
+
+#### One look at the four places
+
+`warden autostart list` reads every Run value, scheduled task, service,
+driver and Startup shortcut of the machine. `scripts\win\check.cmd` runs
+it five times, as a release build, and times the whole program each time:
+started through `cmd.exe`, with its output thrown away. On a person's
+machine that output says what is installed there. The script keeps the
+times and the number of entries of each kind, and nothing else.
+
+In the acceptance job of the CI, on 2026-11-27:
+
+| Look | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Time | 197 ms | 144 ms | 145 ms | 141 ms | 212 ms |
+
+The runner's Windows had 900 entries: 2 Run values, 210 scheduled tasks,
+687 services and drivers, and 1 shortcut. Warden could read every one.
+
+- **A look costs about a sixth of a second on this machine**, for nine
+  hundred entries. Whose entries they are was not counted.
+- **A command pays for one look, however many files it is given.**
+  `warden quarantine add` looks once, and then asks for each file which of
+  the entries start it. A scan does not look at all.
+- **The times scatter by half**, from 141 to 212 ms, on a machine that is
+  shared. What they show is the size of the cost, not a third digit.
+
+Hardware: an AMD EPYC 9V74 with 2 logical processors, 8 GB RAM, Windows
+Server 2025 (10.0.26100), Microsoft Defender's real-time protection off.
+
+#### In the tests
+
+The tests of the Windows side print what three calls took. These are debug
+builds, as `cargo test` makes them, from three runs of the `Windows check`
+workflow on 2026-11-26, each on a runner of its own:
+
+| | First run | Second | Third |
+|---|---|---|---|
+| One look at the four places | 278 ms | 300 ms | 297 ms |
+| A look, and what starts one file found in it | 276 ms | 340 ms | 346 ms |
+| A Run value put back, three of them | 91 to 174 µs | 106 to 178 µs | 120 to 178 µs |
+| A scheduled task put back, two of them | 8.9 and 11.0 ms | 8.6 and 13.6 ms | 11.1 and 12.5 ms |
+| The service put back | 2.4 ms | 2.4 ms | 3.1 ms |
+
+- **A debug build is slower.** Its look alone, without starting a program
+  or printing anything, takes 278 to 300 ms.
+- **Finding what starts a file is the look, and little more.** The second
+  row is a look of its own, made at another moment than the first row's.
+  Then Windows is asked for the other ways the file's path is written, and
+  the seven entries that start the file are read once more, whole.
+- **A scheduled task is the slowest to put back**, at about a hundredth of
+  a second: the Task Scheduler registers it from its definition. The
+  service takes a quarter of that. It is created by the service manager,
+  which is then told four things about it: its delayed start, its own
+  identity, its two privileges and its three triggers. Then its key is
+  written back. A Run value is one write to the registry.
+- **These are the calls alone.** A restore also reads each entry back and
+  compares it with the record, and it restores the file. How long
+  `warden quarantine add` and `restore` take as a whole was not measured,
+  nor was the removal of an entry.
+- **What a look spends its time on was not measured**: the four places are
+  not timed apart.
+
+The logs of these three runs name the runner image, and not the processor.
+
+#### The run by hand, rehearsed
+
+That Windows stops starting a program, and starts it again after a
+restore, can only be seen on a machine that is restarted in between. That
+run is done by hand in the virtual machine, with a script
+([TESTING.md](TESTING.md#the-run-in-a-virtual-machine)), and it is open.
+CI rehearses the script on the runner first: its three runs one after the
+other, with the release builds, without the two restarts. On 2026-11-27,
+on the machine of the five looks above:
+
+| Run of the script | Checks | Held in the rehearsal |
+|---|---|---|
+| 1: a look at what the machine starts is timed. Seven entries are made for a harmless program, a scan reports it, and Warden quarantines it with what starts it | 9 | 9 |
+| 2: nothing was started and nothing came back; the program is restored, and what started it with it | 5 | 5 |
+| 3: Windows started the program through each of the seven entries | 7 | 0 |
+| 3: nothing of the test is left on the machine | 1 | 1 |
+
+- **The seven that failed have to fail here**: nothing restarts a runner,
+  so Windows never got to start the program. The step of the CI expects
+  exactly these seven to fail, and everything else to hold.
+- **Two of the checks that held say little without a restart**: that the
+  program was not started while it was in the quarantine, and that no
+  entry came back by itself.
+- **What the rehearsal does show** is the rest. Windows' tools showed
+  something in all 14 views of the seven entries. Warden found seven
+  entries, removed seven and left none, and Windows' tools showed none
+  afterwards. The restore put all seven back without a reservation, and
+  Windows' tools showed each as they had shown it before.
+- **The script's own five looks** took 361, 158, 162, 156 and 170 ms, a
+  few minutes after the five above and with a copy of the program that
+  had just been made. Only the first start of that copy was slow.
+
+Raw results:
+[the five looks](benchmarks/2026-11-27-github-windows-runner-phase5-autostart.json),
+[their machine](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-machine.json),
+[the rehearsal](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-kit-rehearsal.json),
+[the times from the tests](benchmarks/2026-11-26-github-windows-runner-phase5-autostart-test-times.txt).
 
 ## False positives
 

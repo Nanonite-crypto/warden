@@ -126,9 +126,14 @@ crates/
                     guard it asks before it takes a file
   warden-trust/     who signed a file: the three routes to a signature,
                     the trust list, and the one module that asks Windows
+  warden-autostart/ what makes Windows start a file: the four places, the
+                    record of an entry, the rules for removing and putting
+                    back, and the one module that asks Windows
   warden-cli/       the `warden` command-line tool
   warden-calibrate/ development tool: measures the indicators on a public
                     dataset and fits their weights; not part of the scanner
+  warden-dummy/     test program: a harmless stand-in for a program that
+                    starts with Windows; not part of the scanner
 calibration/        the counts the weights are fitted to, and the report
 docs/               this document, the roadmap, format specs, testing, benchmarks
 fuzz/               fuzz targets for the parsers
@@ -154,9 +159,14 @@ scan that talks to Windows at length, through functions that need `unsafe`
 code. It implements a trait of the engine, as the detection layers do, and
 the engine never learns what a certificate is.
 
-Crates planned for later phases: `remediation`, `realtime`, `ipc`,
-`service`, `netwatch` and `isolate` for remote access isolation, and the
-Tauri app.
+The autostart entries are a crate of their own for the same reason, and
+for a second one: they need Microsoft's `windows` crate for the Task
+Scheduler and for shortcuts, which are COM interfaces. Every other crate
+uses the smaller `windows-sys`, which leaves COM out by design. The larger
+one is built for this crate alone, on Windows alone.
+
+Crates planned for later phases: `realtime`, `ipc`, `service`, `netwatch`
+and `isolate` for remote access isolation, and the Tauri app.
 
 ## The scan pipeline
 
@@ -408,13 +418,46 @@ could not write to. A privileged restore through a junction into a system
 folder is the classic way an antivirus product gets turned against the
 machine it protects.
 
-## Remediation (phase 5)
+## Remediation
 
-One enumerator each for registry Run keys, scheduled tasks, services and
-startup folders, each resolving an entry to the file it launches.
-Quarantining a file removes the entries that point at it and stores them
-in the quarantine record, so that restore puts them back. A file that is
-in use is removed when Windows next starts.
+Implemented in `warden-autostart` and driven by `warden quarantine` and
+`warden autostart`. [REMEDIATION.md](REMEDIATION.md) has the details; in
+short:
+
+- **Four places are read**: Run and RunOnce values, scheduled tasks,
+  services and drivers, and shortcuts in the Startup folders. Each entry
+  is kept in the form Windows has it in, so that it can be given back.
+- **An entry starts a file if the file's full path stands in its command
+  line**, as the program or as something passed to one, with the variables
+  filled in for the user the entry belongs to.
+- **Record first, then remove.** Everything an entry is goes into a record
+  that the quarantine keeps with the file's entry. Entries are removed one
+  at a time and the record is written after each, so a run that is cut off
+  leaves every entry in its place, in the record, or in both.
+- **Both directions look before they act.** An entry is removed only if it
+  is still what the record holds. It is put back only if its place is
+  empty, and what is there afterwards is read and compared with the
+  record.
+- **What could not be put back is not removed**: a task or a service that
+  runs with a stored password, and the copy of a service that Windows
+  makes for each user.
+
+The rules are ordinary code behind a trait, `System`, with five functions:
+survey, the spellings of a path, read one entry, remove one, create one.
+The tests run them against a stand-in that keeps entries in memory. One
+module implements the trait for Windows and holds all of the crate's
+`unsafe` code. It asks Windows wherever Windows owns the format: the Task
+Scheduler for tasks, the service manager for services, the shell for
+shortcuts.
+
+The crate knows the quarantine, because that is where its records and the
+shortcuts go. The quarantine does not know the crate: it keeps a record
+with an entry for whoever asks, and does not read it.
+
+Quarantining the file of a program that runs is not built: Windows does
+not let such a file be removed. It makes sense only together with stopping
+the program, which takes the rights of a service. Where it goes is an
+[open decision](ROADMAP.md#open-decisions).
 
 ## Real-time protection (phase 9)
 

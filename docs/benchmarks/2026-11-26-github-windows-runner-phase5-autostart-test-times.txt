@@ -1,0 +1,47 @@
+Times that the tests of the crate warden-autostart printed on GitHub-hosted
+Windows runners, 2026-11-26. Debug builds, as `cargo test` makes them.
+
+What each line times:
+  "put back in"  one call that creates one entry again, after the test
+                 had removed it: System::create
+  "survey:"      one look at all four places of the machine: System::survey
+  "found in"     such a look, and finding in it what starts one file: find
+
+The lines are as the job logs have them, without the time stamps and
+without the name of the test that a line began with. The tests were run
+with --nocapture and one at a time. The three runs are the `Windows check`
+workflow on the branch win-check/autostart, which holds the code of
+phase-5 at the time; the runner image is in each heading. The logs do not
+say which processor a run had. The first run of that workflow, 45718178760
+on 2026-11-25, is not here: it failed, and the code that puts a task and a
+service back was changed after it.
+
+== run 45861236426, commit b2b85b2, started 2026-11-26T16:42:35Z, image windows-2025-vs2026 20261116.315.1
+the value "WardenTestThreatForAll" under HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run: put back in 173.5µs
+the value "WardenTestThreat32" under HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run (as 32-bit programs see it): put back in 97.3µs
+the value "WardenTestThreat" under HKEY_USERS\S-1-5-21-3414932011-3134797172-3625386099-500\Software\Microsoft\Windows\CurrentVersion\Run: put back in 91.4µs
+the scheduled task \Warden Test\Threat at boot: put back in 10.9681ms
+the scheduled task \Warden Test\Threat at logon: put back in 8.8829ms
+the service WardenTestThreat: put back in 2.4376ms
+survey: 2 Run values, 210 tasks, 687 services and drivers, 1 shortcuts, 0 problems, in 278.4437ms
+found in 275.7572ms
+
+== run 45862456949, commit f4368f6, started 2026-11-26T16:50:38Z, image windows-2025-vs2026 20261123.321.1
+the value "WardenTestThreatForAll" under HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run: put back in 177.8µs
+the value "WardenTestThreat32" under HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run (as 32-bit programs see it): put back in 115.9µs
+the value "WardenTestThreat" under HKEY_USERS\S-1-5-21-2315611937-1800655502-2561009274-500\Software\Microsoft\Windows\CurrentVersion\Run: put back in 106.4µs
+the scheduled task \Warden Test\Threat at boot: put back in 13.5784ms
+the scheduled task \Warden Test\Threat at logon: put back in 8.6182ms
+the service WardenTestThreat: put back in 2.3791ms
+survey: 2 Run values, 210 tasks, 686 services and drivers, 1 shortcuts, 0 problems, in 299.9648ms
+found in 340.0262ms
+
+== run 45863988208, commit 4a1a4dd, started 2026-11-26T17:01:01Z, image windows-2025-vs2026 20261116.315.1
+the value "WardenTestThreatForAll" under HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run: put back in 178.4µs
+the value "WardenTestThreat32" under HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run (as 32-bit programs see it): put back in 131.5µs
+the value "WardenTestThreat" under HKEY_USERS\S-1-5-21-3414932011-3134797172-3625386099-500\Software\Microsoft\Windows\CurrentVersion\Run: put back in 120.1µs
+the scheduled task \Warden Test\Threat at boot: put back in 12.4688ms
+the scheduled task \Warden Test\Threat at logon: put back in 11.0509ms
+the service WardenTestThreat: put back in 3.0759ms
+survey: 2 Run values, 210 tasks, 686 services and drivers, 1 shortcuts, 0 problems, in 297.1662ms
+found in 346.0385ms

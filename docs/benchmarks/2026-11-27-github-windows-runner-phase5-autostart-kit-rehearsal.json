@@ -1,0 +1,128 @@
+{
+    "recorded_at":  "2026-11-27T02:18:48Z",
+    "run":  3,
+    "finished":  true,
+    "checks":  [
+                   {
+                       "check":  "Warden could look at everything that this machine starts",
+                       "held":  true,
+                       "detail":  "900 entries, five looks: 361, 158, 162, 156, 170 ms"
+                   },
+                   {
+                       "check":  "Windows shows every entry after it was made",
+                       "held":  true,
+                       "detail":  "14 of 14 views show something"
+                   },
+                   {
+                       "check":  "a signature database that names the dummy was built",
+                       "held":  true,
+                       "detail":  "exit code 0"
+                   },
+                   {
+                       "check":  "the scan reports the dummy",
+                       "held":  true,
+                       "detail":  "exit code 1"
+                   },
+                   {
+                       "check":  "Warden finds seven entries that start the dummy",
+                       "held":  true,
+                       "detail":  ""
+                   },
+                   {
+                       "check":  "the dummy went into the quarantine",
+                       "held":  true,
+                       "detail":  "exit code 0"
+                   },
+                   {
+                       "check":  "Warden removed seven entries and left none",
+                       "held":  true,
+                       "detail":  "7 removed, 0 left"
+                   },
+                   {
+                       "check":  "the quarantine named the entry",
+                       "held":  true,
+                       "detail":  ""
+                   },
+                   {
+                       "check":  "Windows shows none of the entries any more",
+                       "held":  true,
+                       "detail":  ""
+                   },
+                   {
+                       "check":  "the dummy was not started while it was quarantined",
+                       "held":  true,
+                       "detail":  ""
+                   },
+                   {
+                       "check":  "no entry came back by itself over the restart",
+                       "held":  true,
+                       "detail":  ""
+                   },
+                   {
+                       "check":  "the dummy is back at its place",
+                       "held":  true,
+                       "detail":  "exit code 0"
+                   },
+                   {
+                       "check":  "Warden put every entry back without a reservation",
+                       "held":  true,
+                       "detail":  ""
+                   },
+                   {
+                       "check":  "Windows shows every entry as it showed it before",
+                       "held":  true,
+                       "detail":  ""
+                   },
+                   {
+                       "check":  "Windows started the dummy through the Run value of the user",
+                       "held":  false,
+                       "detail":  "0 lines"
+                   },
+                   {
+                       "check":  "Windows started the dummy through the Run value of the machine",
+                       "held":  false,
+                       "detail":  "0 lines"
+                   },
+                   {
+                       "check":  "Windows started the dummy through the Run value in the 32-bit view",
+                       "held":  false,
+                       "detail":  "0 lines"
+                   },
+                   {
+                       "check":  "Windows started the dummy through the task at logon",
+                       "held":  false,
+                       "detail":  "0 lines"
+                   },
+                   {
+                       "check":  "Windows started the dummy through the task at boot",
+                       "held":  false,
+                       "detail":  "0 lines"
+                   },
+                   {
+                       "check":  "Windows started the dummy through the service",
+                       "held":  false,
+                       "detail":  "0 lines"
+                   },
+                   {
+                       "check":  "Windows started the dummy through the shortcut in the Startup folder",
+                       "held":  false,
+                       "detail":  "0 lines"
+                   },
+                   {
+                       "check":  "nothing of the test is left on the machine",
+                       "held":  true,
+                       "detail":  ""
+                   }
+               ],
+    "failed":  7,
+    "machine":  {
+                    "os":  "Microsoft Windows Server 2025 Datacenter",
+                    "os_version":  "10.0.26100",
+                    "os_display_version":  "24H2",
+                    "os_build":  "26100.33828",
+                    "administrator_rights":  true,
+                    "defender_realtime_protection":  false,
+                    "warden_sha256":  "f2d61083c1669b5d443a700772a1bb59f44583031809820ecb6bf74cd661c2a7",
+                    "dummy_sha256":  "626f2619a0d1cea577c4bb3c7e96fb691d8b35e897814d939cdf9b257d631980"
+                }
+}

@@ -11,15 +11,16 @@ project's author makes the design decisions, tests each phase on real
 hardware and reviews it before the next one starts:
 [How this project is built](#how-this-project-is-built).
 
-> **Status: phase 5 of 10. Its first piece, the signature check, is
-> done.** The scan engine has three detection layers: hash matching, YARA
-> rules, and heuristics that judge a Windows executable by its structure.
-> It looks inside zip archives. On Windows it checks who signed a file
-> before it reports the match of a published rule. A file can be moved into
-> a quarantine and put back exactly as it was. Everything is driven from
-> the command line: there is no GUI, no background service and no real-time
-> protection yet. Warden is not a replacement for your antivirus; it runs
-> next to Microsoft Defender.
+> **Status: phase 5 of 11. Both of its pieces are built; the second waits
+> for its run in a virtual machine.** The scan engine has three detection
+> layers: hash matching, YARA rules, and heuristics that judge a Windows
+> executable by its structure. It looks inside zip archives. On Windows it
+> checks who signed a file before it reports the match of a published rule.
+> A file can be moved into a quarantine and put back exactly as it was, and
+> on Windows the entries that start it go and come back with it.
+> Everything is driven from the command line: there is no GUI, no
+> background service and no real-time protection yet. Warden is not a
+> replacement for your antivirus; it runs next to Microsoft Defender.
 
 ## What works today
 
@@ -121,6 +122,33 @@ has to be typed out takes it all the same.
 [docs/QUARANTINE.md](docs/QUARANTINE.md) has the format, the reasoning and
 the limits.
 
+A program that wants to stay makes Windows start it again. On Windows,
+the quarantine takes what starts a file together with the file: values
+under the Run keys, scheduled tasks, services, and shortcuts in the
+Startup folders. `warden autostart find` shows them and changes nothing;
+here for a harmless file on a Windows runner in CI, with entries that
+Windows' own tools had made:
+
+```
+C:\Users\RUNNER~1\AppData\Local\Temp\Warden test scene SAfFxL\threat.exe is started by 7 entries:
+  the value "WardenTestThreat32" under HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run (as 32-bit programs see it)
+      C:\Users\RUNNER~1\AppData\Local\Temp\WARDEN~1\threat.exe
+  the scheduled task \Warden Test\Threat at boot
+      "C:\Users\RUNNER~1\AppData\Local\Temp\Warden test scene SAfFxL\threat.exe" --from-boot-task
+  the service WardenTestThreat
+      "C:\Users\RUNNER~1\AppData\Local\Temp\Warden test scene SAfFxL\threat.exe" --service
+  the shortcut C:\Users\runneradmin\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\WardenTestThreat.lnk
+      C:\Users\runneradmin\AppData\Local\Temp\Warden test scene SAfFxL\threat.exe --from-shortcut
+```
+
+(Four of the seven, one of each kind.) Each entry is written down whole
+before it is removed, and `warden quarantine restore` puts it back as it
+was. The test of that does not ask Warden: it compares what `reg`,
+`schtasks` and `sc` print about each entry before and after. The first
+run on Windows failed that comparison in two places, and
+[docs/REMEDIATION.md](docs/REMEDIATION.md) says what they were, where
+Warden looks, and where it does not.
+
 A published rule is sometimes wrong about clean software, and for a file
 of Windows there is better evidence than a rule: its signature.
 `warden trust check` shows what Warden makes of one, here for two files on
@@ -163,7 +191,8 @@ routes to a signature, the list, and the limits.
 |---|---|
 | `warden scan <path>...` | Scans files and folders in parallel, including the files inside zip archives. Exit code 0 means clean, 1 means something was detected, 2 means an error. `--rules <bundle>` adds a rule bundle, `--json` prints the full report, `--no-trust` reports every rule match whoever signed the file. |
 | `warden trust check <file>...` / `list` / `survey <folder>` | Says who signed a file, by which of three routes, and whether that publisher is on the trust list; prints the list; or checks every file of a folder and counts. Windows only. |
-| `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. `add` leaves a file that Windows itself signed where it is, unless `--even-if-signed-by-windows` is given. |
+| `warden quarantine add` / `list` / `info` / `restore` / `delete` | Moves files into the quarantine, shows what is in it, puts a file back with its content, timestamps and permissions, or removes an entry for good. `add` leaves a file that Windows itself signed where it is, unless `--even-if-signed-by-windows` is given. On Windows, `add` also removes what starts the file, and `restore` puts it back. |
+| `warden autostart find <file>` / `list` / `remove <entry>` | Shows which Run values, scheduled tasks, services and Startup shortcuts start a file; lists every such entry of the machine; or goes on removing what starts a quarantined file. `find` and `list` change nothing. Windows only. |
 | `warden inspect <file>` | Shows what the heuristics see in one Windows executable: its sections, imports and header, every indicator that applies with its weight, the score and the threshold. |
 | `warden rules build <path>... --out <file>` | Compiles YARA rule files, folders or a YARA Forge package into a rule bundle. `--exclusions <list>` leaves out rules that are known to flag clean files. The bundle keeps its contents under a cipher, so that an antivirus does not take it for the malware its rules describe. |
 | `warden rules info <file>` | Shows what a bundle holds: how many rules lead to which verdict, the rule files it was built from, the rules that were left out on purpose, the licences the rules name. |
@@ -323,7 +352,7 @@ the labelled feature records of the EMBER2024 dataset. See
 ## Benchmarks
 
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) has the numbers and how they were
-produced. In short, as of the first piece of phase 5:
+produced. In short, as of phase 5:
 
 - **Speed.** A 16-thread desktop with Microsoft Defender running scans its
   System32 folder (27,646 files, 10 GB) from the file cache in 8 seconds
@@ -378,6 +407,12 @@ produced. In short, as of the first piece of phase 5:
   own tool calls a signed program with bytes added next to its signature
   "Valid", and one that is signed for "Microsoft Corporation" under a
   root made on the spot as well. Warden trusts neither, and says why.
+- **What starts programs.** Reading every Run value, scheduled task,
+  service, driver and Startup shortcut of a GitHub-hosted Windows runner,
+  900 entries, takes the whole program 141 to 212 ms. Putting one entry
+  back takes a tenth of a millisecond for a Run value, 2 to 3 ms for a
+  service and about 10 ms for a scheduled task, in a debug build. These
+  are from the runner only: the run in a virtual machine is open.
 - **On a Windows 11 that was installed for the test**, with nothing else
   on it, no file is flagged: none of 153,317 with the built-in rule and
   the heuristic layer, and none of 153,370 with the 5,132 public rules as
@@ -399,10 +434,11 @@ produced. In short, as of the first piece of phase 5:
 [docs/ROADMAP.md](docs/ROADMAP.md) lists every phase with its exit
 criterion. Phase 5 so far: Warden checks who signed a file, so that a
 match of a published rule in a file from a trusted publisher is recorded
-instead of reported, and the quarantine leaves a file that Windows itself
-signed where it is. Next in that phase: removing the autostart entries
-that point at a quarantined file and putting them back on restore, tried
-in a virtual machine.
+instead of reported; the quarantine leaves a file that Windows itself
+signed where it is; and it removes the autostart entries that start a
+quarantined file and puts them back on restore. What is open in that
+phase is the run in a virtual machine, where Windows is restarted to see
+that it no longer starts the program, and starts it again after a restore.
 
 ## How this project is built
 

@@ -45,10 +45,11 @@ and of the reader for executables, tests of the rule layer and of every
 heuristic indicator, a test that fits the heuristic weights to the counts
 in `calibration/` again and compares them with the scanner's, the tests of
 the quarantine with every operation cut off at every step, the tests of the
-signature check with a stand-in that answers for Windows, and tests that
-drive the `warden` binary the way a user would. Among the last are two that
-give the program an output nobody reads any more, as `warden scan … | head`
-does: it has to end quietly, and it used to panic.
+signature check and of the autostart entries with stand-ins that answer for
+Windows, and tests that drive the `warden` binary the way a user would.
+Among the last are two that give the program an output nobody reads any
+more, as `warden scan … | head` does: it has to end quietly, and it used to
+panic.
 
 The same checks CI runs before anything is merged:
 
@@ -60,10 +61,13 @@ cargo test --workspace --locked
 ```
 
 On Windows, `scripts\win\check.cmd` builds the release binary, checks EICAR
-detection, asks who signed two files of Windows, runs the tests and
-measures scan speed in one go. It writes its results to `target\check\`.
-With `-Rules` it also downloads the pinned rule package, builds the rule
-bundle and counts false positives in the Windows system folder.
+detection, asks who signed two files of Windows, times a look at what
+Windows starts on the machine, runs the tests and measures scan speed in
+one go. It writes its results to `target\check\`. Of the look it keeps
+how long it took and how many entries of each kind there are, and not the
+list: that would say what is installed on the machine. With `-Rules` it
+also downloads the pinned rule package, builds the rule bundle and counts
+false positives in the Windows system folder.
 
 ## EICAR in three forms
 
@@ -328,14 +332,95 @@ is another one. Each test now gives its folder rights of its own first.
 
 The Windows code cannot be built on another system, and the whole of CI
 takes about twenty minutes on Windows. The `Windows check` workflow runs
-the lints and tests of this one crate on a Windows runner in about two,
-for a first answer. It starts by hand or when a branch named
-`win-check/...` is pushed.
+the lints and tests of the crates that have code for Windows, and need no
+rule engine, on a Windows runner in a few minutes, for a first answer. It
+starts by hand or when a branch named `win-check/...` is pushed.
 
 **Not tested:** a power cut, as opposed to a program that dies; file
 systems other than the runner's NTFS and the Linux container's; a Windows
 user without administrator rights, which the user of the CI runner has;
 restoring a file that belongs to another user.
+
+## Autostart entries
+
+[REMEDIATION.md](REMEDIATION.md) describes how Warden removes what starts
+a quarantined file and puts it back, and
+[how that is tested](REMEDIATION.md#how-it-is-tested). Three things about
+those tests belong here.
+
+**Most of them run against a stand-in.** The rules are the same on every
+system: record first, look before removing, look before putting back,
+never remove what could not be put back. They are tried with a stand-in
+for Windows that keeps entries in memory, a real quarantine and real
+files, and they run with `cargo test` everywhere.
+
+**Some change the machine they run on, and say so first.** The part that
+talks to Windows can only be tried on Windows, with real entries: a
+service, two tasks, three Run values and a Startup shortcut, made with
+`reg`, `schtasks`, `sc` and the shell. All of them name a harmless file
+that nothing starts, and all are removed again, whatever happens. Even so
+these tests run only where the environment says in as many words that the
+machine may be changed:
+
+```
+WARDEN_AUTOSTART_TESTS=this-machine-may-be-changed
+```
+
+CI sets that on the hosted Windows runner, which is deleted after the job.
+Without it the tests skip themselves and say why. Do not set it on a
+machine you use. `scripts\win\check.cmd` takes the variable away before it
+runs the tests, in case it was set.
+
+**They ask Windows, not Warden.** What `reg query`, `schtasks /query`
+and seven commands of `sc` print for each entry is recorded before the file
+is quarantined and compared after it is restored, as text. The first run
+on Windows failed that comparison in two places where Warden had been sure
+of itself; [REMEDIATION.md](REMEDIATION.md#what-a-real-windows-said-to-the-first-attempt)
+has the story.
+
+### The run in a virtual machine
+
+No test can restart Windows. That Windows itself stops starting a
+quarantined program, and starts it again after a restore, is shown by
+hand, in a virtual machine installed for the purpose
+([as below](#a-machine-the-list-was-not-written-from)), with a harmless
+program:
+
+- `warden-dummy.exe` adds one line to a file next to itself when it is
+  started: when, as which process, by which user, with which arguments.
+  Then it ends. It opens no connection, starts nothing and touches no
+  other file. It is a crate of this repository and not part of Warden.
+- `autostart-remedy.cmd` does the rest, in three runs with a restart of
+  Windows after the first and the second. It keeps its place in
+  `C:\warden-test`.
+
+The kit builder puts both on the CD image:
+
+```
+cargo build --release -p warden-cli -p warden-dummy
+python3 scripts/make-scan-kit.py --warden target/release/warden.exe --rules rules/vendor/rules.wrb --dummy target/release/warden-dummy.exe --out rules/vendor/warden-kit.iso
+```
+
+In the machine, right-click `autostart-remedy.cmd` and choose "Run as
+administrator", three times:
+
+| Run | What the script does | Then |
+|---|---|---|
+| 1 | Times a look at everything that the machine starts, before anything is added, and keeps the times and the counts. Registers the dummy in seven places with Windows' own tools, each entry with a word of its own. Records what Windows shows of each. Builds a signature database that names the dummy and lets `warden scan` report it. Lets Warden quarantine it, and checks that Windows shows none of the entries any more | Restart Windows, log on, wait a minute |
+| 2 | Checks that the dummy was not started and that no entry came back. Lets Warden restore it, and checks that Windows shows every entry as before | Restart Windows, log on, wait two minutes |
+| 3 | Reads the dummy's file: each of the seven entries has to have left a line with its word. Removes the entries and the folder | Nothing |
+
+The result is `C:\warden-out\autostart-remedy.json`, a list of checks
+with a yes or no for each, and it goes out through the serial port like
+the results of the scan kit. `autostart-remedy.cmd -Reset` removes
+whatever a run left behind.
+
+A slip in a script like this costs whoever runs it an afternoon. CI
+therefore rehearses it on the hosted runner before anybody does it by
+hand: the same three runs with the same two programs, without the
+restarts. Every check has to hold except the seven that only a restart can
+pass. CI also checks that every script in `scripts/win` parses, in the
+PowerShell that every Windows has and in the newer one.
 
 ## Signatures
 

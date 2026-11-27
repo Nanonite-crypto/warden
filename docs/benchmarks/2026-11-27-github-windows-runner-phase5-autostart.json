@@ -1,0 +1,15 @@
+{
+    "label":  "local machine, release build: the whole program each time, started through cmd.exe, its output thrown away",
+    "milliseconds":  [
+                         197,
+                         144,
+                         145,
+                         141,
+                         212
+                     ],
+    "run_values":  2,
+    "tasks":  210,
+    "services_and_drivers":  687,
+    "shortcuts":  1,
+    "problems":  0
+}

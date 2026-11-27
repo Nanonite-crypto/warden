@@ -58,10 +58,10 @@ file was made.
 
 | Command | What it does |
 |---|---|
-| `warden quarantine add <file>...` | Moves files into the quarantine. `--reason` keeps a note with the entry |
+| `warden quarantine add <file>...` | Moves files into the quarantine. `--reason` keeps a note with the entry. On Windows, what starts a file goes with it |
 | `warden quarantine list` | Lists the entries, oldest first, and entry files that cannot be read. `--json` prints the records |
 | `warden quarantine info <id>` | Shows everything that is recorded about one entry |
-| `warden quarantine restore <id>` | Puts the file back and removes the entry. `--to <path>` puts it somewhere else; `--overwrite` replaces a file that is in the way |
+| `warden quarantine restore <id>` | Puts the file back and removes the entry. `--to <path>` puts it somewhere else; `--overwrite` replaces a file that is in the way. On Windows, what started the file comes back with it |
 | `warden quarantine delete <id>...` | Removes entries for good |
 
 An entry is named by its identifier, sixteen hexadecimal digits, or by
@@ -263,6 +263,25 @@ the crate. A descriptor is a block of bytes with offsets in it, and Windows
 follows them, so a descriptor that comes out of a record is checked first,
 offset by offset, in ordinary code that runs and is tested on every system.
 
+## What starts the file
+
+A file that Windows starts by itself has entries that say so: a value
+under a Run key, a scheduled task, a service, a shortcut in the Startup
+folder. `warden quarantine add` removes the entries that start the file
+it takes, and `restore` puts them back. [REMEDIATION.md](REMEDIATION.md)
+describes that part.
+
+To the quarantine such entries are a record that it keeps with an entry.
+Any part of Warden can attach a record to an entry, under a kind of its
+own. A record is a file next to the entry's, written the way the entry is:
+whole or not at all. It lives as long as the entry does. `delete` removes
+it with the entry, and `restore` leaves it to whoever attached it, because
+only they know what has to happen before it may go. The quarantine does
+not read it.
+
+A Startup shortcut is a file, so it goes into the quarantine as an entry
+of its own, with a note that names the entry of the file it started.
+
 ## What it refuses
 
 - **Anything but a regular file.** A folder is not quarantined, and a link
@@ -352,7 +371,7 @@ What the guard does not cover:
 |---|---|
 | A quarantine for the whole machine, in a folder that ordinary users cannot read. Today it is a folder of the user who runs Warden, used with that user's rights | The Windows service (phase 6) |
 | Refusing to restore, on behalf of a user, to a place that user could not write to. A program with more rights than its user that restores through a link into a system folder is how antivirus products have been turned into a way of planting files. With the user's own rights there is nothing to gain | The Windows service (phase 6) |
-| Removing a file that is in use, when Windows next starts | Remediation (phase 5) |
+| Quarantining a file that is in use. Windows does not let the file of a running program be removed, so today `add` fails for it: the copy is taken out of the quarantine again, and the error says that the file could not be removed. Stopping the program first takes the rights of a service | Open. It was planned for phase 5; the proposal is the Windows service (phase 6). See the [open decisions](ROADMAP.md#open-decisions) |
 | Quarantine as the consequence of a scan. Today a person names the file | Later phases. The [guard](#the-guard) that had to come first is there |
 
 ## Tests
