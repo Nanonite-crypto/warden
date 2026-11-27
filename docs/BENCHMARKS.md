@@ -827,10 +827,10 @@ Windows' own tools show before and after. Two things can be measured: what
 one look at everything that a machine starts costs, and what putting one
 entry back costs.
 
-All of it is from GitHub-hosted Windows runners, on 2026-11-26 and
-2026-11-27. Nothing here is from the desktop or from the virtual machine
-yet. The acceptance script and the kit for the virtual machine both time
-the look, so their numbers come with the next run on each.
+Most of it is from GitHub-hosted Windows runners, on 2026-11-26 and
+2026-11-27. The look was also timed on the desktop. Nothing here is from
+the virtual machine yet; the kit for it times the look as well, so that
+number comes with its run.
 
 #### One look at the four places
 
@@ -860,6 +860,30 @@ The runner's Windows had 900 entries: 2 Run values, 210 scheduled tasks,
 
 Hardware: an AMD EPYC 9V74 with 2 logical processors, 8 GB RAM, Windows
 Server 2025 (10.0.26100), Microsoft Defender's real-time protection off.
+
+On the desktop, the same day, with the same script and administrator
+rights:
+
+| Look | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Time | 451 ms | 376 ms | 349 ms | 366 ms | 419 ms |
+
+That Windows had 1,099 entries: 30 Run values, 263 scheduled tasks, 794
+services and drivers, and 12 shortcuts. Warden could read every one. As
+for every result from a private machine, the numbers are all that is
+kept.
+
+- **A look takes about four tenths of a second there**, more than twice
+  as long as on the runner, for a fifth more entries. The desktop runs
+  Microsoft Defender's real-time protection, which the runner has
+  switched off, and it has more entries of every kind. Which of the two
+  makes the difference was not measured.
+- **It is still a cost per command**, and one that a person does not
+  wait for: `warden quarantine add` looks once.
+
+Hardware: an AMD Ryzen 7 5800X with 16 logical processors, 32 GB RAM,
+Windows 11 Home (10.0.26300), Microsoft Defender's real-time protection
+on.
 
 #### In the tests
 
@@ -932,7 +956,9 @@ Raw results:
 [the five looks](benchmarks/2026-11-27-github-windows-runner-phase5-autostart.json),
 [their machine](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-machine.json),
 [the rehearsal](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-kit-rehearsal.json),
-[the times from the tests](benchmarks/2026-11-26-github-windows-runner-phase5-autostart-test-times.txt).
+[the times from the tests](benchmarks/2026-11-26-github-windows-runner-phase5-autostart-test-times.txt);
+[the five looks on the desktop](benchmarks/2026-11-27-windows-desktop-phase5-autostart.json),
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-machine.json).
 
 ## False positives
 
