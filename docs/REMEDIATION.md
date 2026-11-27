@@ -329,7 +329,7 @@ Warden prints it and records it nowhere.
 |---|---|---|
 | The rules, against a stand-in for Windows | Everywhere | With a real quarantine and real files: what starts a file is found and nothing else; all of it goes and comes back; a run cut off after every single step of a removal and of a put-back leaves each entry in its place or in the record, and can be finished; without rights the user's entries go and the rest is named; an entry that changed since it was written down stays; a task with a stored password and a user's copy of a service are not removed; a place that is taken is not written over |
 | Reading | Everywhere | Command lines of all four kinds, variables filled in the way Windows does it, paths between the characters that end a path, task definitions that are no task definitions, any text at all |
-| The Windows side, on Windows | CI, and the virtual machine | Seven entries made with `reg`, `schtasks`, `sc` and the shell are all found, and read right. Each goes through Warden and Windows' tools no longer show it; each comes back and they show it as before. The same with a real quarantine around it |
+| The Windows side, on Windows | CI | Seven entries made with `reg`, `schtasks`, `sc` and the shell are all found, and read right. Each goes through Warden and Windows' tools no longer show it; each comes back and they show it as before. The same with a real quarantine around it |
 | The whole program, on Windows | CI | `warden autostart find`, `quarantine add`, `info`, `list`, `restore` and `delete` on the same seven entries |
 | The run by hand | The virtual machine | See below |
 
@@ -352,7 +352,12 @@ These tests register a service and tasks. They run only where a variable
 says in as many words that the machine may be changed:
 `WARDEN_AUTOSTART_TESTS=this-machine-may-be-changed`. CI sets it on the
 hosted runner, which is deleted after the job. A developer's `cargo test`
-skips them and says why.
+skips them and says why. The kit for the virtual machine can carry them
+as a program (`--tests`), and the script then runs them at its end. The
+kit of 2026-11-27 did not, so these tests have run on the runner's
+Windows Server 2025 only. On the virtual machine's Windows 11 it was the
+script that took seven entries of the same kinds out and back, with
+`warden.exe`.
 
 **The run by hand** shows what no test can: that Windows itself stops
 starting the program, and starts it again after a restore. A harmless
@@ -363,6 +368,11 @@ restart it checks that no line was written, and restores it. After a
 second restart there has to be a line from each of the seven entries.
 [TESTING.md](TESTING.md#autostart-entries) has the steps. CI rehearses the
 script on the hosted runner first, all three runs without the restarts.
+On 2026-11-27 it was done in the virtual machine, twice, and all 22
+checks held both times. One restart of the first pass never finished and
+the machine was reset by hand, which is why there is a second pass; the
+reason is not known
+([BENCHMARKS.md](BENCHMARKS.md#the-run-by-hand-in-the-virtual-machine)).
 
 **Not tested:** a user without administrator rights on a real Windows,
 where the stand-in has to do; entries of a second user who is logged on at

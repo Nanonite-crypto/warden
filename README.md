@@ -11,13 +11,14 @@ project's author makes the design decisions, tests each phase on real
 hardware and reviews it before the next one starts:
 [How this project is built](#how-this-project-is-built).
 
-> **Status: phase 5 of 11. Both of its pieces are built; the second waits
-> for its run in a virtual machine.** The scan engine has three detection
-> layers: hash matching, YARA rules, and heuristics that judge a Windows
-> executable by its structure. It looks inside zip archives. On Windows it
-> checks who signed a file before it reports the match of a published rule.
-> A file can be moved into a quarantine and put back exactly as it was, and
-> on Windows the entries that start it go and come back with it.
+> **Status: phase 5 of 11. Both of its pieces are built and have been
+> run, in CI and in a virtual machine; the phase is in review.** The scan
+> engine has three detection layers: hash matching, YARA rules, and
+> heuristics that judge a Windows executable by its structure. It looks
+> inside zip archives. On Windows it checks who signed a file before it
+> reports the match of a published rule. A file can be moved into a
+> quarantine and put back exactly as it was, and on Windows the entries
+> that start it go and come back with it.
 > Everything is driven from the command line: there is no GUI, no
 > background service and no real-time protection yet. Warden is not a
 > replacement for your antivirus; it runs next to Microsoft Defender.
@@ -410,10 +411,22 @@ produced. In short, as of phase 5:
   root made on the spot as well. Warden trusts neither, and says why.
 - **What starts programs.** Reading every Run value, scheduled task,
   service, driver and Startup shortcut of a GitHub-hosted Windows runner,
-  900 entries, takes the whole program 141 to 212 ms. Putting one entry
+  900 entries, takes the whole program 141 to 212 ms. On the desktop,
+  with 1,099 entries and Microsoft Defender's real-time protection on, it
+  takes 237 to 451 ms. In the virtual machine, with 930 entries and that
+  protection on as well, it takes 193 to 207 ms, and two seconds the
+  first time the program is started from the CD image. Putting one entry
   back takes a tenth of a millisecond for a Run value, 2 to 3 ms for a
-  service and about 10 ms for a scheduled task, in a debug build. These
-  are from the runner only: the run in a virtual machine is open.
+  service and about 10 ms for a scheduled task, in a debug build on the
+  runner.
+- **Whether Windows really stops starting a quarantined program.** In
+  the virtual machine a harmless program was registered in seven places
+  and quarantined. After a restart Windows had started nothing and no
+  entry was back. After a restore and another restart Windows had started
+  it through each of the seven. All 22 checks of the script held, in two
+  passes. In the first pass one restart of the virtual machine never
+  finished, and the machine was reset by hand; why is not known, and the
+  second pass was done for that reason.
 - **On a Windows 11 that was installed for the test**, with nothing else
   on it, no file is flagged: none of 153,317 with the built-in rule and
   the heuristic layer, and none of 153,370 with the 5,132 public rules as
@@ -438,9 +451,10 @@ match of a published rule in a file from a trusted publisher is recorded
 instead of reported; the quarantine leaves a file that Windows itself
 signed where it is, and a driver that Windows loads while it starts; and
 it removes the autostart entries that start a quarantined file and puts
-them back on restore. What is open in that phase is the run in a virtual
-machine, where Windows is restarted to see that it no longer starts the
-program, and starts it again after a restore.
+them back on restore. The run in a virtual machine, where Windows is
+restarted to see that it no longer starts the program, and starts it
+again after a restore, was done on 2026-11-27 and held. The phase is in
+review.
 
 ## How this project is built
 

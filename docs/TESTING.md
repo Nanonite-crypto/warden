@@ -450,6 +450,18 @@ restarts. Every check has to hold except the seven that only a restart can
 pass. CI also checks that every script in `scripts/win` parses, in the
 PowerShell that every Windows has and in the newer one.
 
+The run was done on 2026-11-27, twice in a row, and every check held both
+times ([BENCHMARKS.md](BENCHMARKS.md#the-run-by-hand-in-the-virtual-machine)).
+One thing from it for whoever repeats it: **a restart may not come
+back.** The first restart of the first pass left a black screen for as
+long as it was given, eleven and a half hours. Windows had shut down, and
+the machine did not start again. VirtualBox's "Reset" started it, and the
+script went on with its second run, because it keeps its place on the
+disk. A result with a reset in it is not the same as one without, so the
+whole was done a second time; there the same restart took two minutes
+where the others took less than one. Why is not known
+([what was seen](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-restarts.txt)).
+
 ## Signatures
 
 [TRUST.md](TRUST.md) describes the check of who signed a file. Nearly all
@@ -687,7 +699,10 @@ Three things to know before the first run:
   of Windows Setup and left a black screen, and later a machine that had
   apparently gone to sleep did not wake up. Neither has to do with Warden.
   Powering the machine off and starting it again helped both times;
-  Windows Setup went on where it had stopped.
+  Windows Setup went on where it had stopped. A third time the same
+  machine did not come back from a restart of Windows, during
+  [the run with the autostart kit](#the-run-in-a-virtual-machine), and a
+  reset helped. Whether that one has to do with Warden is not known.
 
 The runs with the kit are in
 [BENCHMARKS.md](BENCHMARKS.md#on-a-freshly-installed-windows-11).

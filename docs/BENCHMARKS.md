@@ -931,7 +931,8 @@ The logs of these three runs name the runner image, and not the processor.
 That Windows stops starting a program, and starts it again after a
 restore, can only be seen on a machine that is restarted in between. That
 run is done by hand in the virtual machine, with a script
-([TESTING.md](TESTING.md#the-run-in-a-virtual-machine)), and it is open.
+([TESTING.md](TESTING.md#the-run-in-a-virtual-machine)), and
+[its result is below](#the-run-by-hand-in-the-virtual-machine).
 CI rehearses the script on the runner first: its three runs one after the
 other, with the release builds, without the two restarts. On 2026-11-27,
 on the machine of the five looks above:
@@ -958,6 +959,65 @@ on the machine of the five looks above:
   few minutes after the five above and with a copy of the program that
   had just been made. Only the first start of that copy was slow.
 
+#### The run by hand, in the virtual machine
+
+On 2026-11-27 the script ran in the virtual machine of the
+[runs on a freshly installed Windows 11](#on-a-freshly-installed-windows-11),
+from a kit with the release builds of commit 4e126ae. It went through
+twice, one pass after the other:
+
+| Run of the script | Checks | Held, first pass | Held, second pass |
+|---|---|---|---|
+| 1: a look at what the machine starts is timed. Seven entries are made for a harmless program, a scan reports it, and Warden quarantines it with what starts it | 9 | 9 | 9 |
+| 2: after a restart nothing was started and nothing came back; the program is restored, and what started it with it | 5 | 5 | 5 |
+| 3: after another restart Windows had started the program through each of the seven entries | 7 | 7 | 7 |
+| 3: nothing of the test is left on the machine | 1 | 1 | 1 |
+
+- **Windows did what the entries say, and stopped when Warden had removed
+  them.** After the restore and a restart the program had left seven
+  lines, one for each entry with that entry's word, all within seven
+  seconds: two as the machine's own account, for the service and the task
+  at start, and five as the user who logged on. After the quarantine and a
+  restart it had left none, and no entry had come back.
+- **The first pass is not a clean one.** Its first restart never
+  finished: Windows shut down, and the machine did not start again. Eleven
+  and a half hours later it was reset by hand in VirtualBox, and the pass
+  went on from there. So in that pass the second run's checks came after a
+  reset, not after a restart that Windows completed. The second pass was
+  done for that reason, and all its restarts were Windows' own.
+- **Why that restart hung is not known.** By Windows' own record its
+  shutdown took 7.8 seconds; the four others that were looked up took 8.2
+  to 10.7. In the second pass the restart at the same place did finish,
+  and took about a hundred seconds longer than the others, again after
+  Windows had shut down. Seven more restarts, five of them with nothing of
+  the test on the machine, went as usual. Two of nine can fall on the same
+  step by chance, and this machine has left a black screen twice before:
+  at a restart during Windows Setup, before anything of Warden's was on
+  it, and once in the middle of a scan
+  ([the runs there](#on-a-freshly-installed-windows-11),
+  [TESTING.md](TESTING.md#a-machine-the-list-was-not-written-from)). What
+  was seen and measured of each restart is
+  [on record](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-restarts.txt),
+  with what was not tried.
+- **A look takes about a fifth of a second there.** The machine has 930
+  entries: 5 Run values, 248 scheduled tasks, 677 services and drivers,
+  and no shortcut, and Warden could read every one. The five looks took
+  2,218, 204, 206, 207 and 204 ms in the first pass and 2,142, 197, 193,
+  200 and 197 ms in the second. The first look of a pass is the first time
+  the program is started from the CD image since Windows started; what
+  takes the two seconds was not measured.
+
+The machine: Windows 11 Enterprise Evaluation 26H2 (10.0.26300), 4
+processors and 8 GB of memory under VirtualBox, administrator rights,
+Microsoft Defender's real-time protection on.
+
+What the machine sent has all six runs of the two passes. A run sends
+every result file that is in the kit's folder, and that folder was not
+emptied between the passes: the first two runs of the second pass carry
+the first pass's copy of the program's list of starts again. No check
+reads that copy. The checks read the list that the program itself keeps,
+and that one is gone with the test's folder when a pass has cleaned up.
+
 Raw results:
 [the five looks](benchmarks/2026-11-27-github-windows-runner-phase5-autostart.json),
 [their machine](benchmarks/2026-11-27-github-windows-runner-phase5-autostart-machine.json),
@@ -966,7 +1026,11 @@ Raw results:
 [the five looks on the desktop](benchmarks/2026-11-27-windows-desktop-phase5-autostart.json),
 [its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-machine.json),
 [the five looks of the later run](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run.json),
-[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run-machine.json).
+[its machine](benchmarks/2026-11-27-windows-desktop-phase5-autostart-second-run-machine.json);
+[the run in the virtual machine](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-kit.json),
+[its first pass](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-kit-first-pass.json),
+[what the machine sent](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-serial-capture.txt),
+[its restarts](benchmarks/2026-11-27-windows11-fresh-vm-phase5-autostart-restarts.txt).
 
 ## False positives
 
