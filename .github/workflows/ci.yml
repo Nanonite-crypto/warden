@@ -265,6 +265,47 @@ jobs:
           if ($needRestart.Count -ne 7) { Write-Host "::error::$($needRestart.Count) of the 7 checks that need a restart did not hold. Without a restart all 7 should fail."; exit 1 }
           Write-Host 'The rehearsal went as it should: everything held but the seven checks that need a restart.'
           exit 0
+      # The list of a machine's own events once came back without any of
+      # Defender's. Its query named 25 event numbers, Windows takes 22 in
+      # one query, and the answer read as if there were no such events. The
+      # script now asks about each number by itself. Here it lists the
+      # runner's events, which is fine on a machine that is the same for
+      # everybody, and its count of the starts and shutdowns is made again
+      # with a query for each number. The step also shows what a query for
+      # many numbers at once says on this Windows.
+      - name: List what the machine's logs say, and count again
+        shell: powershell
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'machine-events.txt'
+          Write-Host '::group::The list'
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\win\machine-events.ps1 -Days 400 -Out $out
+          $code = $LASTEXITCODE
+          Write-Host '::endgroup::'
+          if ($code -ne 0) { Write-Host '::error::The list of events failed.'; exit 1 }
+          $since = (Get-Date).AddDays(-400)
+          $again = 0
+          foreach ($id in 12, 13) {
+            try {
+              $again += @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-General'; Id = $id; StartTime = $since } -ErrorAction Stop).Count
+            } catch { }
+          }
+          $said = Select-String -LiteralPath $out -Pattern '^# start: (\d+) events' | Select-Object -First 1
+          if (-not $said) { Write-Host '::error::The list has no line about the starts of Windows.'; exit 1 }
+          $listed = [int]$said.Matches[0].Groups[1].Value
+          Write-Host "Starts and shutdowns of Windows: the list has $listed, a query for each number finds $again."
+          Select-String -LiteralPath $out -Pattern '^# ' | ForEach-Object { Write-Host $_.Line }
+          foreach ($count in 22, 23, 25) {
+            $ids = @(12, 13) + @(9001..(8998 + $count))
+            try {
+              $found = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-General'; Id = $ids; StartTime = $since } -ErrorAction Stop).Count
+              Write-Host "One query that names $($ids.Count) numbers: $found events."
+            } catch {
+              Write-Host "One query that names $($ids.Count) numbers: $($_.FullyQualifiedErrorId)"
+            }
+          }
+          if ($listed -lt 1) { Write-Host '::error::The list knows of no start of this machine.'; exit 1 }
+          if ($listed -ne $again) { Write-Host '::error::The list and the second count differ.'; exit 1 }
+          exit 0
       - name: Show the results
         if: always()
         shell: bash

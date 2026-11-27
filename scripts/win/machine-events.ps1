@@ -130,19 +130,27 @@ function Format-Utc($Time) {
 
 # The events of one source since the day the list starts. No event at all
 # is an answer and not an error.
+#
+# Each number is asked about by itself. Windows turns down a query that
+# names more than 22 event numbers, and Get-WinEvent then says that there
+# are no such events, which reads like an answer. That is how this list
+# once showed nothing of Defender on a machine whose Defender had been busy.
 function Read-Events([string]$Log, [string]$Provider, [int[]]$Ids) {
-    $filter = @{ LogName = $Log; Id = $Ids; StartTime = $since }
-    if ($Provider) {
-        $filter.ProviderName = $Provider
-    }
-    try {
-        return @(Get-WinEvent -FilterHashtable $filter -ErrorAction Stop)
-    } catch {
-        if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') {
-            return @()
+    $found = @()
+    foreach ($id in $Ids) {
+        $filter = @{ LogName = $Log; Id = $id; StartTime = $since }
+        if ($Provider) {
+            $filter.ProviderName = $Provider
         }
-        throw
+        try {
+            $found += @(Get-WinEvent -FilterHashtable $filter -ErrorAction Stop)
+        } catch {
+            if ($_.FullyQualifiedErrorId -notlike 'NoMatchingEventsFound*') {
+                throw
+            }
+        }
     }
+    return $found
 }
 
 # How far back a log reaches: the time of its oldest event.
